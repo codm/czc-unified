@@ -26,7 +26,7 @@
     {                                                      \
         .radio_mode = RADIO_MODE_UART_RCP,                 \
         .radio_uart_config = {                             \
-            .port = 2,                                     \
+            .port = UART_NUM_2,                                     \
             .uart_config =                                 \
                 {                                          \
                     .baud_rate = 921600,                   \
@@ -37,8 +37,8 @@
                     .rx_flow_ctrl_thresh = 0,              \
                     .source_clk = UART_SCLK_DEFAULT,       \
                 },                                         \
-            .rx_pin = 36,                                   \
-            .tx_pin = 4,                                   \
+            .rx_pin = GPIO_NUM_36,                                   \
+            .tx_pin = GPIO_NUM_4,                                   \
         },                                                 \
     }
 #else

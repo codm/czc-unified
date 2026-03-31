@@ -45,7 +45,9 @@
 #include "ot_led_strip.h"
 #endif
 
-#define TAG "esp_ot_br"
+const char* TAG = "esp_ot_br";
+
+#include "System_manager.h"
 
 #if CONFIG_OPENTHREAD_SUPPORT_HW_RESET_RCP
 #define PIN_TO_RCP_RESET CONFIG_OPENTHREAD_HW_RESET_RCP_PIN
@@ -54,21 +56,20 @@ static void rcp_failure_hardware_reset_handler(void)
     gpio_config_t reset_pin_config;
     memset(&reset_pin_config, 0, sizeof(reset_pin_config));
     reset_pin_config.intr_type = GPIO_INTR_DISABLE;
-    reset_pin_config.pin_bit_mask = BIT(PIN_TO_RCP_RESET);
+    reset_pin_config.pin_bit_mask = BIT(GPIO_NUM_16);
     reset_pin_config.mode = GPIO_MODE_OUTPUT;
     reset_pin_config.pull_down_en = GPIO_PULLDOWN_DISABLE;
     reset_pin_config.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&reset_pin_config);
-    gpio_set_level(PIN_TO_RCP_RESET, 0);
+    gpio_set_level(GPIO_NUM_16, 0);
     vTaskDelay(pdMS_TO_TICKS(10));
-    gpio_set_level(PIN_TO_RCP_RESET, 1);
+    gpio_set_level(GPIO_NUM_16, 1);
     vTaskDelay(pdMS_TO_TICKS(30));
-    gpio_reset_pin(PIN_TO_RCP_RESET);
+    gpio_reset_pin(GPIO_NUM_16);
 }
 #endif
 
-void app_main(void)
-{
+extern "C" void app_main(void) {
     // Used eventfds:
     // * netif
     // * task queue
@@ -137,4 +138,6 @@ void app_main(void)
         .base_path = "/spiffs", .partition_label = "web_storage", .max_files = 10, .format_if_mount_failed = false};
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
     esp_br_web_start("/spiffs");
+
+    // system_manager = System_manager();
 }
