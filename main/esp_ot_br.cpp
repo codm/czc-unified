@@ -22,6 +22,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+extern "C" {
 #include "esp_openthread.h"
 #include "esp_openthread_lock.h"
 #include "esp_openthread_netif_glue.h"
@@ -44,7 +45,7 @@
 #if CONFIG_OPENTHREAD_STATE_INDICATOR_ENABLE
 #include "ot_led_strip.h"
 #endif
-
+}
 const char* TAG = "esp_ot_br";
 
 #include "System_manager.h"
