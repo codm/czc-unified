@@ -12,5 +12,6 @@ idf_component_register(
         esp_http_client
         esp_https_ota
         nvs_flash
+        mbedtls
 )
 # split into priv and non priv requires

@@ -13,6 +13,7 @@
 #include "esp_https_ota.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "esp_crt_bundle.h"
 
 #define EXAMPLE_OTA_RECV_TIMEOUT_MS 1000
 #define EXAMPLE_OTA_BUF_SIZE 2048
@@ -32,15 +33,15 @@ private:
     // Event group to signal OTA result back to flashEspFirmware()
     EventGroupHandle_t ota_event_group = nullptr;
 
-    void ota_update_task(void* pvParameter);
+    static void ota_update_task(void* pvParameter);
 
 public:
     System_manager();
     ~System_manager();
     void init();
     void close();
-    bool flashEspFirmware();
-    bool flashRcpFirmware();
+    void flashEspFirmware();
+    void flashRcpFirmware();
 };
 
 // https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json

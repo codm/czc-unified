@@ -16,12 +16,10 @@
 #include "esp_coexist.h"
 #include "esp_openthread_types.h"
 
-#if CONFIG_OPENTHREAD_RADIO_NATIVE
 #define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()              \
     {                                                      \
         .radio_mode = RADIO_MODE_NATIVE,                   \
     }
-#elif CONFIG_OPENTHREAD_RADIO_SPINEL_UART
 #define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()              \
     {                                                      \
         .radio_mode = RADIO_MODE_UART_RCP,                 \
@@ -41,32 +39,6 @@
             .tx_pin = GPIO_NUM_4,                                   \
         },                                                 \
     }
-#else
-#define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()      \
-    {                                              \
-        .radio_mode = RADIO_MODE_SPI_RCP,          \
-        .radio_spi_config = {                      \
-            .host_device = SPI2_HOST,              \
-            .dma_channel = 2,                      \
-            .spi_interface =                       \
-                {                                  \
-                    .mosi_io_num = 11,             \
-                    .sclk_io_num = 12,             \
-                    .miso_io_num = 13,             \
-                },                                 \
-            .spi_device =                          \
-                {                                  \
-                    .cs_ena_pretrans = 2,          \
-                    .input_delay_ns = 100,         \
-                    .mode = 0,                     \
-                    .clock_speed_hz = 2500 * 1000, \
-                    .spics_io_num = 10,            \
-                    .queue_size = 5,               \
-                },                                 \
-            .intr_pin = 8,                         \
-        },                                         \
-    }
-#endif // CONFIG_OPENTHREAD_RADIO_SPINEL_UART OR  CONFIG_OPENTHREAD_RADIO_SPINEL_SPI
 
 #define ESP_OPENTHREAD_DEFAULT_HOST_CONFIG()                        \
     {                                                               \
@@ -79,3 +51,6 @@
         .netif_queue_size = 10,                 \
         .task_queue_size = 10,                  \
     }
+
+void initWifi();
+void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
