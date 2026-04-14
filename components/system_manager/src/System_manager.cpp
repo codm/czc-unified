@@ -29,9 +29,10 @@ void System_manager::ota_update_task(void* pvParameter)
     esp_http_client_config_t http_config = {
         .url               = self->esp_download_url,
         .timeout_ms        = EXAMPLE_OTA_RECV_TIMEOUT_MS,
-        .buffer_size       = 1024 * 4,
+        .buffer_size       = 1024 * 8,
+        .buffer_size_tx    = 1024 * 8,
         .crt_bundle_attach = esp_crt_bundle_attach,
-        .keep_alive_enable = true,
+        .keep_alive_enable = true, 
     };
 
     esp_https_ota_config_t ota_config = {
@@ -83,7 +84,7 @@ void System_manager::ota_update_task(void* pvParameter)
         if (ota_finish_err == ESP_ERR_OTA_VALIDATE_FAILED) {
             ESP_LOGE(TAG, "OTA finish: Image Validierung fehlgeschlagen");
         } else {
-            ESP_LOGE(TAG, "esp_https_ota_finish Fehler: %s", esp_err_to_name(ota_finish_err));
+            // ESP_LOGE(TAG, "esp_https_ota_finish Fehler: %s", esp_err_to_name(ota_finish_err));
         }
         xEventGroupSetBits(self->ota_event_group, OTA_FAIL_BIT);
         vTaskDelete(NULL);
@@ -92,7 +93,7 @@ void System_manager::ota_update_task(void* pvParameter)
 
     // restart esp
     ESP_LOGI(TAG, "OTA erfolgreich - Neustart...");
-    xEventGroupSetBits(self->ota_event_group, OTA_SUCCESS_BIT);
+    // xEventGroupSetBits(self->ota_event_group, OTA_SUCCESS_BIT);
     vTaskDelay(pdMS_TO_TICKS(1000));
     esp_restart();
 
