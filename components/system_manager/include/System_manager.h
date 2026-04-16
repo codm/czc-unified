@@ -38,10 +38,10 @@ private:
 public:
     System_manager();
     ~System_manager();
-    void init();
-    void close();
+    //void init();
+    //void close();
     void flashEspFirmware();
-    void flashRcpFirmware();
+    //void flashRcpFirmware();
 };
 
 // https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json

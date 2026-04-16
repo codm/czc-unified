@@ -120,18 +120,18 @@ extern "C" void app_main(void) {
         .max_fds = max_eventfd,
     };
 
-    // ESP_ERROR_CHECK(esp_vfs_eventfd_register(&eventfd_config));
+    ESP_ERROR_CHECK(esp_vfs_eventfd_register(&eventfd_config));
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     initWifi();
-    // ESP_ERROR_CHECK(mdns_init());
-    // ESP_ERROR_CHECK(mdns_hostname_set("esp-ot-br"));
+    ESP_ERROR_CHECK(mdns_init());
+    ESP_ERROR_CHECK(mdns_hostname_set("esp-ot-br"));
 
-    // esp_openthread_register_rcp_failure_handler(rcp_failure_hardware_reset_handler);
+    esp_openthread_register_rcp_failure_handler(rcp_failure_hardware_reset_handler);
 
-    // ot_console_start();
-    // ot_register_external_commands();
+    ot_console_start();
+    ot_register_external_commands();
 
     static esp_openthread_config_t config = {
         .netif_config = ESP_NETIF_DEFAULT_OPENTHREAD(),
@@ -142,17 +142,17 @@ extern "C" void app_main(void) {
         },
     };
 
-    // ESP_ERROR_CHECK(esp_openthread_start(&config));
+    ESP_ERROR_CHECK(esp_openthread_start(&config));
 
-    // esp_cli_custom_command_init();
+    esp_cli_custom_command_init();
 
-    // ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
-    // ot_network_auto_start();
+    ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
+    ot_network_auto_start();
 
     esp_vfs_spiffs_conf_t web_server_conf = {
-        .base_path = "/spiffs", .partition_label = "web_storage", .max_files = 10, .format_if_mount_failed = false};
-    // ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
-    // esp_br_web_start("/spiffs");
+        .base_path = "/spiffs", .partition_label = "spiffs", .max_files = 10, .format_if_mount_failed = false};
+    ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
+    esp_br_web_start("/spiffs");
 
     while (wifi_connected == false) {
         vTaskDelay(100);
@@ -163,7 +163,7 @@ extern "C" void app_main(void) {
     ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
     System_manager system_manager;
     ESP_LOGD(TAG, "Initialised system Manager");
-    system_manager.flashEspFirmware();
+    // system_manager.flashEspFirmware();
     
 }
 
@@ -212,8 +212,8 @@ void initWifi()
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
 
     wifi_config_t wifiConfig = {0};
-    strncpy((char*)wifiConfig.sta.ssid, "XYZ", sizeof(wifiConfig.ap.ssid));
-    strncpy((char*)wifiConfig.sta.password, "XYZ", sizeof(wifiConfig.ap.password));
+    strncpy((char*)wifiConfig.sta.ssid, "XXX", sizeof(wifiConfig.ap.ssid));
+    strncpy((char*)wifiConfig.sta.password, "XXX", sizeof(wifiConfig.ap.password));
     wifiConfig.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));

@@ -14,4 +14,4 @@ idf_component_register(
     EMBED_TXTFILES "frontend/wifi_configuration.html"
 )
 
-spiffs_create_partition_image(web_storage ${CMAKE_CURRENT_SOURCE_DIR}/frontend FLASH_IN_PROJECT)
+spiffs_create_partition_image(spiffs ${CMAKE_CURRENT_SOURCE_DIR}/frontend FLASH_IN_PROJECT)
