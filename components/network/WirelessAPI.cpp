@@ -29,8 +29,9 @@ void WirelessAPI::initAccessPoint()
 
     // config
     wifi_config_t accessPointConfig = {0};
-    strncpy((char*)accessPointConfig.ap.ssid, this->ssid, sizeof(accessPointConfig.ap.ssid));
-    strncpy((char*)accessPointConfig.ap.password, this->password, sizeof(accessPointConfig.ap.password));
+    // ESP_LOGW(TAG, "SSID LEN: %d , %s, PSW LEN %d, %s",sizeof(this->accessPointSsid), this->accessPointSsid, sizeof(this->accessPointPassword), this->accessPointPassword);
+    strncpy((char*)accessPointConfig.ap.ssid, this->accessPointSsid, sizeof(accessPointConfig.ap.ssid));
+    strncpy((char*)accessPointConfig.ap.password, this->accessPointPassword, sizeof(accessPointConfig.ap.ssid));
     accessPointConfig.ap.ssid_len = strlen((char*)accessPointConfig.ap.ssid);
     accessPointConfig.ap.authmode = WIFI_AUTH_WPA2_PSK;
     accessPointConfig.ap.max_connection = accessPointMaxConnected;

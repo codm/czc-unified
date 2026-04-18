@@ -47,6 +47,8 @@ extern "C" {
 #if CONFIG_OPENTHREAD_STATE_INDICATOR_ENABLE
 #include "ot_led_strip.h"
 #endif
+
+#include "NetworkStateMachine.h"
 }
 
 const char* TAG = "esp_ot_br";
@@ -73,6 +75,8 @@ static void rcp_failure_hardware_reset_handler(void)
 }
 
 extern "C" void app_main(void) {
+    // setup
+    
     // Used eventfds:
     // * netif
     // * task queue
@@ -85,11 +89,43 @@ extern "C" void app_main(void) {
 
     ESP_ERROR_CHECK(esp_vfs_eventfd_register(&eventfd_config));
     ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_netif_init());
+    // ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(mdns_init());
     ESP_ERROR_CHECK(mdns_hostname_set("esp-ot-br"));
 
+    System_manager system_manager;
+
+    EthernetAPI ethernetAPI;
+    
+    WirelessAPI wirelessAPI("otbr-codm", "codmcodm", 2); // default AP 
+    
+    NetworkStateMachine networkStateMachine(ethernetAPI, wirelessAPI);
+    networkStateMachine.initNetworkStateMachine();
+    ESP_LOGI(TAG, "Init completed!, waiting for Network state machine [1], %d", networkStateMachine.getState());
+    // wait until network or AP is connected 
+    while (networkStateMachine.getState() != NetworkState::WLAN && 
+           networkStateMachine.getState() != NetworkState::ETHERNET && 
+           networkStateMachine.getState() != NetworkState::ACCESS_POINT) {
+        vTaskDelay(100);
+    }
+
+    ESP_LOGI(TAG, "Internet Connected or AP started, starting Webserver...");
+    // start webserver
+    esp_vfs_spiffs_conf_t web_server_conf = {
+        .base_path = "/spiffs", .partition_label = "spiffs", .max_files = 10, .format_if_mount_failed = false};
+    ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
+    esp_br_web_start("/spiffs"); 
+
+    ESP_LOGI(TAG, "Started Webserver, checking Network connection");
+    // wait until network connection is setup
+    while (networkStateMachine.getState() != NetworkState::WLAN &&
+           networkStateMachine.getState() != NetworkState::ETHERNET) {
+        vTaskDelay(100);
+    }
+
+    ESP_LOGI(TAG, "Network connected! Startin OTBR...");
+    // start OTBR
     esp_openthread_register_rcp_failure_handler(rcp_failure_hardware_reset_handler);
 
     ot_console_start();
@@ -109,22 +145,7 @@ extern "C" void app_main(void) {
     esp_cli_custom_command_init();
 
     ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
-    ot_network_auto_start();
-
-    esp_vfs_spiffs_conf_t web_server_conf = {
-        .base_path = "/spiffs", .partition_label = "spiffs", .max_files = 10, .format_if_mount_failed = false};
-    ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
-    esp_br_web_start("/spiffs");
-
-    while (wifi_connected == false) {
-        vTaskDelay(100);
-    }
-    ESP_LOGD(TAG, "Connected successfully. Trying to update");
-
-    ESP_LOGD(TAG, "Registering Event handler for OTA Update");
-    System_manager system_manager();
-    ESP_LOGD(TAG, "Initialised system Manager");
-    // system_manager.flashEspFirmware();
-    
+    ot_network_auto_start();  
+    ESP_LOGI(TAG, "OTBR started, main() finished");
 }
 

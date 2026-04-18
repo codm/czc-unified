@@ -186,3 +186,8 @@ void NetworkStateMachine::setState(NetworkState newState)
             break;
     }
 }
+
+NetworkState NetworkStateMachine::getState()
+{
+    return currentState;
+}

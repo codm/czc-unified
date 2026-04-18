@@ -40,4 +40,5 @@ public:
     void initNetworkStateMachine();
     void closeNetworkStateMachine();
     void setState(NetworkState newState);
+    NetworkState getState();
 };
