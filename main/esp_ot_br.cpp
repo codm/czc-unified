@@ -12,6 +12,7 @@
  * CONDITIONS OF ANY KIND, either express or implied.
  */
 
+extern "C" {
 #include <stdio.h>
 #include <string.h>
 
@@ -22,7 +23,6 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
-extern "C" {
 #include "esp_openthread.h"
 #include "esp_openthread_lock.h"
 #include "esp_openthread_netif_glue.h"
@@ -48,6 +48,7 @@ extern "C" {
 #include "ot_led_strip.h"
 #endif
 }
+
 const char* TAG = "esp_ot_br";
 bool wifi_connected = false;
 
@@ -71,44 +72,6 @@ static void rcp_failure_hardware_reset_handler(void)
     gpio_reset_pin(GPIO_NUM_16);
 }
 
-static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
-{
-    if (event_base == ESP_HTTPS_OTA_EVENT) {
-        switch (event_id) {
-            case ESP_HTTPS_OTA_START:
-                ESP_LOGI(TAG, "OTA started");
-                break;
-            case ESP_HTTPS_OTA_CONNECTED:
-                ESP_LOGI(TAG, "Connected to server");
-                break;
-            case ESP_HTTPS_OTA_GET_IMG_DESC:
-                ESP_LOGI(TAG, "Reading Image Description");
-                break;
-            case ESP_HTTPS_OTA_VERIFY_CHIP_ID:
-                ESP_LOGI(TAG, "Verifying chip id of new image: %d", *(esp_chip_id_t *)event_data);
-                break;
-            case ESP_HTTPS_OTA_VERIFY_CHIP_REVISION:
-                ESP_LOGI(TAG, "Verifying chip revision of new image: %d", *(esp_chip_id_t *)event_data);
-                break;
-            case ESP_HTTPS_OTA_DECRYPT_CB:
-                ESP_LOGI(TAG, "Callback to decrypt function");
-                break;
-            case ESP_HTTPS_OTA_WRITE_FLASH:
-                ESP_LOGD(TAG, "Writing to flash: %d written", *(int *)event_data);
-                break;
-            case ESP_HTTPS_OTA_UPDATE_BOOT_PARTITION:
-                ESP_LOGI(TAG, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
-                break;
-            case ESP_HTTPS_OTA_FINISH:
-                ESP_LOGI(TAG, "OTA finish");
-                break;
-            case ESP_HTTPS_OTA_ABORT:
-                ESP_LOGI(TAG, "OTA abort");
-                break;
-        }
-    }
-}
-
 extern "C" void app_main(void) {
     // Used eventfds:
     // * netif
@@ -124,7 +87,6 @@ extern "C" void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    initWifi();
     ESP_ERROR_CHECK(mdns_init());
     ESP_ERROR_CHECK(mdns_hostname_set("esp-ot-br"));
 
@@ -160,65 +122,9 @@ extern "C" void app_main(void) {
     ESP_LOGD(TAG, "Connected successfully. Trying to update");
 
     ESP_LOGD(TAG, "Registering Event handler for OTA Update");
-    ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
-    System_manager system_manager;
+    System_manager system_manager();
     ESP_LOGD(TAG, "Initialised system Manager");
     // system_manager.flashEspFirmware();
     
 }
 
-// proprietary wifi implementation for tests only
-void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
-    if (event_base == WIFI_EVENT) {
-        switch (event_id) {
-        case WIFI_EVENT_STA_START:
-            ESP_LOGI(TAG, "WiFi STA started, trying to connect...");
-            esp_wifi_connect();   
-            break;
-
-        case WIFI_EVENT_STA_CONNECTED:
-            ESP_LOGI(TAG, "WiFi STA connected to AP");
-            wifi_connected = true; // should not be this early but for some reason the IP Events are not triggered ...
-            break;
-
-        case WIFI_EVENT_STA_DISCONNECTED:
-            ESP_LOGW(TAG, "WiFi STA disconnected, reconnecting...");
-            esp_wifi_connect();  
-            break;
-        }
-    }
-    else if (event_base == IP_EVENT) {
-        switch (event_id) {
-            case IP_EVENT_STA_GOT_IP: 
-                ESP_LOGI(TAG, "Wifi got IP!");
-                wifi_connected = true;
-                break;
-            
-            case IP_EVENT_STA_LOST_IP:
-                ESP_LOGW(TAG, "Connection LOST!");
-                wifi_connected = false;
-                break;
-        }
-    }
-}
-
-void initWifi()
-{
-    esp_netif_create_default_wifi_sta();
-    
-    wifi_init_config_t initWifiConfig = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&initWifiConfig));
-
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
-
-    wifi_config_t wifiConfig = {0};
-    strncpy((char*)wifiConfig.sta.ssid, "XXX", sizeof(wifiConfig.ap.ssid));
-    strncpy((char*)wifiConfig.sta.password, "XXX", sizeof(wifiConfig.ap.password));
-    wifiConfig.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifiConfig) );
-    ESP_ERROR_CHECK(esp_wifi_start());
-
-    ESP_LOGI(TAG, "wifi_init_sta finished.");
-}

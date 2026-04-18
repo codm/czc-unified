@@ -1,0 +1,13 @@
+idf_component_register(
+    SRCS 
+        "EthernetAPI.cpp" 
+        "WirelessAPI.cpp" 
+        "NetworkStateMachine.cpp" 
+        INCLUDE_DIRS 
+        "."
+    REQUIRES 
+        esp_netif
+        esp_eth
+        esp_wifi
+        esp_timer
+)

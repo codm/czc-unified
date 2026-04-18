@@ -42,6 +42,8 @@ public:
     //void close();
     void flashEspFirmware();
     //void flashRcpFirmware();
+    
+    static void ota_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 };
 
 // https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json
