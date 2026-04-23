@@ -28,9 +28,6 @@ extern "C" {
 #include "esp_openthread_netif_glue.h"
 #include "esp_openthread_spinel.h"
 #include "esp_openthread_types.h"
-#if CONFIG_OPENTHREAD_CLI_ESP_EXTENSION
-#include "esp_ot_cli_extension.h"
-#endif // CONFIG_OPENTHREAD_CLI_ESP_EXTENSION
 #include "esp_ot_config.h"
 #include "esp_vfs_dev.h"
 #include "esp_vfs_eventfd.h"
@@ -102,27 +99,20 @@ extern "C" void app_main(void) {
     
     NetworkStateMachine networkStateMachine(ethernetAPI, wirelessAPI);
     networkStateMachine.initNetworkStateMachine();
-    ESP_LOGI(TAG, "Init completed!, waiting for Network state machine [1], %d", networkStateMachine.getState());
-    // wait until network or AP is connected 
-    while (networkStateMachine.getState() != NetworkState::WLAN && 
-           networkStateMachine.getState() != NetworkState::ETHERNET && 
-           networkStateMachine.getState() != NetworkState::ACCESS_POINT) {
-        vTaskDelay(100);
-    }
+    ESP_LOGI(TAG, "Init completed!, waiting for Internet connection, %d", networkStateMachine.getState());
 
-    ESP_LOGI(TAG, "Internet Connected or AP started, starting Webserver...");
-    // start webserver
-    esp_vfs_spiffs_conf_t web_server_conf = {
-        .base_path = "/spiffs", .partition_label = "spiffs", .max_files = 10, .format_if_mount_failed = false};
-    ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
-    esp_br_web_start("/spiffs"); 
-
-    ESP_LOGI(TAG, "Started Webserver, checking Network connection");
     // wait until network connection is setup
     while (networkStateMachine.getState() != NetworkState::WLAN &&
            networkStateMachine.getState() != NetworkState::ETHERNET) {
         vTaskDelay(100);
     }
+
+    ESP_LOGI(TAG, "Internet Connected, starting Webserver ...");
+    // start webserver
+    esp_vfs_spiffs_conf_t web_server_conf = {
+        .base_path = "/spiffs", .partition_label = "spiffs", .max_files = 10, .format_if_mount_failed = false};
+    ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
+    esp_br_web_start("/spiffs"); 
 
     ESP_LOGI(TAG, "Network connected! Startin OTBR...");
     // start OTBR
@@ -141,8 +131,6 @@ extern "C" void app_main(void) {
     };
 
     ESP_ERROR_CHECK(esp_openthread_start(&config));
-
-    esp_cli_custom_command_init();
 
     ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
     ot_network_auto_start();  

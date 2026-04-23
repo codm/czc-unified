@@ -168,8 +168,10 @@ void NetworkStateMachine::setState(NetworkState newState)
     // state init
     switch (currentState) {
         case NetworkState::ACCESS_POINT:
-            if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF) wirelessAPI.initAccessPoint(); // evade double init at first initialisation 
-            break;
+            if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF) {
+                wirelessAPI.initAccessPoint(); // evade double init at first initialisation 
+                wirelessAPI.apWaitUntilConnected();
+            }
         case NetworkState::WLAN:
             if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF) wirelessAPI.initWifi();
             break;

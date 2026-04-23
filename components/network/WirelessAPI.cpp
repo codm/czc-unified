@@ -42,6 +42,9 @@ void WirelessAPI::initAccessPoint()
 
     ESP_LOGI(TAG, "Accesspoint started and open, SSID: %s Psw: %s", accessPointConfig.ap.ssid, accessPointConfig.ap.password);
     activeWirelessMode = ActiveWirelessMode::ACCESSPOINT;
+
+    ESP_LOGI(TAG, "Starting wifi config webserver");
+    ESP_ERROR_CHECK(esp_br_wifi_config_start());
 }
 
 void WirelessAPI::closeAccessPoint()
@@ -49,6 +52,37 @@ void WirelessAPI::closeAccessPoint()
     esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &WirelessAPI::ap_event_handler);
     esp_wifi_stop();
     activeWirelessMode = ActiveWirelessMode::OFF;
+    esp_br_wifi_config_stop();
+}
+
+void WirelessAPI::apWaitUntilConnected()
+{
+    // start own FreeRTOS Task for Polling
+    xTaskCreate(
+        // TASK function
+        [](void* arg) {
+            WirelessAPI* self = static_cast<WirelessAPI*>(arg);
+            esp_err_t ret = ESP_ERR_TIMEOUT;
+
+            while (ret == ESP_ERR_TIMEOUT) {
+                ret = esp_br_wifi_config_get_configured_wifi(
+                    self->ssid, sizeof(ssid), self->password, sizeof(password), 100
+                );
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
+
+            if (ret == ESP_OK) {
+                // got config
+                esp_event_post(NETWORK_EVENT, NETWORK_EVENT_CONFIG_UPDATED, nullptr, 0, portMAX_DELAY);
+            }
+            vTaskDelete(NULL);
+        },
+        "wifi_config_poll",
+        4096,
+        this,
+        5,
+        NULL
+    );
 }
 
 void WirelessAPI::initWifi()

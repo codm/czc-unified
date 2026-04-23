@@ -64,8 +64,6 @@ static void wifi_config_dns_server_stop(void);
 static void wifi_config_dns_server_task(void *arg);
 static esp_err_t wifi_config_start_softap(void);
 static void wifi_config_stop_softap(void);
-static esp_err_t wifi_config_start_webserver(void);
-static void wifi_config_stop_webserver(void);
 static void wifi_config_wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 
 // DNS Server implementation
@@ -508,7 +506,7 @@ static esp_err_t wifi_config_captive_portal_handler(httpd_req_t *req)
 }
 
 // Start WiFi configuration Web server
-static esp_err_t wifi_config_start_webserver(void)
+esp_err_t wifi_config_start_webserver(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 20;
@@ -558,7 +556,7 @@ static esp_err_t wifi_config_start_webserver(void)
     return ESP_OK;
 }
 
-static void wifi_config_stop_webserver(void)
+void wifi_config_stop_webserver(void)
 {
     if (s_wifi_config_server) {
         httpd_stop(s_wifi_config_server);
@@ -580,10 +578,10 @@ esp_err_t esp_br_wifi_config_start(void)
     }
 
     // Start SoftAP
-    ESP_GOTO_ON_ERROR(wifi_config_start_softap(), cleanup, WIFI_CONFIG_TAG, "Failed to start SoftAP");
+    // ESP_GOTO_ON_ERROR(wifi_config_start_softap(), cleanup, WIFI_CONFIG_TAG, "Failed to start SoftAP");
 
     // Start Web server
-    ESP_GOTO_ON_ERROR(wifi_config_start_webserver(), cleanup_softap, WIFI_CONFIG_TAG, "Failed to start Web server");
+    ESP_GOTO_ON_ERROR(wifi_config_start_webserver(), cleanup, WIFI_CONFIG_TAG, "Failed to start Web server");
 
     s_wifi_config_mode = true;
     ESP_LOGI(WIFI_CONFIG_TAG, "WiFi configuration mode started");
@@ -591,8 +589,8 @@ esp_err_t esp_br_wifi_config_start(void)
 
     return ESP_OK;
 
-cleanup_softap:
-    wifi_config_stop_softap();
+// cleanup_softap:
+//     wifi_config_stop_softap();
 
 cleanup:
     if (s_wifi_event_group) {
@@ -608,9 +606,9 @@ esp_err_t esp_br_wifi_config_stop(void)
         return ESP_OK;
     }
 
-    esp_netif_dhcps_stop(s_ap_netif);
+    // esp_netif_dhcps_stop(s_ap_netif);
     wifi_config_stop_webserver();
-    wifi_config_stop_softap();
+    // wifi_config_stop_softap();
 
     if (s_ap_records) {
         free(s_ap_records);

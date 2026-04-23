@@ -3,6 +3,9 @@
 #include "esp_mac.h"
 #include "esp_log.h"
 
+#include "esp_br_wifi_config.h"
+#include "network_event.h"
+
 enum class ActiveWirelessMode {
     OFF,
     WIFI,
@@ -32,6 +35,7 @@ public:
     void setWirelessConfig(char* _ssid, char* _password);
     void initAccessPoint();
     void closeAccessPoint();
+    void apWaitUntilConnected();
     void initWifi();
     void closeWifi();
     void setWifiIsConnected(bool _wifiIsConnected);
