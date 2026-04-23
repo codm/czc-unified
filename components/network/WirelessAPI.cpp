@@ -5,6 +5,8 @@ const char* WirelessAPI::TAG = "wireless";
 WirelessAPI::WirelessAPI(char *_accessPointSsid, char *_accessPointPassword, uint8_t _accessPointMaxConnected)
     : accessPointSsid(_accessPointSsid), accessPointPassword(_accessPointPassword),accessPointMaxConnected(_accessPointMaxConnected) ,activeWirelessMode(ActiveWirelessMode::OFF), wifiIsConnected(false)
 {
+    ssid[0] = '\0';
+    password[0] = '\0';
 }
 
 WirelessAPI::~WirelessAPI()
@@ -14,8 +16,11 @@ WirelessAPI::~WirelessAPI()
 
 void WirelessAPI::setWirelessConfig(char *_ssid, char *_password)
 {
-    this->ssid = _ssid;
-    this->password = _password;
+    strncpy(this->ssid, _ssid, sizeof(this->ssid) - 1);
+    this->ssid[sizeof(this->ssid) - 1] = '\0';
+
+    strncpy(this->password, _password, sizeof(this->password) - 1);
+    this->password[sizeof(this->password) - 1] = '\0';
 }
 
 void WirelessAPI::initAccessPoint()
@@ -55,6 +60,7 @@ void WirelessAPI::closeAccessPoint()
     esp_br_wifi_config_stop();
 }
 
+// INFO: MAX SSID, PSW LEN 32
 void WirelessAPI::apWaitUntilConnected()
 {
     // start own FreeRTOS Task for Polling
@@ -66,7 +72,7 @@ void WirelessAPI::apWaitUntilConnected()
 
             while (ret == ESP_ERR_TIMEOUT) {
                 ret = esp_br_wifi_config_get_configured_wifi(
-                    self->ssid, sizeof(ssid), self->password, sizeof(password), 100
+                    self->ssid, sizeof(self->ssid), self->password, sizeof(self->password), 100
                 );
                 vTaskDelay(pdMS_TO_TICKS(100));
             }
@@ -100,8 +106,8 @@ void WirelessAPI::initWifi()
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &WirelessAPI::wifi_event_handler, NULL, NULL));
 
     wifi_config_t wifiConfig = {0};
-    strncpy((char*)wifiConfig.sta.ssid, this->ssid, sizeof(wifiConfig.ap.ssid));
-    strncpy((char*)wifiConfig.sta.password, this->password, sizeof(wifiConfig.ap.password));
+    strncpy((char*)wifiConfig.sta.ssid, this->ssid, sizeof(wifiConfig.sta.ssid));
+    strncpy((char*)wifiConfig.sta.password, this->password, sizeof(wifiConfig.sta.password));
     wifiConfig.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));

@@ -656,12 +656,16 @@ esp_err_t esp_br_wifi_config_get_configured_wifi(char *ssid, size_t ssid_len, ch
     if (ssid && ssid_len > 0) {
         strncpy(ssid, s_configured_ssid, ssid_len - 1);
         ssid[ssid_len - 1] = '\0';
+        ESP_LOGI("HAR", "ssid copied");
     }
 
     if (password && password_len > 0) {
         strncpy(password, s_configured_password, password_len - 1);
         password[password_len - 1] = '\0';
+        ESP_LOGI("HAR", "pswd copied");
     }
+    
+    ESP_LOGI("CHECK CHECK", "Saving password... ssid len: %s, %d , psw len: %s, %d", ssid, ssid_len, password, password_len);
 
     return ESP_OK;
 }

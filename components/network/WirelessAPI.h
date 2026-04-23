@@ -17,8 +17,8 @@ class WirelessAPI
 {
 private:
     static const char* TAG;
-    char* ssid;
-    char* password;
+    char ssid[32];
+    char password[64];
 
     char* accessPointSsid;
     char* accessPointPassword;

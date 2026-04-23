@@ -118,9 +118,6 @@ extern "C" void app_main(void) {
     // start OTBR
     esp_openthread_register_rcp_failure_handler(rcp_failure_hardware_reset_handler);
 
-    ot_console_start();
-    ot_register_external_commands();
-
     static esp_openthread_config_t config = {
         .netif_config = ESP_NETIF_DEFAULT_OPENTHREAD(),
         .platform_config = {
