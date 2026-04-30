@@ -13,5 +13,8 @@ idf_component_register(
         esp_https_ota
         nvs_flash
         mbedtls
+        esp_driver_uart
+        spiffs
+        esp_driver_gpio
 )
 # split into priv and non priv requires
