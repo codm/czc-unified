@@ -2,9 +2,11 @@
 
 const char* System_manager::TAG = "System-Manager";
 
-System_manager::System_manager()
+System_manager::System_manager(Rcp_interface _rcp_interface, uart_port_t rcp_uart_num)
 {
     ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &ota_event_handler, NULL));
+    this->rcp_interface = _rcp_interface;
+    rcp_interface.rcp_update_init(rcp_uart_num);
 }
 
 System_manager::~System_manager()
@@ -15,6 +17,13 @@ void System_manager::flashEspFirmware()
 {
     ESP_LOGD(TAG, "Starting ESP Update Task...");
     xTaskCreate(ota_update_task, "ota_update_task", 1024 * 8, this, 5, NULL);
+    ESP_LOGD(TAG, "Update Task started!");
+}
+
+void System_manager::flashRcpFirmware(const char* url)
+{
+    ESP_LOGD(TAG, "Starting RCP Update Task...");
+    rcp_interface.rcp_update_start(url);
     ESP_LOGD(TAG, "Update Task started!");
 }
 

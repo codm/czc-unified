@@ -91,7 +91,8 @@ extern "C" void app_main(void) {
     ESP_ERROR_CHECK(mdns_init());
     ESP_ERROR_CHECK(mdns_hostname_set("esp-ot-br"));
 
-    System_manager system_manager;
+    Rcp_interface rcp_interface;
+    System_manager system_manager(rcp_interface, UART_NUM_2); // uart num from OTBR uart config
 
     EthernetAPI ethernetAPI;
     
