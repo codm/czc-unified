@@ -100,20 +100,20 @@ extern "C" void app_main(void) {
     
     NetworkStateMachine networkStateMachine(ethernetAPI, wirelessAPI);
     networkStateMachine.initNetworkStateMachine();
+    
+    // configure webserver start on ETH / STA GOT IP Events
+    esp_vfs_spiffs_conf_t web_server_conf = {
+        .base_path = "/spiffs", .partition_label = "spiffs", .max_files = 10, .format_if_mount_failed = false};
+    ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
+    esp_br_web_start("/spiffs"); 
+    
     ESP_LOGI(TAG, "Init completed!, waiting for Internet connection, %d", networkStateMachine.getState());
-
     // wait until network connection is setup
     while (networkStateMachine.getState() != NetworkState::WLAN &&
            networkStateMachine.getState() != NetworkState::ETHERNET) {
         vTaskDelay(100);
     }
 
-    ESP_LOGI(TAG, "Internet Connected, starting Webserver ...");
-    // start webserver
-    esp_vfs_spiffs_conf_t web_server_conf = {
-        .base_path = "/spiffs", .partition_label = "spiffs", .max_files = 10, .format_if_mount_failed = false};
-    ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
-    esp_br_web_start("/spiffs"); 
 
     ESP_LOGI(TAG, "Network connected! Startin OTBR...");
     // start OTBR
@@ -128,8 +128,12 @@ extern "C" void app_main(void) {
         },
     };
 
-    ESP_ERROR_CHECK(esp_openthread_start(&config));
+    // ESP_LOGI(TAG, "Flashing RCP firmware");
+    // const char* rcp_url = "";
+    // system_manager.flashRcpFirmware(rcp_url);
+    // ESP_LOGI(TAG, "Finished main() :)");
 
+    ESP_ERROR_CHECK(esp_openthread_start(&config));
     ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
     ot_network_auto_start();  
     ESP_LOGI(TAG, "OTBR started, main() finished");

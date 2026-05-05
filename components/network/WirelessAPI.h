@@ -38,6 +38,9 @@ public:
     void apWaitUntilConnected();
     void initWifi();
     void closeWifi();
+    void reconnect();
+    const char* getSsid();
+    const char* getPassword();
     void setWifiIsConnected(bool _wifiIsConnected);
     bool getWifiIsConnected();
     ActiveWirelessMode getActiveWirelessMode();

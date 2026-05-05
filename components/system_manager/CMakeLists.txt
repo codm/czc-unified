@@ -17,4 +17,4 @@ idf_component_register(
         spiffs
         esp_driver_gpio
 )
-# split into priv and non priv requires
+# split into priv and non priv required and check different requires it they are really needed 

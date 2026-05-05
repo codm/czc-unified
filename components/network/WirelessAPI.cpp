@@ -125,6 +125,21 @@ void WirelessAPI::closeWifi()
     activeWirelessMode = ActiveWirelessMode::OFF;
 }
 
+void WirelessAPI::reconnect()
+{
+    esp_wifi_connect();
+}
+
+const char* WirelessAPI::getSsid()
+{
+    return this->ssid;
+}
+
+const char* WirelessAPI::getPassword()
+{
+    return this->password;
+}
+
 void WirelessAPI::setWifiIsConnected(bool _wifiIsConnected)
 {
     this->wifiIsConnected = _wifiIsConnected;
@@ -163,8 +178,8 @@ void WirelessAPI::wifi_event_handler(void* arg, esp_event_base_t event_base, int
             break;
 
         case WIFI_EVENT_STA_DISCONNECTED:
-            ESP_LOGW(TAG, "WiFi STA disconnected, reconnecting...");
-            esp_wifi_connect();  
+            ESP_LOGW(TAG, "WiFi STA disconnected");
+            esp_event_post(NETWORK_EVENT, NETWORK_EVENT_WIFI_DISCONNECTED, nullptr, 0, portMAX_DELAY);
             break;
     }
 }

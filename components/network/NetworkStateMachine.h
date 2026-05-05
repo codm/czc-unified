@@ -3,7 +3,7 @@
 
 #include "EthernetAPI.h"
 #include "WirelessAPI.h"
-// #include "NvsAPI.h"
+#include "nvs_bind.h"
 #include "network_event.h"
 #include "esp_timer.h"
 
@@ -23,9 +23,6 @@ private:
     NetworkState currentState;
     EthernetAPI& ethernetAPI;
     WirelessAPI& wirelessAPI;
-    // NvsAPI& nvsAPI;
-    
-    // NetworkConfig networkConfig;
     esp_timer_handle_t initTimer;
     esp_timer_handle_t retryTimer;
 
@@ -34,6 +31,7 @@ private:
     static void initTimerCallback(void* args);
     void initRetryTimer();
     static void retryTimerCallback(void* args);
+    bool nvsWifiConfigExists();
 public:
     NetworkStateMachine(EthernetAPI& _ethernetAPI, WirelessAPI& _wirelessAPI);
     ~NetworkStateMachine();
