@@ -133,9 +133,11 @@ extern "C" void app_main(void) {
     // system_manager.flashRcpFirmware(rcp_url);
     // ESP_LOGI(TAG, "Finished main() :)");
 
-    ESP_ERROR_CHECK(esp_openthread_start(&config));
-    ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
-    ot_network_auto_start();  
-    ESP_LOGI(TAG, "OTBR started, main() finished");
+    // ESP_ERROR_CHECK(esp_openthread_start(&config));
+    // ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
+    // ot_network_auto_start();  
+    // ESP_LOGI(TAG, "OTBR started, main() finished");
+
+    while(1) vTaskDelay(portMAX_DELAY); // Loop so main doesnt finish and objects are deleted
 }
 

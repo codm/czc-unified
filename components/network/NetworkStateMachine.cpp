@@ -99,7 +99,7 @@ void NetworkStateMachine::network_event_handler(void *arg, esp_event_base_t even
         switch (event_id) {
             case IP_EVENT_STA_GOT_IP:
                 ESP_LOGI(TAG, "Wifi got IP");
-                if(esp_timer_is_active(self->initTimer)) esp_timer_stop(self->initTimer);
+                if(self->initTimer) esp_timer_stop(self->initTimer);
                 self->wirelessAPI.setWifiIsConnected(true);
                 ESP_LOGI(TAG, "Saving Wifi config to NVS...");
                 {
@@ -118,7 +118,7 @@ void NetworkStateMachine::network_event_handler(void *arg, esp_event_base_t even
                 break;
 
             case IP_EVENT_ETH_GOT_IP:
-                if(esp_timer_is_active(self->initTimer)) esp_timer_stop(self->initTimer);
+                if(self->initTimer) esp_timer_stop(self->initTimer);
                 self->ethernetAPI.setEthIsConnected(true);
                 self->setState(NetworkState::ETHERNET);
                 ESP_LOGI(TAG, "Ethernet got IP -> changed mode to Ethernet");
@@ -171,6 +171,7 @@ void NetworkStateMachine::network_event_handler(void *arg, esp_event_base_t even
                     ESP_LOGI(TAG, "Starting Accesspoint!");
                     self->setState(NetworkState::ACCESS_POINT);
                 }
+                self->initTimer = NULL;
                 break;
 
             case NETWORK_EVENT_WIFI_DISCONNECTED:
