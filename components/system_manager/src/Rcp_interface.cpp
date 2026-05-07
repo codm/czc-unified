@@ -65,22 +65,57 @@ void Rcp_interface::rcp_update_task(void *pvParameters)
 
 esp_err_t Rcp_interface::rcp_update_run(const char* url)
 {
-    ESP_RETURN_ON_ERROR(download_image(url), TAG, "RCP image download failed!");
-    ESP_RETURN_ON_ERROR(flash_image(), TAG, "RCP image flash failed!");
+    ESP_RETURN_ON_ERROR(bsl_uart_acquire(), TAG, "UART acquire failed");
+    esp_err_t err = download_image(url);
+    if (err == ESP_OK) err = flash_image();
+    bsl_uart_release();
+    return err;
+}
+
+esp_err_t Rcp_interface::bsl_uart_acquire(void)
+{
+    if (uart_is_driver_installed(rcp_uart)) {
+        ESP_LOGD(TAG, "[UART] Driver already installed, deleting for BSL");
+        uart_driver_delete(rcp_uart);
+    }
+
+    uart_config_t uart_cfg = {
+        .baud_rate  = BSL_UART_BAUD,
+        .data_bits  = UART_DATA_8_BITS,
+        .parity     = UART_PARITY_DISABLE,
+        .stop_bits  = UART_STOP_BITS_1,
+        .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+    ESP_RETURN_ON_ERROR(uart_param_config(rcp_uart, &uart_cfg), TAG, "uart_param_config failed");
+    ESP_RETURN_ON_ERROR(uart_set_pin(rcp_uart, BSL_UART_TX, BSL_UART_RX,
+                                     UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
+                        TAG, "uart_set_pin failed");
+    ESP_RETURN_ON_ERROR(uart_driver_install(rcp_uart, 1024, 0, 0, NULL, 0),
+                        TAG, "uart_driver_install failed");
+    ESP_LOGD(TAG, "[UART] BSL UART ready at %d baud", BSL_UART_BAUD);
     return ESP_OK;
+}
+
+void Rcp_interface::bsl_uart_release(void)
+{
+    if (uart_is_driver_installed(rcp_uart)) {
+        uart_driver_delete(rcp_uart);
+        ESP_LOGD(TAG, "[UART] BSL UART released");
+    }
 }
 
 esp_err_t Rcp_interface::download_image(const char *url)
 {
-        esp_http_client_config_t config = {
+    esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
         .max_redirection_count = 5,
-        .transport_type = HTTP_TRANSPORT_OVER_SSL,
+        .transport_type = HTTP_TRANSPORT_OVER_TCP,
         .buffer_size = HTTP_READ_BUFFER_SIZE,
         .buffer_size_tx = 512,
         .skip_cert_common_name_check = true,
-        .crt_bundle_attach = NULL, 
+        .crt_bundle_attach = NULL,
         .keep_alive_enable = false,
     };
 
@@ -103,7 +138,7 @@ esp_err_t Rcp_interface::download_image(const char *url)
     int content_length = esp_http_client_fetch_headers(client);
     int http_status = esp_http_client_get_status_code(client);
     ESP_LOGI(TAG, "[HTTP] Status: %d, Content-Length: %d", http_status, content_length);
-    
+
     if (http_status != 200) {
         ESP_LOGE(TAG, "[HTTP] GET failed, Status: %d", http_status);
         esp_http_client_close(client);
@@ -111,37 +146,42 @@ esp_err_t Rcp_interface::download_image(const char *url)
         return ESP_ERR_HTTP_READ_TIMEOUT;
     }
 
-    if (content_length > 0 && !enough_spiffs_space(content_length)) {
-        ESP_LOGE(TAG, "[SPIFFS] not enough spiffs space, need: %d Bytes", content_length);
+    const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
+    if (part == NULL) {
+        ESP_LOGE(TAG, "[OTA-PART] No inactive OTA partition found");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "[OTA-PART] Using partition '%s' at 0x%08lx, size: 0x%08lx",
+             part->label, part->address, part->size);
+
+    if (content_length > 0 && (size_t)content_length > part->size) {
+        ESP_LOGE(TAG, "[OTA-PART] Firmware too large: %d > %lu", content_length, part->size);
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
         return ESP_ERR_INVALID_SIZE;
     }
 
-    mkdir_if_missing(FIRMWARE_DIR);
-
-    FILE *fw_file = fopen(FIRMWARE_PATH, "wb");   /* "wb" = write binary  */
-    if (fw_file == NULL) {
-        ESP_LOGE(TAG, "[SPIFFS] error opening file: %s", FIRMWARE_PATH);
+    ESP_LOGI(TAG, "[OTA-PART] Erasing partition...");
+    err = esp_partition_erase_range(part, 0, part->size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "[OTA-PART] Erase failed: %s", esp_err_to_name(err));
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
-        return ESP_ERR_NOT_ALLOWED;
+        return err;
     }
+    ESP_LOGI(TAG, "[OTA-PART] Erase done, downloading...");
 
-    ESP_LOGI(TAG, "[HTTP] Downloading...");
- 
     uint8_t read_buffer[HTTP_READ_BUFFER_SIZE];
     int remaining = content_length;
-    // int total_length = content_length;
-    // float prev_percent = 0.0f;
+    size_t offset = 0;
     bool download_ok = true;
 
     while (remaining != 0) {
- 
-        int to_read = (remaining > 0 && remaining < HTTP_READ_BUFFER_SIZE)? remaining : HTTP_READ_BUFFER_SIZE;
-
+        int to_read = (remaining > 0 && remaining < HTTP_READ_BUFFER_SIZE) ? remaining : HTTP_READ_BUFFER_SIZE;
         int bytes_read = esp_http_client_read(client, (char *)read_buffer, to_read);
- 
+
         if (bytes_read < 0) {
             ESP_LOGE(TAG, "[HTTP] read error: %d", bytes_read);
             download_ok = false;
@@ -150,137 +190,97 @@ esp_err_t Rcp_interface::download_image(const char *url)
         if (bytes_read == 0) {
             break;
         }
- 
-        if (fwrite(read_buffer, 1, bytes_read, fw_file) != (size_t)bytes_read) {
-            ESP_LOGE(TAG, "[SPIFFS] write error");
+
+        err = esp_partition_write(part, offset, read_buffer, (size_t)bytes_read);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "[OTA-PART] write error at offset %d: %s", offset, esp_err_to_name(err));
             download_ok = false;
             break;
         }
- 
+
+        offset += (size_t)bytes_read;
         if (remaining > 0) remaining -= bytes_read;
- 
         taskYIELD();
     }
- 
-    fclose(fw_file);
- 
-    if (!download_ok) {
-        remove(FIRMWARE_PATH);
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        return ESP_ERR_HTTP_WRITE_DATA;
-    }
- 
-    ESP_LOGI(TAG, "[HTTP] Download finished, %s", FIRMWARE_PATH);
- 
+
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
- 
+
+    if (!download_ok) {
+        return ESP_ERR_HTTP_WRITE_DATA;
+    }
+
+    downloaded_size = offset;
+    ESP_LOGI(TAG, "[HTTP] Download finished, %d bytes written to '%s'", downloaded_size, part->label);
     return ESP_OK;
 }
 
 esp_err_t Rcp_interface::flash_image()
 {
-    FILE *fw_file = fopen(FIRMWARE_PATH, "rb");
-    if (fw_file == NULL) {
-        ESP_LOGE(TAG, "Couldnt open file: %s", FIRMWARE_PATH);
-        return ESP_ERR_FLASH_BASE;
+    if (downloaded_size == 0) {
+        ESP_LOGE(TAG, "[FLASH] No firmware downloaded");
+        return ESP_ERR_INVALID_STATE;
     }
 
-    fseek(fw_file, 0, SEEK_END);
-    int total_size = (int)ftell(fw_file);
-    fseek(fw_file, 0, SEEK_SET);
- 
-    if (total_size <= 0) {
-        ESP_LOGE(TAG, "Bad file size: %d", total_size);
-        fclose(fw_file);
-        return false;
+    const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
+    if (part == NULL) {
+        ESP_LOGE(TAG, "[FLASH] No inactive OTA partition found");
+        return ESP_FAIL;
     }
 
-        ESP_LOGI(TAG, "Firmware-Größe: %d Bytes", total_size);
- 
+    uint32_t total_size = (uint32_t)downloaded_size;
+    ESP_LOGI(TAG, "[FLASH] Firmware size: %lu Bytes, partition: '%s'", total_size, part->label);
+
     ESP_LOGI(TAG, "[FLASH] Erase ...");
     if (bsl_erase_flash() != ESP_OK) {
         ESP_LOGE(TAG, "[FLASH] Erase failed");
-        fclose(fw_file);
-        return false;
+        return ESP_FAIL;
     }
     ESP_LOGI(TAG, "[FLASH] Erase successful!");
 
-    if (bsl_begin_flash(BEGIN_ZB_ADDR, (uint32_t)total_size) != ESP_OK) {
+    if (bsl_begin_flash(BEGIN_ZB_ADDR, total_size) != ESP_OK) {
         ESP_LOGE(TAG, "[FLASH] beginFlash failed");
-        fclose(fw_file);
-        return false;
+        return ESP_FAIL;
     }
 
     uint8_t block_buffer[BSL_TRANSFER_SIZE];
-    int loaded_size = 0;
-    // float prev_percent = 0.0f;
+    size_t offset = 0;
     bool flash_ok = true;
 
-    while (loaded_size < total_size) {
+    while (offset < (size_t)total_size) {
         size_t to_read = sizeof(block_buffer);
-        size_t remaining = (size_t)(total_size - loaded_size);
+        size_t remaining = (size_t)total_size - offset;
         if (remaining < to_read) to_read = remaining;
 
-        size_t bytes_read = fread(block_buffer, 1, to_read, fw_file);
-        if (bytes_read == 0) {
-            if (feof(fw_file)) {
-                break;
-            }
-            ESP_LOGE(TAG, "[FLASH] Read file error");
+        esp_err_t err = esp_partition_read(part, offset, block_buffer, to_read);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "[FLASH] Partition read error at offset %d: %s", offset, esp_err_to_name(err));
             flash_ok = false;
             break;
         }
- 
-        if (bsl_process_flash(block_buffer, (int)bytes_read) != ESP_OK) {
-            ESP_LOGE(TAG, "[FLASH] Write error at offset: %d", loaded_size);
+
+        if (bsl_process_flash(block_buffer, (int)to_read) != ESP_OK) {
+            ESP_LOGE(TAG, "[FLASH] Write error at offset: %d", offset);
             flash_ok = false;
             break;
         }
- 
+
+        offset += to_read;
         taskYIELD();
     }
- 
-    fclose(fw_file);
- 
+
     if (!flash_ok) {
         ESP_LOGE(TAG, "[FLASH] canceled");
-        return false;
+        return ESP_FAIL;
     }
- 
+
     ESP_LOGI(TAG, "[FLASH] Finished!");
 
     if (bsl_reset_target() != ESP_OK) {
         ESP_LOGW(TAG, "[FLASH] Reset-Cmd failed");
     }
- 
+
     return ESP_OK;
-}
-
-bool Rcp_interface::enough_spiffs_space(uint8_t required_space)
-{
-    size_t total_bytes = 0;
-    size_t used_bytes = 0;
-    esp_spiffs_info("spiffs", &total_bytes, &used_bytes);
-    ESP_LOGI(TAG, "Checked SPIFFS: Total Bytes: %d, Used Bytes: %d", total_bytes, used_bytes);
-
-    if (used_bytes < required_space)
-    {
-        return false;
-    }
-    
-    return true;
-}
-
-void Rcp_interface::mkdir_if_missing(const char *path)
-{
-    struct stat st;
-    if (stat(path, &st) != 0) {
-        if (mkdir(path, 0775) != 0 && errno != EEXIST) {
-            ESP_LOGE(TAG, "mkdir(%s) failed: %s", path, strerror(errno));
-        }
-    }
 }
 
 esp_err_t Rcp_interface::bsl_enter_bootloader(void)
@@ -433,7 +433,7 @@ esp_err_t Rcp_interface::bsl_send_packet(const uint8_t *cmd_and_data, size_t len
         ESP_LOGE(TAG, "UART write data failed");
         return ESP_FAIL;
     }
-
+    ESP_LOGD("BSL_INTERFACE", "Send SIZE: %x, CHECKSUM: %x, CMD: %x", size, checksum, cmd_and_data[0]);
     return ESP_OK;
 }
 
@@ -452,6 +452,7 @@ bool Rcp_interface::bsl_wait_ack(uint32_t timeout_ms)
         if (buffer_len >= 2) {
             uint8_t buf[2] = {0};
             int n = uart_read_bytes(rcp_uart, buf, 2, pdMS_TO_TICKS(10));
+            ESP_LOGI(TAG, "Read %d bytes", n);
             if (n == 2) {
                 if (buf[0] == 0x00 && buf[1] == BSL_ACK) {   // 0x00 0xCC
                     return true;

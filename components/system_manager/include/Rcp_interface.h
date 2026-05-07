@@ -2,18 +2,20 @@
 #include "esp_check.h"
 #include "driver/uart.h"
 #include "esp_http_client.h"
-#include "esp_spiffs.h"
+#include "esp_partition.h"
+#include "esp_ota_ops.h"
 #include "driver/gpio.h"
 
-#define FIRMWARE_DIR "/spiffs/zigbee"
-#define FIRMWARE_PATH "/spiffs/zigbee/firmware.bin"
-#define HTTP_READ_BUFFER_SIZE 1024 
+#define HTTP_READ_BUFFER_SIZE 1024
 #define PROGRESS_STEP_PERCENT 2.0f
 #define BEGIN_ZB_ADDR 0x00000000
 #define BSL_TRANSFER_SIZE 252  
 
-#define RST_PIN GPIO_NUM_16
-#define BSL_PIN GPIO_NUM_32
+#define RST_PIN       GPIO_NUM_16
+#define BSL_PIN       GPIO_NUM_32
+#define BSL_UART_TX   GPIO_NUM_4
+#define BSL_UART_RX   GPIO_NUM_36
+#define BSL_UART_BAUD 115200
 // --- BSL CMD
 #define BSL_CMD_PING 0x20
 #define BSL_CMD_DOWNLOAD 0x21   
@@ -35,19 +37,17 @@ class Rcp_interface
 private:
     static const char* TAG;
 
-    uart_port_t rcp_uart; 
+    uart_port_t rcp_uart;
     bool bsl_mode = false;
-    // extern void send_event_to_frontend();
+    size_t downloaded_size = 0;
 
     static void rcp_update_task(void *pvParameters);
     esp_err_t rcp_update_run(const char* url);
 
     esp_err_t download_image(const char* url);
     esp_err_t flash_image();
-    // esp_err_t verify_and_reset();
-
-    bool enough_spiffs_space(uint8_t required_space);
-    void mkdir_if_missing(const char *path);
+    esp_err_t bsl_uart_acquire(void);
+    void      bsl_uart_release(void);
 
     esp_err_t bsl_enter_bootloader(void);
     esp_err_t bsl_erase_flash(void);
