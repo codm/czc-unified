@@ -11,7 +11,10 @@ WirelessAPI::WirelessAPI(char *_accessPointSsid, char *_accessPointPassword, uin
 
 WirelessAPI::~WirelessAPI()
 {
-    esp_wifi_deinit();
+    if(activeWirelessMode != ActiveWirelessMode::OFF) {
+        esp_wifi_stop();
+        esp_wifi_deinit();
+    }
 }
 
 void WirelessAPI::setWirelessConfig(char *_ssid, char *_password)
@@ -25,7 +28,7 @@ void WirelessAPI::setWirelessConfig(char *_ssid, char *_password)
 
 void WirelessAPI::initAccessPoint()
 {
-    esp_netif_create_default_wifi_ap();
+    if(!apNetif) apNetif = esp_netif_create_default_wifi_ap();
 
     wifi_init_config_t initAccessPointConfig = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&initAccessPointConfig));
@@ -56,6 +59,7 @@ void WirelessAPI::closeAccessPoint()
 {
     esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &WirelessAPI::ap_event_handler);
     esp_wifi_stop();
+    esp_wifi_deinit();
     activeWirelessMode = ActiveWirelessMode::OFF;
     esp_br_wifi_config_stop();
 }
@@ -94,12 +98,12 @@ void WirelessAPI::apWaitUntilConnected()
 void WirelessAPI::initWifi()
 {
     if(activeWirelessMode == ActiveWirelessMode::WIFI) {
-        ESP_LOGW(TAG, "Wifi was allready started");
+        ESP_LOGW(TAG, "Wifi was already started");
         return;
     }
 
-    esp_netif_create_default_wifi_sta();
-    
+    if(!wifiNetif) wifiNetif = esp_netif_create_default_wifi_sta();
+
     wifi_init_config_t initWifiConfig = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&initWifiConfig));
 
@@ -122,6 +126,7 @@ void WirelessAPI::closeWifi()
 {
     esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &WirelessAPI::wifi_event_handler);
     esp_wifi_stop();
+    esp_wifi_deinit();
     activeWirelessMode = ActiveWirelessMode::OFF;
 }
 

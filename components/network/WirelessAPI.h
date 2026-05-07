@@ -1,3 +1,4 @@
+#include "esp_netif.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_mac.h"
@@ -24,8 +25,10 @@ private:
     char* accessPointPassword;
     uint8_t accessPointMaxConnected;
 
-    ActiveWirelessMode activeWirelessMode; 
+    ActiveWirelessMode activeWirelessMode;
     bool wifiIsConnected = false;
+    esp_netif_t* wifiNetif = nullptr;
+    esp_netif_t* apNetif = nullptr;
 
     static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
     static void ap_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
