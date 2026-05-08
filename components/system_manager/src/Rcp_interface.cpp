@@ -13,6 +13,18 @@ Rcp_interface::~Rcp_interface()
 esp_err_t Rcp_interface::rcp_update_init(uart_port_t _rcp_uart)
 {
     this->rcp_uart = _rcp_uart;
+
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << RST_PIN) | (1ULL << BSL_PIN),
+        .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    ESP_RETURN_ON_ERROR(gpio_config(&io_conf), TAG, "GPIO config failed");
+    gpio_set_level(RST_PIN, 1);
+    gpio_set_level(BSL_PIN, 1);
+
     return ESP_OK;
 }
 
@@ -88,11 +100,11 @@ esp_err_t Rcp_interface::bsl_uart_acquire(void)
         .source_clk = UART_SCLK_DEFAULT,
     };
     ESP_RETURN_ON_ERROR(uart_param_config(rcp_uart, &uart_cfg), TAG, "uart_param_config failed");
-    ESP_RETURN_ON_ERROR(uart_set_pin(rcp_uart, BSL_UART_TX, BSL_UART_RX,
-                                     UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
-                        TAG, "uart_set_pin failed");
+    ESP_RETURN_ON_ERROR(uart_set_pin(rcp_uart, BSL_UART_TX, BSL_UART_RX, 
+                        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE), TAG, "uart_set_pin failed");
     ESP_RETURN_ON_ERROR(uart_driver_install(rcp_uart, 1024, 0, 0, NULL, 0),
                         TAG, "uart_driver_install failed");
+    uart_flush_input(rcp_uart);
     ESP_LOGD(TAG, "[UART] BSL UART ready at %d baud", BSL_UART_BAUD);
     return ESP_OK;
 }
@@ -200,7 +212,7 @@ esp_err_t Rcp_interface::download_image(const char *url)
 
         offset += (size_t)bytes_read;
         if (remaining > 0) remaining -= bytes_read;
-        taskYIELD();
+        vTaskDelay(1);
     }
 
     esp_http_client_close(client);
@@ -266,7 +278,9 @@ esp_err_t Rcp_interface::flash_image()
         }
 
         offset += to_read;
-        taskYIELD();
+
+        ESP_LOGD(TAG, "[FLASH] Flash %f Done", remaining/total_size);
+        vTaskDelay(1);
     }
 
     if (!flash_ok) {
@@ -292,6 +306,13 @@ esp_err_t Rcp_interface::bsl_enter_bootloader(void)
         ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 1), TAG, "Error on BSL set");
         vTaskDelay(pdMS_TO_TICKS(500));
         ESP_RETURN_ON_ERROR(gpio_set_level(BSL_PIN, 1), TAG, "Error on BSL set");
+    }
+
+    uart_flush_input(rcp_uart);
+
+    if(bsl_uart_sync() != ESP_OK) {
+        ESP_LOGE(TAG, "Error while entering Bootloader!");
+        return ESP_FAIL;
     }
 
     bsl_mode = true;
@@ -346,8 +367,7 @@ esp_err_t Rcp_interface::bsl_begin_flash(uint32_t address, uint32_t size)
         (uint8_t)((size    >>  0) & 0xFF),     // [8] size LSB
     };
 
-    ESP_RETURN_ON_ERROR(bsl_send_packet(payload, sizeof(payload)),
-                        TAG, "DOWNLOAD send failed");
+    ESP_RETURN_ON_ERROR(bsl_send_packet(payload, sizeof(payload)), TAG, "DOWNLOAD send failed");
 
     if (!bsl_wait_ack(2000)) {
         ESP_LOGE(TAG, "DOWNLOAD: no ACK");
@@ -392,9 +412,9 @@ esp_err_t Rcp_interface::bsl_process_flash(const uint8_t *data, int length)
 
 esp_err_t Rcp_interface::bsl_reset_target(void)
 {
-    ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 0), TAG, "Error on RST set");
+    ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 0), TAG, "Error on RST low");
     vTaskDelay(pdMS_TO_TICKS(50));
-    ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 1), TAG, "Error on RST set");
+    ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 1), TAG, "Error on RST high");
     vTaskDelay(pdMS_TO_TICKS(500));
     bsl_mode = false;
 
@@ -433,7 +453,24 @@ esp_err_t Rcp_interface::bsl_send_packet(const uint8_t *cmd_and_data, size_t len
         ESP_LOGE(TAG, "UART write data failed");
         return ESP_FAIL;
     }
-    ESP_LOGD("BSL_INTERFACE", "Send SIZE: %x, CHECKSUM: %x, CMD: %x", size, checksum, cmd_and_data[0]);
+    ESP_LOGD("BSL_INTERFACE", "Send SIZE: %x, CHECKSUM: %x, CMD: %x + DATA", size, checksum, cmd_and_data[0]);
+    return ESP_OK;
+}
+
+esp_err_t Rcp_interface::bsl_uart_sync()
+{
+    uint8_t uart_sync_cmd[2] = {BSL_CMD_UART_SYNC, BSL_CMD_UART_SYNC};
+    ESP_LOGI("JAJFAJFAJFAJAFJAFJFA", "%x , %x", uart_sync_cmd[0], uart_sync_cmd[1]);
+    if (uart_write_bytes(rcp_uart, (const char *)uart_sync_cmd, sizeof(uart_sync_cmd)) < 0) {
+        ESP_LOGE(TAG, "UART BSL SYNC: write failed");
+        return ESP_FAIL;
+    }
+    
+    if (!bsl_wait_ack(8000)) {
+        ESP_LOGE(TAG, "UART BSL SYNC: no ACK");
+        return ESP_FAIL;
+    }
+
     return ESP_OK;
 }
 
@@ -464,7 +501,7 @@ bool Rcp_interface::bsl_wait_ack(uint32_t timeout_ms)
                 }
             }
         }
-        taskYIELD();
+        vTaskDelay(1);
     }
 
     ESP_LOGW(TAG, "Timeout waiting for ACK/NACK");

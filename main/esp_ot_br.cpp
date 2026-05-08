@@ -129,9 +129,8 @@ extern "C" void app_main(void) {
     };
 
     ESP_LOGI(TAG, "Flashing RCP firmware");
-    const char* rcp_url = "http://IPADDR:8080/ot-rcp.ihex";
+    const char* rcp_url = "/ot-rcp.ihex";
     system_manager.flashRcpFirmware(rcp_url);
-    ESP_LOGI(TAG, "Finished main() :)");
 
     // ESP_ERROR_CHECK(esp_openthread_start(&config));
     // ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));

@@ -11,10 +11,10 @@
 #define BEGIN_ZB_ADDR 0x00000000
 #define BSL_TRANSFER_SIZE 252  
 
-#define RST_PIN       GPIO_NUM_16
-#define BSL_PIN       GPIO_NUM_32
-#define BSL_UART_TX   GPIO_NUM_4
-#define BSL_UART_RX   GPIO_NUM_36
+#define RST_PIN GPIO_NUM_16
+#define BSL_PIN GPIO_NUM_32
+#define BSL_UART_TX GPIO_NUM_4
+#define BSL_UART_RX GPIO_NUM_36
 #define BSL_UART_BAUD 115200
 // --- BSL CMD
 #define BSL_CMD_PING 0x20
@@ -28,6 +28,7 @@
 #define BSL_CMD_MEMORY_READ 0x2A
 #define BSL_CMD_BANK_ERASE 0x2C 
 #define BSL_CMD_SET_CCFG 0x2D
+#define BSL_CMD_UART_SYNC 0x55
 
 #define BSL_ACK 0xCC
 #define BSL_NACK 0x33
@@ -56,6 +57,7 @@ private:
     // esp_err_t bsl_verify_crc(uint32_t address, uint32_t size, uint32_t expected_crc);
     esp_err_t bsl_reset_target(void);
     esp_err_t bsl_send_packet(const uint8_t *cmd_and_data, size_t length);
+    esp_err_t bsl_uart_sync();
     bool bsl_wait_ack(uint32_t timeout_ms);
     esp_err_t bsl_read_response(uint8_t *out_buf, size_t buf_size, size_t *out_len);
     esp_err_t bsl_check_last_cmd(void);
