@@ -13,6 +13,16 @@ System_manager::~System_manager()
 {
 }
 
+esp_err_t System_manager::initThread()
+{
+    return thread_controller.init();
+}
+
+esp_err_t System_manager::startThread()
+{
+    return thread_controller.start();
+}
+
 void System_manager::flashEspFirmware()
 {
     ESP_LOGD(TAG, "Starting ESP Update Task...");
@@ -22,9 +32,38 @@ void System_manager::flashEspFirmware()
 
 void System_manager::flashRcpFirmware(const char* url)
 {
+    if (thread_controller.is_running()) {
+        ESP_LOGD(TAG, "Thread is running, stopping it now!");
+        esp_err_t ret = thread_controller.stop();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to stop Thread: %s — aborting RCP flash", esp_err_to_name(ret));
+            return;
+        }
+        ESP_LOGI(TAG, "Thread stopped successfully");
+    }
     ESP_LOGD(TAG, "Starting RCP Update Task...");
-    rcp_interface.rcp_update_start(url);
-    ESP_LOGD(TAG, "Update Task started!");
+    esp_err_t err = rcp_interface.rcp_update_start(url);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start RCP update: %s", esp_err_to_name(err));
+        return;
+    }
+
+    EventBits_t bits = xEventGroupWaitBits(
+        rcp_interface.get_update_event_group(),
+        RCP_UPDATE_SUCCESS_BIT | RCP_UPDATE_FAIL_BIT,
+        pdTRUE,   // clear bits after read
+        pdFALSE,  // one bit is enough
+        pdMS_TO_TICKS(portMAX_DELAY)
+    );
+
+    if (bits & RCP_UPDATE_SUCCESS_BIT) {
+        ESP_LOGI(TAG, "RCP firmware update successful — restarting");
+        vTaskDelay(pdMS_TO_TICKS(500));
+        esp_restart();
+    }   
+    else {
+        ESP_LOGE(TAG, "RCP firmware update failed or timed out, REBOOT REQUIRED!");
+    }
 }
 
 void System_manager::ota_update_task(void* pvParameter)

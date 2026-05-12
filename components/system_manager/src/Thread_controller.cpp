@@ -71,8 +71,14 @@ esp_err_t Thread_controller::start()
 
 esp_err_t Thread_controller::stop()
 {
+    // Post a clean mainloop exit — bypasses esp_openthread_stop()'s precondition check.
+    // No MLD6 events generated, OT task runs its own cleanup.
+    // No need to wait for task completion since esp_restart() follows after flash.
+    ESP_LOGD(TAG, "Exiting OT mainloop for RCP flash...");
+    esp_err_t ret = esp_openthread_mainloop_exit();
+    vTaskDelay(pdMS_TO_TICKS(200)); // give OT task time to process and exit
     thread_active = false;
-    return esp_err_t();
+    return ret;
 }
 
 bool Thread_controller::is_running()

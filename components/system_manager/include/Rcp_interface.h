@@ -5,6 +5,11 @@
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
+
+#define RCP_UPDATE_SUCCESS_BIT BIT0
+#define RCP_UPDATE_FAIL_BIT    BIT1
 
 #define HTTP_READ_BUFFER_SIZE 1024
 #define PROGRESS_STEP_PERCENT 2.0f
@@ -41,6 +46,7 @@ private:
     uart_port_t rcp_uart;
     bool bsl_mode = false;
     size_t downloaded_size = 0;
+    EventGroupHandle_t update_event_group = nullptr;
 
     static void rcp_update_task(void *pvParameters);
     esp_err_t rcp_update_run(const char* url);
@@ -68,6 +74,7 @@ public:
     ~Rcp_interface();
     esp_err_t rcp_update_init(uart_port_t _rcp_uart);
     esp_err_t rcp_update_start(const char* url);
+    EventGroupHandle_t get_update_event_group() const { return update_event_group; }
 };
 
 struct RcpUpdateParams {

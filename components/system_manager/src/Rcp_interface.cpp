@@ -32,6 +32,12 @@ esp_err_t Rcp_interface::rcp_update_start(const char *url)
 {
     ESP_LOGD(TAG, "Starting RCP Update Task...");
 
+    update_event_group = xEventGroupCreate();
+    if (update_event_group == nullptr) {
+        ESP_LOGE(TAG, "Failed to create event group");
+        return ESP_ERR_NO_MEM;
+    }
+
     RcpUpdateParams *params = new RcpUpdateParams();
     params->self = this;
     strncpy(params->url, url, sizeof(params->url) - 1);
@@ -48,6 +54,8 @@ esp_err_t Rcp_interface::rcp_update_start(const char *url)
 
     if (ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create RCP update task");
+        vEventGroupDelete(update_event_group);
+        update_event_group = nullptr;
         delete params;
         return ESP_FAIL;
     }
@@ -68,8 +76,10 @@ void Rcp_interface::rcp_update_task(void *pvParameters)
 
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "RCP update successful!");
+        xEventGroupSetBits(self->update_event_group, RCP_UPDATE_SUCCESS_BIT);
     } else {
         ESP_LOGE(TAG, "RCP update failed: %s", esp_err_to_name(err));
+        xEventGroupSetBits(self->update_event_group, RCP_UPDATE_FAIL_BIT);
     }
 
     vTaskDelete(NULL);

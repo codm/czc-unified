@@ -11,7 +11,7 @@ extern "C" void app_main(void) {
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     Rcp_interface rcp_interface;
-    System_manager system_manager(rcp_interface, UART_NUM_2); // uart num from OTBR uart config
+    System_manager system_manager(rcp_interface, UART_NUM_2);
 
     EthernetAPI ethernetAPI;
     
@@ -20,8 +20,7 @@ extern "C" void app_main(void) {
     NetworkStateMachine networkStateMachine(ethernetAPI, wirelessAPI);
     networkStateMachine.initNetworkStateMachine();
     
-    Thread_controller thread_controller;
-    thread_controller.init(); 
+    system_manager.initThread();
     ESP_LOGI(TAG, "Init completed!, waiting for Internet connection, %d", networkStateMachine.getState());
     // wait until network connection is setup
     while (networkStateMachine.getState() != NetworkState::WLAN &&
@@ -30,12 +29,12 @@ extern "C" void app_main(void) {
     }
     ESP_LOGI(TAG, "Network connected! Startin OTBR...");
     // start OTBR
+    system_manager.startThread();
 
-    // ESP_LOGI(TAG, "Flashing RCP firmware");
-    // const char* rcp_url = "http://192.168.178.189:8080/ot-rcp.ihex";
-    // system_manager.flashRcpFirmware(rcp_url);
+    ESP_LOGI(TAG, "Flashing RCP firmware");
+    const char* rcp_url = "http://192.168.40.119:8080/ot-rcp.ihex";
+    system_manager.flashRcpFirmware(rcp_url);
 
-    thread_controller.start();
     while(1) vTaskDelay(portMAX_DELAY); // Loop so main doesnt finish and objects are deleted
 }
 
