@@ -16,6 +16,7 @@
 #include "esp_crt_bundle.h"
 
 #include "Rcp_interface.h"
+#include "Thread_controller.h"
 
 #define EXAMPLE_OTA_RECV_TIMEOUT_MS 1000
 #define EXAMPLE_OTA_BUF_SIZE 2048

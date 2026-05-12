@@ -1,25 +1,33 @@
-/*
- * SPDX-FileCopyrightText: 2021-2025 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: CC0-1.0
- *
- * OpenThread Border Router Example
- *
- * This example code is in the Public Domain (or CC0 licensed, at your option.)
- *
- * Unless required by applicable law or agreed to in writing, this
- * software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
- * CONDITIONS OF ANY KIND, either express or implied.
- */
 
 #pragma once
 #include "esp_coexist.h"
 #include "esp_openthread_types.h"
+#include <stdio.h>
+#include <string.h>
+#include "esp_check.h"
+#include "esp_err.h"
+#include "esp_event.h"
+#include "esp_log.h"
+#include "esp_openthread.h"
+#include "esp_openthread_lock.h"
+#include "esp_openthread_netif_glue.h"
+#include "esp_openthread_spinel.h"
+#include "esp_openthread_types.h"
+#include "esp_vfs_dev.h"
+#include "esp_vfs_eventfd.h"
+#include "mdns.h"
+extern "C" {
+#include "ot_examples_br.h"
+#include "ot_examples_common.h"
+}
 
-#define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()              \
-    {                                                      \
-        .radio_mode = RADIO_MODE_NATIVE,                   \
-    }
+#include "esp_br_web.h"
+#include "esp_spiffs.h"
+
+// #include "ot_led_strip.h" // include it in cmakelist ot_led_strip
+
+#define PIN_TO_RCP_RESET GPIO_NUM_16
+
 #define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()              \
     {                                                      \
         .radio_mode = RADIO_MODE_UART_RCP,                 \
@@ -51,3 +59,21 @@
         .netif_queue_size = 10,                 \
         .task_queue_size = 10,                  \
     }
+
+class Thread_controller 
+{
+private: 
+    static const char* TAG;
+    static void rcp_failure_hardware_reset_handler();
+    bool thread_active = false;
+
+    esp_vfs_eventfd_config_t eventfd_config;
+    esp_vfs_spiffs_conf_t web_server_conf;
+    esp_openthread_config_t config;
+
+public:
+    esp_err_t init();
+    esp_err_t start();
+    esp_err_t stop();
+    bool is_running();
+};
