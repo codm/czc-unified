@@ -5,6 +5,7 @@ const char* Thread_controller::TAG = "esp_ot_br";
 
 void Thread_controller::rcp_failure_hardware_reset_handler()
 {
+    ESP_LOGW(TAG, "RCP Reset handler called");
     gpio_config_t reset_pin_config;
     memset(&reset_pin_config, 0, sizeof(reset_pin_config));
     reset_pin_config.intr_type = GPIO_INTR_DISABLE;
@@ -71,12 +72,9 @@ esp_err_t Thread_controller::start()
 
 esp_err_t Thread_controller::stop()
 {
-    // Post a clean mainloop exit — bypasses esp_openthread_stop()'s precondition check.
-    // No MLD6 events generated, OT task runs its own cleanup.
-    // No need to wait for task completion since esp_restart() follows after flash.
     ESP_LOGD(TAG, "Exiting OT mainloop for RCP flash...");
     esp_err_t ret = esp_openthread_mainloop_exit();
-    vTaskDelay(pdMS_TO_TICKS(200)); // give OT task time to process and exit
+    vTaskDelay(pdMS_TO_TICKS(1000)); // give OT task time to process and exit
     thread_active = false;
     return ret;
 }

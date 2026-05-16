@@ -289,7 +289,7 @@ esp_err_t Rcp_interface::flash_image()
 
         offset += to_read;
 
-        ESP_LOGD(TAG, "[FLASH] Flash %f Done", remaining/total_size);
+        ESP_LOGD(TAG, "[FLASH] Flash %d remaining", remaining);
         vTaskDelay(1);
     }
 
@@ -310,6 +310,7 @@ esp_err_t Rcp_interface::flash_image()
 esp_err_t Rcp_interface::bsl_enter_bootloader(void)
 {
     if(bsl_mode == false) {
+        ESP_LOGD(TAG, "Resetting RCP to BSL Mode..");
         ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 0), TAG, "Error on RST set");
         ESP_RETURN_ON_ERROR(gpio_set_level(BSL_PIN, 0), TAG, "Error on BSL set");
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -470,7 +471,6 @@ esp_err_t Rcp_interface::bsl_send_packet(const uint8_t *cmd_and_data, size_t len
 esp_err_t Rcp_interface::bsl_uart_sync()
 {
     uint8_t uart_sync_cmd[2] = {BSL_CMD_UART_SYNC, BSL_CMD_UART_SYNC};
-    ESP_LOGI("JAJFAJFAJFAJAFJAFJFA", "%x , %x", uart_sync_cmd[0], uart_sync_cmd[1]);
     if (uart_write_bytes(rcp_uart, (const char *)uart_sync_cmd, sizeof(uart_sync_cmd)) < 0) {
         ESP_LOGE(TAG, "UART BSL SYNC: write failed");
         return ESP_FAIL;
@@ -495,11 +495,9 @@ bool Rcp_interface::bsl_wait_ack(uint32_t timeout_ms)
     {
         size_t buffer_len = 0;
         uart_get_buffered_data_len(rcp_uart, &buffer_len);
-
         if (buffer_len >= 2) {
             uint8_t buf[2] = {0};
             int n = uart_read_bytes(rcp_uart, buf, 2, pdMS_TO_TICKS(10));
-            ESP_LOGI(TAG, "Read %d bytes", n);
             if (n == 2) {
                 if (buf[0] == 0x00 && buf[1] == BSL_ACK) {   // 0x00 0xCC
                     return true;

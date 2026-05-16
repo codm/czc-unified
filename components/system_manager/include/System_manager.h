@@ -33,6 +33,7 @@ private:
     static const char* TAG;
     const char* esp_download_url = "https://github.com/codm/czc-fw/releases/download/V2.1.0/czc_fw_2.1.0.ota.bin";
 
+    uart_port_t rcp_uart_num;
     Rcp_interface rcp_interface;
     Thread_controller thread_controller;
 
@@ -42,7 +43,7 @@ private:
     static void ota_update_task(void* pvParameter);
 
 public:
-    System_manager(Rcp_interface _rcp_interface, uart_port_t rcp_uart_num);
+    System_manager(Rcp_interface _rcp_interface, uart_port_t _rcp_uart_num);
     ~System_manager();
     esp_err_t initThread();
     esp_err_t startThread();

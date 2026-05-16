@@ -2,11 +2,11 @@
 
 const char* System_manager::TAG = "System-Manager";
 
-System_manager::System_manager(Rcp_interface _rcp_interface, uart_port_t rcp_uart_num)
+System_manager::System_manager(Rcp_interface _rcp_interface, uart_port_t _rcp_uart_num)
 {
     ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &ota_event_handler, NULL));
     this->rcp_interface = _rcp_interface;
-    rcp_interface.rcp_update_init(rcp_uart_num);
+    this->rcp_uart_num = _rcp_uart_num;
 }
 
 System_manager::~System_manager()
@@ -41,6 +41,8 @@ void System_manager::flashRcpFirmware(const char* url)
         }
         ESP_LOGI(TAG, "Thread stopped successfully");
     }
+    ESP_LOGD(TAG, "Init RCP Update");
+    rcp_interface.rcp_update_init(rcp_uart_num);
     ESP_LOGD(TAG, "Starting RCP Update Task...");
     esp_err_t err = rcp_interface.rcp_update_start(url);
     if (err != ESP_OK) {
@@ -59,7 +61,7 @@ void System_manager::flashRcpFirmware(const char* url)
     if (bits & RCP_UPDATE_SUCCESS_BIT) {
         ESP_LOGI(TAG, "RCP firmware update successful — restarting");
         vTaskDelay(pdMS_TO_TICKS(500));
-        esp_restart();
+        // esp_restart();
     }   
     else {
         ESP_LOGE(TAG, "RCP firmware update failed or timed out, REBOOT REQUIRED!");
