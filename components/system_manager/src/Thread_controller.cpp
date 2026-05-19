@@ -72,9 +72,28 @@ esp_err_t Thread_controller::start()
 
 esp_err_t Thread_controller::stop()
 {
+    esp_openthread_register_rcp_failure_handler(nullptr);
+
+    otInstance *ins = esp_openthread_get_instance();
     ESP_LOGD(TAG, "Exiting OT mainloop for RCP flash...");
-    esp_err_t ret = esp_openthread_mainloop_exit();
-    vTaskDelay(pdMS_TO_TICKS(1000)); // give OT task time to process and exit
+
+    // otThreadDetachGracefully with nullptr callback: OT task processes it
+    // concurrently and role is DISABLED before this returns — no lock needed.
+    ESP_ERROR_CHECK(otThreadDetachGracefully(ins, nullptr, nullptr));
+    ESP_LOGI(TAG, "thread stop");
+
+    // otIp6SetEnabled triggers internal task-switching-lock acquire/release.
+    // Calling it without the full OT lock causes the release to be skipped
+    // (wrong-task check in our esp_openthread_lock.c patch) → s_openthread_task_mutex
+    // stays held → esp_openthread_stop() deadlocks on lock acquire.
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    // ESP_ERROR_CHECK(otThreadSetEnabled(ins, false));
+    ESP_ERROR_CHECK(otIp6SetEnabled(ins, false));
+    esp_openthread_lock_release();
+    ESP_LOGI(TAG, "ifconfig down");
+
+    ESP_LOGD(TAG, "Stopping OT stack...");
+    esp_err_t ret = esp_openthread_stop();
     thread_active = false;
     return ret;
 }

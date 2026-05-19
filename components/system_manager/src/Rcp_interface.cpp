@@ -17,7 +17,7 @@ esp_err_t Rcp_interface::rcp_update_init(uart_port_t _rcp_uart)
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << RST_PIN) | (1ULL << BSL_PIN),
         .mode         = GPIO_MODE_OUTPUT,
-        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
@@ -111,11 +111,11 @@ esp_err_t Rcp_interface::bsl_uart_acquire(void)
     };
     ESP_RETURN_ON_ERROR(uart_param_config(rcp_uart, &uart_cfg), TAG, "uart_param_config failed");
     ESP_RETURN_ON_ERROR(uart_set_pin(rcp_uart, BSL_UART_TX, BSL_UART_RX, 
-                        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE), TAG, "uart_set_pin failed");
+        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE), TAG, "uart_set_pin failed");
     ESP_RETURN_ON_ERROR(uart_driver_install(rcp_uart, 1024, 0, 0, NULL, 0),
                         TAG, "uart_driver_install failed");
     uart_flush_input(rcp_uart);
-    ESP_LOGD(TAG, "[UART] BSL UART ready at %d baud", BSL_UART_BAUD);
+    ESP_LOGI(TAG, "[UART] BSL UART ready at %d baud", BSL_UART_BAUD);
     return ESP_OK;
 }
 
@@ -314,7 +314,7 @@ esp_err_t Rcp_interface::bsl_enter_bootloader(void)
         ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 0), TAG, "Error on RST set");
         ESP_RETURN_ON_ERROR(gpio_set_level(BSL_PIN, 0), TAG, "Error on BSL set");
         vTaskDelay(pdMS_TO_TICKS(50));
-        ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 1), TAG, "Error on BSL set");
+        ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 1), TAG, "Error on RST set");
         vTaskDelay(pdMS_TO_TICKS(500));
         ESP_RETURN_ON_ERROR(gpio_set_level(BSL_PIN, 1), TAG, "Error on BSL set");
     }
