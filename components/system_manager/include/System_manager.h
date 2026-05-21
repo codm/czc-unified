@@ -49,7 +49,7 @@ public:
     esp_err_t startThread();
     void flashEspFirmware();
     void flashRcpFirmware(const char* url);
-    
+
     static void ota_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 };
 

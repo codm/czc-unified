@@ -14,15 +14,24 @@ esp_err_t Rcp_interface::rcp_update_init(uart_port_t _rcp_uart)
 {
     this->rcp_uart = _rcp_uart;
 
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << RST_PIN) | (1ULL << BSL_PIN),
+    gpio_config_t rst_conf = {
+        .pin_bit_mask = (1ULL << RST_PIN),
         .mode         = GPIO_MODE_OUTPUT,
-        .pull_up_en   = GPIO_PULLUP_ENABLE,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
-    ESP_RETURN_ON_ERROR(gpio_config(&io_conf), TAG, "GPIO config failed");
+    ESP_RETURN_ON_ERROR(gpio_config(&rst_conf), TAG, "RST GPIO config failed");
     gpio_set_level(RST_PIN, 1);
+    gpio_config_t bsl_conf = {
+        .pin_bit_mask = (1ULL << BSL_PIN),
+        .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    ESP_RETURN_ON_ERROR(gpio_config(&bsl_conf), TAG, "BSL GPIO config failed");
+    gpio_set_drive_capability(BSL_PIN, GPIO_DRIVE_CAP_3);
     gpio_set_level(BSL_PIN, 1);
 
     return ESP_OK;
@@ -310,13 +319,17 @@ esp_err_t Rcp_interface::flash_image()
 esp_err_t Rcp_interface::bsl_enter_bootloader(void)
 {
     if(bsl_mode == false) {
-        ESP_LOGD(TAG, "Resetting RCP to BSL Mode..");
+        ESP_LOGD(TAG, "[BSL] RST=0, BSL=0");
         ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 0), TAG, "Error on RST set");
         ESP_RETURN_ON_ERROR(gpio_set_level(BSL_PIN, 0), TAG, "Error on BSL set");
+        ESP_LOGD(TAG, "[BSL] level readback: RST=%d BSL=%d", gpio_get_level(RST_PIN), gpio_get_level(BSL_PIN));
         vTaskDelay(pdMS_TO_TICKS(50));
+        ESP_LOGD(TAG, "[BSL] RST=1 (CC2652 samples BSL now)");
         ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 1), TAG, "Error on RST set");
         vTaskDelay(pdMS_TO_TICKS(500));
+        ESP_LOGD(TAG, "[BSL] BSL=1");
         ESP_RETURN_ON_ERROR(gpio_set_level(BSL_PIN, 1), TAG, "Error on BSL set");
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 
     uart_flush_input(rcp_uart);
@@ -480,6 +493,7 @@ esp_err_t Rcp_interface::bsl_uart_sync()
         ESP_LOGE(TAG, "UART BSL SYNC: no ACK");
         return ESP_FAIL;
     }
+    ESP_LOGD(TAG, "UART BSL SYNC: Success!");
 
     return ESP_OK;
 }
@@ -490,16 +504,18 @@ esp_err_t Rcp_interface::bsl_uart_sync()
 bool Rcp_interface::bsl_wait_ack(uint32_t timeout_ms)
 {
     TickType_t start = xTaskGetTickCount();
+    size_t total_read = 0;
 
     while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(timeout_ms))
     {
         size_t buffer_len = 0;
         uart_get_buffered_data_len(rcp_uart, &buffer_len);
+        total_read += buffer_len;
         if (buffer_len >= 2) {
             uint8_t buf[2] = {0};
             int n = uart_read_bytes(rcp_uart, buf, 2, pdMS_TO_TICKS(10));
             if (n == 2) {
-                if (buf[0] == 0x00 && buf[1] == BSL_ACK) {   // 0x00 0xCC
+                if (buf[0] == 0x00 && buf[1] == BSL_ACK) { // 0x00 0xCC
                     return true;
                 } else if (buf[0] == 0x00 && buf[1] == BSL_NACK) { // 0x00 0x33
                     ESP_LOGW(TAG, "BSL NACK received");
@@ -512,7 +528,7 @@ bool Rcp_interface::bsl_wait_ack(uint32_t timeout_ms)
         vTaskDelay(1);
     }
 
-    ESP_LOGW(TAG, "Timeout waiting for ACK/NACK");
+    ESP_LOGW(TAG, "Timeout waiting for ACK/NACK, Total read Bytes: %d", total_read);
     return false;
 }
 

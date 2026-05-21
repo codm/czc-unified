@@ -20,7 +20,7 @@ extern "C" void app_main(void) {
     NetworkStateMachine networkStateMachine(ethernetAPI, wirelessAPI);
     networkStateMachine.initNetworkStateMachine();
     
-    system_manager.initThread();
+    // system_manager.initThread();
     ESP_LOGI(TAG, "Init completed!, waiting for Internet connection, %d", networkStateMachine.getState());
     // wait until network connection is setup
     while (networkStateMachine.getState() != NetworkState::WLAN &&
@@ -39,4 +39,3 @@ extern "C" void app_main(void) {
 
     while(1) vTaskDelay(portMAX_DELAY); // Loop so main doesnt finish and objects are deleted
 }
-

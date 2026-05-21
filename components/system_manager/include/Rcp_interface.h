@@ -54,7 +54,7 @@ private:
     esp_err_t download_image(const char* url);
     esp_err_t flash_image();
     esp_err_t bsl_uart_acquire(void);
-    void      bsl_uart_release(void);
+    void bsl_uart_release(void);
 
     esp_err_t bsl_enter_bootloader(void);
     esp_err_t bsl_erase_flash(void);
