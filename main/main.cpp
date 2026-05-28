@@ -28,15 +28,12 @@ extern "C" void app_main(void) {
            networkStateMachine.getState() != NetworkState::ETHERNET) {
         vTaskDelay(100);
     }
-    vTaskDelay(pdMS_TO_TICKS(1000)); // wait 1s for Wifi to connect, proper check function has to be implemented 
+    vTaskDelay(pdMS_TO_TICKS(1000)); // wait 1s for Wifi to connect, proper check function has to be implemented
+
+    system_manager.flashRcpFirmwareWhenConfigured();
+
     ESP_LOGI(TAG, "Network connected! Starting OTBR...");
-    // start OTBR
     system_manager.startThread();
-    
-    ESP_LOGI(TAG, "Flashing RCP firmware");
-    const char* rcp_url = "http://192.168.40.126:8080/ot-rcp.bin";
-    // system_manager.flashRcpFirmware(rcp_url);
-    // system_manager.startThread();
 
     while(1) vTaskDelay(portMAX_DELAY); // Loop so main doesnt finish and objects are deleted
 }

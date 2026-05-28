@@ -1,4 +1,5 @@
 #include "System_manager.h"
+#include "sys_nvs_bind.h"
 
 const char* System_manager::TAG = "System-Manager";
 
@@ -66,6 +67,41 @@ void System_manager::flashRcpFirmware(const char* url)
     else {
         ESP_LOGE(TAG, "RCP firmware update failed or timed out, REBOOT REQUIRED!");
     }
+}
+
+void System_manager::initRcpFirmwareFlash(const char* url)
+{
+    RcpFlashConfig config;
+    strlcpy(config.url, url, sizeof(config.url));
+    config.pendingFlash = true;
+
+    esp_err_t ret = SysNvsBinding::writeRcpFlashConfig(config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write RCP flash config to NVS: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    ESP_LOGI(TAG, "RCP flash scheduled, restarting...");
+    vTaskDelay(pdMS_TO_TICKS(200));
+    esp_restart();
+}
+
+void System_manager::flashRcpFirmwareWhenConfigured()
+{
+    if (!SysNvsBinding::rcpFlashPending()) {
+        return;
+    }
+
+    RcpFlashConfig config;
+    esp_err_t ret = SysNvsBinding::readRcpFlashConfig(config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read RCP flash config from NVS: %s", esp_err_to_name(ret));
+        SysNvsBinding::clearRcpFlashConfig();
+        return;
+    }
+
+    ESP_LOGI(TAG, "Pending RCP flash found, starting update from: %s", config.url);
+    flashRcpFirmware(config.url);
 }
 
 void System_manager::ota_update_task(void* pvParameter)

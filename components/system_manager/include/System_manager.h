@@ -17,6 +17,7 @@
 
 #include "Rcp_interface.h"
 #include "Thread_controller.h"
+#include "sys_nvs_bind.h"
 
 #define EXAMPLE_OTA_RECV_TIMEOUT_MS 1000
 #define EXAMPLE_OTA_BUF_SIZE 2048
@@ -49,6 +50,9 @@ public:
     esp_err_t startThread();
     void flashEspFirmware();
     void flashRcpFirmware(const char* url);
+    
+    void initRcpFirmwareFlash(const char* url);
+    void flashRcpFirmwareWhenConfigured();
 
     static void ota_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 };
