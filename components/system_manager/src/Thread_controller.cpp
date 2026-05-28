@@ -61,7 +61,9 @@ esp_err_t Thread_controller::init()
 
 esp_err_t Thread_controller::start()
 {
+    ESP_LOGI(TAG, "Start init");
     ESP_ERROR_CHECK(esp_openthread_start(&config));
+    ESP_LOGI(TAG, "Start auto start");
     // ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
     ot_network_auto_start();  
     ESP_LOGI(TAG, "OTBR started!");
@@ -80,7 +82,7 @@ esp_err_t Thread_controller::stop()
     // otThreadDetachGracefully with nullptr callback: OT task processes it
     // concurrently and role is DISABLED before this returns — no lock needed.
     ESP_ERROR_CHECK(otThreadDetachGracefully(ins, nullptr, nullptr));
-    ESP_LOGI(TAG, "thread stop");
+    ESP_LOGD(TAG, "thread stop");
 
     // otIp6SetEnabled triggers internal task-switching-lock acquire/release.
     // Calling it without the full OT lock causes the release to be skipped
@@ -90,7 +92,7 @@ esp_err_t Thread_controller::stop()
     // ESP_ERROR_CHECK(otThreadSetEnabled(ins, false));
     ESP_ERROR_CHECK(otIp6SetEnabled(ins, false));
     esp_openthread_lock_release();
-    ESP_LOGI(TAG, "ifconfig down");
+    ESP_LOGD(TAG, "ifconfig down");
 
     ESP_LOGD(TAG, "Stopping OT stack...");
     esp_err_t ret = esp_openthread_stop();
