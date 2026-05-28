@@ -28,11 +28,6 @@
 #define OTA_SUCCESS_BIT BIT0
 #define OTA_FAIL_BIT BIT1
 
-struct EspFlashConfig {
-    System_manager* self;
-    char url[256];
-};
-
 class System_manager
 {
 private:
@@ -61,4 +56,8 @@ public:
     static void ota_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 };
 
+struct EspFlashConfig {
+    System_manager *self;
+    char url[256];
+};
 // https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json
