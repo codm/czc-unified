@@ -72,7 +72,7 @@ private:
     esp_openthread_config_t config;
 
 public:
-    esp_err_t init();
+    esp_err_t init(const system_flash_callbacks_t *flash_cbs);
     esp_err_t start();
     esp_err_t stop();
     bool is_running();

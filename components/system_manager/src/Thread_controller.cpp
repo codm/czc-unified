@@ -21,7 +21,7 @@ void Thread_controller::rcp_failure_hardware_reset_handler()
     gpio_reset_pin(PIN_TO_RCP_RESET);
 }
 
-esp_err_t Thread_controller::init()
+esp_err_t Thread_controller::init(const system_flash_callbacks_t *flash_cbs)
 {
     // setup
     
@@ -43,7 +43,7 @@ esp_err_t Thread_controller::init()
     web_server_conf = {
         .base_path = "/spiffs", .partition_label = "spiffs", .max_files = 10, .format_if_mount_failed = false};
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&web_server_conf));
-    esp_br_web_start("/spiffs"); 
+    esp_br_web_start("/spiffs", flash_cbs);
 
     esp_openthread_register_rcp_failure_handler(rcp_failure_hardware_reset_handler);
     

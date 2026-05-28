@@ -14,9 +14,26 @@ System_manager::~System_manager()
 {
 }
 
+static esp_err_t flash_esp_cb(void *ctx, const char *url)
+{
+    static_cast<System_manager *>(ctx)->flashEspFirmware(url);
+    return ESP_OK;
+}
+
+static esp_err_t flash_rcp_cb(void *ctx, const char *url)
+{
+    static_cast<System_manager *>(ctx)->initRcpFirmwareFlash(url);
+    return ESP_OK;
+}
+
 esp_err_t System_manager::initThread()
 {
-    return thread_controller.init();
+    system_flash_callbacks_t cbs = {
+        .flash_esp = flash_esp_cb,
+        .flash_rcp = flash_rcp_cb,
+        .ctx       = this,
+    };
+    return thread_controller.init(&cbs);
 }
 
 esp_err_t System_manager::startThread()

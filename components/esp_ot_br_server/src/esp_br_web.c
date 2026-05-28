@@ -68,6 +68,7 @@ typedef struct http_server {
 } http_server_t;
 
 static http_server_t s_server = {NULL, {"", ""}, "", 80}; /* the instance of server */
+static system_flash_callbacks_t s_flash_cbs = {NULL, NULL, NULL};
 
 /**
  * @brief The basic parameter definition for parsing url
@@ -217,6 +218,8 @@ static esp_err_t esp_otbr_network_form_post_handler(httpd_req_t *req);
 static esp_err_t esp_otbr_add_network_prefix_post_handler(httpd_req_t *req);
 static esp_err_t esp_otbr_delete_network_prefix_post_handler(httpd_req_t *req);
 static esp_err_t esp_otbr_network_commission_post_handler(httpd_req_t *req);
+static esp_err_t esp_otbr_flash_esp_post_handler(httpd_req_t *req);
+static esp_err_t esp_otbr_flash_rcp_post_handler(httpd_req_t *req);
 static esp_err_t esp_otbr_network_topology_get_handler(httpd_req_t *req);
 static esp_err_t esp_otbr_current_node_get_handler(httpd_req_t *req);
 
@@ -274,6 +277,18 @@ static httpd_uri_t s_web_gui_handlers[] = {
         .method = HTTP_GET,
         .handler = esp_otbr_current_node_get_handler,
         .user_ctx = NULL,
+    },
+    {
+        .uri = ESP_OT_REST_API_FLASH_ESP_PATH,
+        .method = HTTP_POST,
+        .handler = esp_otbr_flash_esp_post_handler,
+        .user_ctx = &s_server.data,
+    },
+    {
+        .uri = ESP_OT_REST_API_FLASH_RCP_PATH,
+        .method = HTTP_POST,
+        .handler = esp_otbr_flash_rcp_post_handler,
+        .user_ctx = &s_server.data,
     },
 };
 
@@ -852,6 +867,43 @@ exit:
     return ret;
 }
 
+static esp_err_t esp_otbr_flash_esp_post_handler(httpd_req_t *req)
+{
+    esp_err_t ret = ESP_OK;
+    cJSON *request = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(request, ESP_FAIL, WEB_TAG, "Failed to parse flash/esp body");
+
+    cJSON *url_item = cJSON_GetObjectItem(request, "url");
+    ESP_GOTO_ON_FALSE(cJSON_IsString(url_item), ESP_FAIL, flash_esp_exit, WEB_TAG, "Missing url in flash/esp request");
+
+    if (s_flash_cbs.flash_esp) {
+        ret = s_flash_cbs.flash_esp(s_flash_cbs.ctx, url_item->valuestring);
+    }
+    httpd_resp_sendstr(req, ret == ESP_OK ? "{\"status\":\"started\"}" : "{\"status\":\"error\"}");
+
+flash_esp_exit:
+    cJSON_Delete(request);
+    return ret;
+}
+
+static esp_err_t esp_otbr_flash_rcp_post_handler(httpd_req_t *req)
+{
+    esp_err_t ret = ESP_OK;
+    cJSON *request = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(request, ESP_FAIL, WEB_TAG, "Failed to parse flash/rcp body");
+
+    cJSON *url_item = cJSON_GetObjectItem(request, "url");
+    ESP_GOTO_ON_FALSE(cJSON_IsString(url_item), ESP_FAIL, flash_rcp_exit, WEB_TAG, "Missing url in flash/rcp request");
+    if (s_flash_cbs.flash_rcp) {
+        ret = s_flash_cbs.flash_rcp(s_flash_cbs.ctx, url_item->valuestring);
+    }
+    httpd_resp_sendstr(req, ret == ESP_OK ? "{\"status\":\"started\"}" : "{\"status\":\"error\"}");
+
+flash_rcp_exit:
+    cJSON_Delete(request);
+    return ret;
+}
+
 /**
  * @brief The API provides an entry to collect the topology of Thread node, packs and sends it to @param req.
  *
@@ -1221,8 +1273,11 @@ static void handler_got_ip_event(void *arg, esp_event_base_t event_base, int32_t
     }
 }
 
-void esp_br_web_start(char *base_path)
+void esp_br_web_start(char *base_path, const system_flash_callbacks_t *flash_cbs)
 {
+    if (flash_cbs) {
+        s_flash_cbs = *flash_cbs;
+    }
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &handler_got_ip_event, base_path));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &handler_got_ip_event, base_path));
 }

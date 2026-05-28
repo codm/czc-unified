@@ -36,6 +36,5 @@ extern "C" void app_main(void) {
     ESP_LOGI(TAG, "Network connected! Starting OTBR...");
     system_manager.startThread();
 
-
     while(1) vTaskDelay(portMAX_DELAY); // Loop so main doesnt finish and objects are deleted
 }
