@@ -28,11 +28,15 @@
 #define OTA_SUCCESS_BIT BIT0
 #define OTA_FAIL_BIT BIT1
 
+struct EspFlashConfig {
+    System_manager* self;
+    char url[256];
+};
+
 class System_manager
 {
 private:
     static const char* TAG;
-    const char* esp_download_url = "https://github.com/codm/czc-fw/releases/download/V2.1.0/czc_fw_2.1.0.ota.bin";
 
     uart_port_t rcp_uart_num;
     Rcp_interface rcp_interface;
@@ -48,7 +52,7 @@ public:
     ~System_manager();
     esp_err_t initThread();
     esp_err_t startThread();
-    void flashEspFirmware();
+    void flashEspFirmware(const char* url);
     void flashRcpFirmware(const char* url);
     
     void initRcpFirmwareFlash(const char* url);

@@ -24,10 +24,14 @@ esp_err_t System_manager::startThread()
     return thread_controller.start();
 }
 
-void System_manager::flashEspFirmware()
+void System_manager::flashEspFirmware(const char* url)
 {
+    EspFlashConfig* config = new EspFlashConfig();
+    strlcpy(config->url, url, sizeof(config->url));
+    config->self = this;
+    config->url[sizeof(config->url) - 1] = '\0';
     ESP_LOGD(TAG, "Starting ESP Update Task...");
-    xTaskCreate(ota_update_task, "ota_update_task", 1024 * 8, this, 5, NULL);
+    xTaskCreate(ota_update_task, "ota_update_task", 1024 * 8, config, 5, NULL);
     ESP_LOGD(TAG, "Update Task started!");
 }
 
@@ -106,15 +110,16 @@ void System_manager::flashRcpFirmwareWhenConfigured()
 
 void System_manager::ota_update_task(void* pvParameter)
 {
-    auto* self = static_cast<System_manager*>(pvParameter);
-    ESP_LOGD(TAG, "OTA task started, URL: %s", self->esp_download_url);
+    auto* config = static_cast<EspFlashConfig*>(pvParameter);
+    auto* self   = config->self;
+    ESP_LOGD(TAG, "OTA task started, URL: %s", config->url);
 
     esp_err_t err            = ESP_OK;
     esp_err_t ota_finish_err = ESP_OK;
 
     // config
     esp_http_client_config_t http_config = {
-        .url               = self->esp_download_url,
+        .url               = config->url,
         .timeout_ms        = EXAMPLE_OTA_RECV_TIMEOUT_MS,
         .buffer_size       = 1024 * 8,
         .buffer_size_tx    = 1024 * 8,
@@ -134,6 +139,7 @@ void System_manager::ota_update_task(void* pvParameter)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_https_ota_begin failed: %s", esp_err_to_name(err));
         xEventGroupSetBits(self->ota_event_group, OTA_FAIL_BIT);
+        delete config;
         vTaskDelete(NULL);
         return;
     }
@@ -189,6 +195,7 @@ ota_abort:
         esp_https_ota_abort(ota_handle);
     }
     xEventGroupSetBits(self->ota_event_group, OTA_FAIL_BIT);
+    delete config;
     vTaskDelete(NULL);
 }
 
