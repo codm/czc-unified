@@ -142,11 +142,10 @@ esp_err_t Rcp_interface::download_image(const char *url)
         .url = url,
         .method = HTTP_METHOD_GET,
         .max_redirection_count = 5,
-        .transport_type = HTTP_TRANSPORT_OVER_TCP,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,
         .buffer_size = HTTP_READ_BUFFER_SIZE,
         .buffer_size_tx = 512,
-        .skip_cert_common_name_check = true,
-        .crt_bundle_attach = NULL,
+        .crt_bundle_attach = esp_crt_bundle_attach,
         .keep_alive_enable = false,
     };
 
@@ -167,9 +166,38 @@ esp_err_t Rcp_interface::download_image(const char *url)
     }
 
     int content_length = esp_http_client_fetch_headers(client);
-    int http_status = esp_http_client_get_status_code(client);
-    ESP_LOGI(TAG, "[HTTP] Status: %d, Content-Length: %d", http_status, content_length);
+    int http_status    = esp_http_client_get_status_code(client);
 
+    // manual open/read does not follow redirects; GitHub returns 302 for release assets
+    int redirects = 0;
+    while ((http_status == 301 || http_status == 302 || http_status == 303 ||
+            http_status == 307 || http_status == 308)
+           && redirects < config.max_redirection_count) {
+
+        ESP_LOGI(TAG, "[HTTP] Redirect %d (Status %d) -> following Location",
+                 redirects + 1, http_status);
+
+        err = esp_http_client_set_redirection(client);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "[HTTP] set_redirection failed: %s", esp_err_to_name(err));
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            return ESP_ERR_HTTP_CONNECT;
+        }
+
+        err = esp_http_client_open(client, 0);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "[HTTP] Redirect open failed: %s", esp_err_to_name(err));
+            esp_http_client_cleanup(client);
+            return ESP_ERR_HTTP_CONNECT;
+        }
+
+        content_length = esp_http_client_fetch_headers(client);
+        http_status    = esp_http_client_get_status_code(client);
+        redirects++;
+    }
+
+    ESP_LOGI(TAG, "[HTTP] Status: %d, Content-Length: %d", http_status, content_length);
     if (http_status != 200) {
         ESP_LOGE(TAG, "[HTTP] GET failed, Status: %d", http_status);
         esp_http_client_close(client);
