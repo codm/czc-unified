@@ -144,7 +144,7 @@ esp_err_t Rcp_interface::download_image(const char *url)
         .max_redirection_count = 5,
         .transport_type = HTTP_TRANSPORT_OVER_SSL,
         .buffer_size = HTTP_READ_BUFFER_SIZE,
-        .buffer_size_tx = 512,
+        .buffer_size_tx = 2 * 1024,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .keep_alive_enable = false,
     };
