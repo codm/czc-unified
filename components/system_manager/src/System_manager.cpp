@@ -88,6 +88,7 @@ void System_manager::flashRcpFirmware(const char* url)
     }   
     else {
         ESP_LOGE(TAG, "RCP firmware update failed or timed out, REBOOT REQUIRED!");
+        SysNvsBinding::clearRcpFlashConfig();
     }
 }
 
