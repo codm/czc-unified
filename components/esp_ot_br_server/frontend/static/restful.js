@@ -465,6 +465,152 @@ function http_server_delete_prefix_from_thread_network() {
 }
 
 /* --------------------------------------------------------------------
+                            Flash
+-------------------------------------------------------------------- */
+var RCP_MANIFEST_URL = 'https://raw.githubusercontent.com/codm/XZG/zb_fws/ti/manifest.json';
+var ESP_RELEASES_URL = 'https://docs.codm.de/tools/releases.php';
+
+var g_flash_type = '';
+
+function flash_esp_with_url() {
+  g_flash_type = 'esp';
+  document.getElementById('flash_window_title').innerText = 'Select ESP Firmware';
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+  document.getElementById('flash_status').innerText = '';
+  document.getElementById('flash_window').style.display = 'flex';
+  fetch_esp_firmware_list();
+}
+
+function flash_rcp_with_url() {
+  g_flash_type = 'rcp';
+  document.getElementById('flash_window_title').innerText = 'Select RCP Firmware';
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+  document.getElementById('flash_status').innerText = '';
+  document.getElementById('flash_window').style.display = 'flex';
+  fetch_rcp_firmware_list();
+}
+
+function fetch_esp_firmware_list() {
+  $.ajax({
+    url: ESP_RELEASES_URL,
+    async: true,
+    type: 'GET',
+    dataType: 'json',
+    success: function(data) {
+      var entries = Array.isArray(data) ? data : (data.releases || data.items || []);
+      var firmwares = [];
+      entries.forEach(function(entry) {
+        var url = entry.url || entry.download_url || entry.firmware_url || '';
+        var version = entry.version || entry.tag || entry.tag_name || '';
+        var name = entry.name || version || url.split('/').pop();
+        if (url) {
+          firmwares.push({name: name, version: version, url: url});
+        }
+      });
+      render_firmware_list(firmwares);
+    },
+    error: function() {
+      document.getElementById('flash_firmware_list').innerHTML =
+          '<p style="color:red">Failed to load firmware list.</p>';
+    }
+  });
+}
+
+function fetch_rcp_firmware_list() {
+  $.ajax({
+    url: RCP_MANIFEST_URL,
+    async: true,
+    type: 'GET',
+    dataType: 'json',
+    success: function(data) {
+      var entries = data.files || data.firmware || (Array.isArray(data) ? data : []);
+      var firmwares = [];
+      entries.forEach(function(entry) {
+        var url = entry.url || entry.path || entry.download_url || '';
+        var version = entry.ver || entry.version || entry.fw || '';
+        var name = entry.name || entry.fw || version || url.split('/').pop();
+        // only show OpenThread / RCP relevant entries
+        var isRelevant = /ot|rcp|openthread|thread/i.test(name + version + url);
+        if (url && isRelevant) {
+          firmwares.push({name: name, version: version, url: url});
+        }
+      });
+      if (!firmwares.length) {
+        // fallback: show everything if no OT-specific entries found
+        entries.forEach(function(entry) {
+          var url = entry.url || entry.path || entry.download_url || '';
+          var version = entry.ver || entry.version || entry.fw || '';
+          var name = entry.name || entry.fw || version || url.split('/').pop();
+          if (url) {
+            firmwares.push({name: name, version: version, url: url});
+          }
+        });
+      }
+      render_firmware_list(firmwares);
+    },
+    error: function() {
+      document.getElementById('flash_firmware_list').innerHTML =
+          '<p style="color:red">Failed to load firmware list.</p>';
+    }
+  });
+}
+
+function render_firmware_list(firmwares) {
+  var container = document.getElementById('flash_firmware_list');
+  if (!firmwares.length) {
+    container.innerHTML = '<p style="color:orange">No firmware versions found.</p>';
+    return;
+  }
+  var html = '<table class="pure-table pure-table-horizontal" style="width:100%">'
+      + '<thead><tr><th>Name</th><th>Version</th><th></th></tr></thead><tbody>';
+  firmwares.forEach(function(fw, idx) {
+    html += '<tr><td>' + fw.name + '</td><td>' + (fw.version || '—') + '</td>'
+        + '<td><button class="btn-submit" data-fw-idx="' + idx + '">Flash</button></td></tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+
+  container.querySelectorAll('button[data-fw-idx]').forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-fw-idx'));
+    btn.addEventListener('click', function() {
+      do_flash_with_url(firmwares[idx].url);
+    });
+  });
+}
+
+function do_flash_with_url(url) {
+  document.getElementById('flash_window').style.display = 'none';
+  var endpoint = g_flash_type === 'esp' ? '/flash/esp' : '/flash/rcp';
+  var log = {error: 0, content: ''};
+  var title = g_flash_type === 'esp' ? 'Flash ESP' : 'Flash RCP';
+  document.getElementById('flash_status').innerText = 'Flashing...';
+  $.ajax({
+    url: endpoint,
+    async: true,
+    contentType: 'application/json',
+    type: 'POST',
+    dataType: 'json',
+    data: JSON.stringify({url: url}),
+    success: function(arg) {
+      console_show_response_result(arg);
+      log.error = arg.error;
+      log.content = arg.message;
+      frontend_log_show(title, log);
+    },
+    error: function(arg) {
+      log.error = 1;
+      log.content = 'Unknown error';
+      frontend_log_show(title, log);
+      console.log(arg);
+    }
+  });
+}
+
+function frontend_cancel_flash() {
+  document.getElementById('flash_window').style.display = 'none';
+}
+
+/* --------------------------------------------------------------------
                             commission
 -------------------------------------------------------------------- */
 function http_server_thread_network_commissioner() {
