@@ -472,7 +472,7 @@ var ESP_RELEASES_URL = 'https://docs.codm.de/tools/releases.php';
 
 var g_flash_type = '';
 
-function flash_esp_with_url() {
+function frontend_flash_esp_button() {
   g_flash_type = 'esp';
   document.getElementById('flash_window_title').innerText = 'Select ESP Firmware';
   document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
@@ -481,7 +481,7 @@ function flash_esp_with_url() {
   fetch_esp_firmware_list();
 }
 
-function flash_rcp_with_url() {
+function frontend_flash_rcp_button() {
   g_flash_type = 'rcp';
   document.getElementById('flash_window_title').innerText = 'Select RCP Firmware';
   document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';

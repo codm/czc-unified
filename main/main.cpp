@@ -31,7 +31,6 @@ extern "C" void app_main(void) {
     vTaskDelay(pdMS_TO_TICKS(1000)); // wait 1s for Wifi to connect, proper check function has to be implemented
 
     system_manager.flashRcpFirmwareWhenConfigured();
-    // system_manager.initRcpFirmwareFlash("http://192.168.178.189:8080/ot-rcp-bsl.bin");
 
     ESP_LOGI(TAG, "Network connected! Starting OTBR...");
     system_manager.startThread();
