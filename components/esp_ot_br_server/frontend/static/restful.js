@@ -597,16 +597,27 @@ function do_flash_with_url(url) {
     dataType: 'json',
     data: JSON.stringify({url: url}),
     success: function(arg) {
-      console_show_response_result(arg);
-      log.error = arg.error;
-      log.content = arg.message;
+      if (arg.reboot) {
+        log.error = 0;
+        log.content = 'Flash scheduled. Device is rebooting...';
+      } else {
+        console_show_response_result(arg);
+        log.error = arg.error;
+        log.content = arg.message;
+      }
       frontend_log_show(title, log);
     },
     error: function(arg) {
-      log.error = 1;
-      log.content = 'Unknown error';
+      if (g_flash_type === 'rcp') {
+        // Connection drop is expected: ESP reboots immediately after scheduling the flash
+        log.error = 0;
+        log.content = 'Flash scheduled. Device is rebooting...';
+      } else {
+        log.error = 1;
+        log.content = 'Unknown error';
+        console.log(arg);
+      }
       frontend_log_show(title, log);
-      console.log(arg);
     }
   });
 }

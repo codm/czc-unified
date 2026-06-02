@@ -20,7 +20,9 @@ extern "C" void app_main(void) {
     NetworkStateMachine networkStateMachine(ethernetAPI, wirelessAPI);
     networkStateMachine.initNetworkStateMachine();
     
-    system_manager.initThread();
+    if (!system_manager.isRcpFlashPending()) {
+        system_manager.initThread();
+    }
 
     ESP_LOGI(TAG, "Init completed!, waiting for Internet connection, %d", networkStateMachine.getState());
     // wait until network connection is setup
@@ -30,10 +32,12 @@ extern "C" void app_main(void) {
     }
     vTaskDelay(pdMS_TO_TICKS(1000)); // wait 1s for Wifi to connect, proper check function has to be implemented
 
-    system_manager.flashRcpFirmwareWhenConfigured();
-
-    ESP_LOGI(TAG, "Network connected! Starting OTBR...");
-    system_manager.startThread();
+    if (system_manager.isRcpFlashPending()) {
+        system_manager.flashRcpFirmwareWhenConfigured();
+    } else {
+        ESP_LOGI(TAG, "Network connected! Starting OTBR...");
+        system_manager.startThread();
+    }
 
     while(1) vTaskDelay(portMAX_DELAY); // Loop so main doesnt finish and objects are deleted
 }

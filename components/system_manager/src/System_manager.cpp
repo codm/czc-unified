@@ -80,15 +80,14 @@ void System_manager::flashRcpFirmware(const char* url)
         pdMS_TO_TICKS(portMAX_DELAY)
     );
 
+    SysNvsBinding::clearRcpFlashConfig();
+
     if (bits & RCP_UPDATE_SUCCESS_BIT) {
         ESP_LOGI(TAG, "RCP firmware update successful — restarting");
         vTaskDelay(pdMS_TO_TICKS(500));
-        SysNvsBinding::clearRcpFlashConfig();
         esp_restart();
-    }   
-    else {
+    } else {
         ESP_LOGE(TAG, "RCP firmware update failed or timed out, REBOOT REQUIRED!");
-        SysNvsBinding::clearRcpFlashConfig();
     }
 }
 
@@ -107,6 +106,11 @@ void System_manager::initRcpFirmwareFlash(const char* url)
     ESP_LOGI(TAG, "RCP flash scheduled, restarting...");
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();
+}
+
+bool System_manager::isRcpFlashPending()
+{
+    return SysNvsBinding::rcpFlashPending();
 }
 
 void System_manager::flashRcpFirmwareWhenConfigured()

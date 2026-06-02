@@ -888,20 +888,29 @@ flash_esp_exit:
 
 static esp_err_t esp_otbr_flash_rcp_post_handler(httpd_req_t *req)
 {
-    esp_err_t ret = ESP_OK;
     cJSON *request = httpd_request_convert2_json(req, cJSON_Object);
     ESP_RETURN_ON_FALSE(request, ESP_FAIL, WEB_TAG, "Failed to parse flash/rcp body");
 
     cJSON *url_item = cJSON_GetObjectItem(request, "url");
-    ESP_GOTO_ON_FALSE(cJSON_IsString(url_item), ESP_FAIL, flash_rcp_exit, WEB_TAG, "Missing url in flash/rcp request");
-    if (s_flash_cbs.flash_rcp) {
-        ret = s_flash_cbs.flash_rcp(s_flash_cbs.ctx, url_item->valuestring);
+    if (!cJSON_IsString(url_item)) {
+        ESP_LOGE(WEB_TAG, "Missing url in flash/rcp request");
+        cJSON_Delete(request);
+        return ESP_FAIL;
     }
-    httpd_resp_sendstr(req, ret == ESP_OK ? "{\"status\":\"started\"}" : "{\"status\":\"error\"}");
 
-flash_rcp_exit:
+    char url[256];
+    strlcpy(url, url_item->valuestring, sizeof(url));
     cJSON_Delete(request);
-    return ret;
+
+    // Send response before callback — callback triggers immediate reboot, connection would die otherwise
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"scheduled\",\"reboot\":true}");
+
+    if (s_flash_cbs.flash_rcp) {
+        s_flash_cbs.flash_rcp(s_flash_cbs.ctx, url);
+    }
+
+    return ESP_OK;
 }
 
 /**
