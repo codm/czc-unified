@@ -117,12 +117,15 @@ void NetworkStateMachine::network_event_handler(void *arg, esp_event_base_t even
                 }
                 break;
 
-            case IP_EVENT_ETH_GOT_IP:
+            case IP_EVENT_ETH_GOT_IP: {
                 if(self->initTimer) esp_timer_stop(self->initTimer);
                 self->ethernetAPI.setEthIsConnected(true);
                 self->setState(NetworkState::ETHERNET);
                 ESP_LOGI(TAG, "Ethernet got IP -> changed mode to Ethernet");
+                auto *ip_event = static_cast<ip_event_got_ip_t *>(event_data);
+                EthernetAPI::logNetDiag(ip_event->esp_netif);
                 break;
+            }
 
             case IP_EVENT_STA_LOST_IP:
                 self->wirelessAPI.setWifiIsConnected(false);

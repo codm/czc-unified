@@ -2,6 +2,9 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "esp_log.h"
+// network diagnostics
+#include "lwip/netdb.h"
+#include "lwip/inet.h"
 
 struct ethernetConfig {
     uint8_t phyAddr = 0; 
@@ -23,6 +26,7 @@ private:
 
     static void eth_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 public:
+    static void logNetDiag(esp_netif_t *netif);
     EthernetAPI();
     ~EthernetAPI();
     void initEthernet();
