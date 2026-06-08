@@ -142,12 +142,13 @@ void System_manager::ota_update_task(void* pvParameter)
 
     // config
     esp_http_client_config_t http_config = {
-        .url               = config->url,
-        .timeout_ms        = EXAMPLE_OTA_RECV_TIMEOUT_MS,
-        .buffer_size       = 1024 * 8,
-        .buffer_size_tx    = 1024 * 8,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-        .keep_alive_enable = true, 
+        .url                   = config->url,
+        .timeout_ms            = EXAMPLE_OTA_RECV_TIMEOUT_MS,
+        .max_redirection_count = 5,
+        .buffer_size           = 1024 * 8,
+        .buffer_size_tx        = 1024 * 8,
+        .crt_bundle_attach     = esp_crt_bundle_attach,
+        .keep_alive_enable     = false,
     };
 
     esp_https_ota_config_t ota_config = {

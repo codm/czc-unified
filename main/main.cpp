@@ -4,7 +4,6 @@
 #include "esp_event.h"
 
 const char* TAG = "esp_ot_br";
-bool wifi_connected = false;
 
 extern "C" void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
