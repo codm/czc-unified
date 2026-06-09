@@ -114,3 +114,47 @@ bool SysNvsBinding::rcpFlashPending()
 
     return (bool)pending;
 }
+
+bool SysNvsBinding::deviceSetup()
+{
+    nvs_handle_t handle;
+    esp_err_t ret = nvs_open(NVS_SYS_NAMESPACE, NVS_READONLY, &handle);
+    if (ret != ESP_OK) {
+
+        ESP_LOGW(TAG, "Error while trying to open NvsDeviceSetup");
+        nvs_close(handle);
+        return false;
+    }
+
+    uint8_t deviceSetup = 0;
+    ret = nvs_get_u8(handle, NVS_KEY_DEVICE_SETUP, &deviceSetup);
+    nvs_close(handle);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to read deviceSetup from NVS");
+        return false;
+    }
+
+    return (bool)deviceSetup;
+}
+
+esp_err_t SysNvsBinding::writeNvsDeviceSetup(bool isDeviceSetup)
+{
+    nvs_handle_t handle;
+    esp_err_t ret = nvs_open(NVS_SYS_NAMESPACE, NVS_READWRITE, &handle);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Error while trying to open NvsDeviceSetup - READWRITE | Error: %s", esp_err_to_name(ret));
+        goto cleanup;
+    }
+
+    ret = nvs_set_u8(handle, NVS_KEY_DEVICE_SETUP, (uint8_t)isDeviceSetup);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write deviceSetup: %s", esp_err_to_name(ret));
+        goto cleanup;
+    }
+
+    return ESP_OK;
+
+    cleanup:
+    nvs_close(handle);
+    return ESP_FAIL;
+}
