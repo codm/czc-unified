@@ -16,19 +16,17 @@ extern "C" {
 #include <stdbool.h>
 
 /**
- * @brief Start WiFi configuration mode (SoftAP + Web server)
+ * @brief Start WiFi configuration mode (Web server)
  *
  * This function will:
- * - Start a SoftAP with SSID "ESP-ThreadBR-XXXX" (XXXX is MAC address suffix)
  * - Start a Web server on http://192.168.4.1
- * - Start DNS server for captive portal support
  *
  * The SoftAP SSID will be logged automatically.
  *
  * @return
  *      - ESP_OK: Success
  *      - ESP_ERR_NO_MEM: Failed to allocate memory
- *      - ESP_FAIL: Failed to start SoftAP or Web server
+ *      - ESP_FAIL: Failed to start Web server
  */
 esp_err_t esp_br_wifi_config_start(void);
 
@@ -68,7 +66,7 @@ esp_err_t esp_br_wifi_config_stop(void);
 bool esp_br_wifi_config_is_active(void);
 
 /**
- * @brief Get current SoftAP SSID and IP address
+ * @brief WARNING NOT IMPLEMENTED CORRECTLY ATM Get current SoftAP SSID and IP address
  *
  * This function can be used to get the SoftAP information when the mode is active.
  *

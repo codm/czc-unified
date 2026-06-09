@@ -309,6 +309,24 @@
             </form>
           </div><!-- End blog comments -->
         </div>
+        <div class="part">
+          <div class="submit-form">
+            <div class="row">
+              <div class="col-md-8">
+                <h4>Firmware Update / Flash</h4>
+              </div>
+            </div>
+            <hr/>
+            <div class="row">
+              <div class="col-md-2">
+                <button type="button" class="btn btn-primary" onclick="frontend_flash_esp_button()">Flash ESP</button>
+              </div>
+              <div class="col-md-2">
+                <button type="button" class="btn btn-primary" onclick="frontend_flash_rcp_button()">Flash RCP</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
     <section id="Status" class="sub-section">
@@ -574,6 +592,17 @@
         </div>
       </div>
     </section>
+    <div id="flash_window" class="dialog">
+      <div class="dialog-content" style="width: 620px; max-width: 90vw;">
+        <h2 id="flash_window_title">Select Firmware</h2>
+        <div style="width:100%; height:2px; border-top:1px solid #cecaca; clear:both; margin-bottom:15px;"></div>
+        <div id="flash_firmware_list" style="max-height:350px; overflow-y:auto;">
+          <p>Loading...</p>
+        </div>
+        <div id="flash_status" style="color:gray; margin-top:10px; font-size:14px;"></div>
+        <button type="button" class="dialog-button" style="margin-top:15px;" onclick="frontend_cancel_flash()">Cancel</button>
+      </div>
+    </div>
     <div id="log_window" class="dialog" style="padding-top: 10px;">
       <div class="dialog-content" style="width: 400px; padding-top: 10px;">
         <div id = "log_window_title"><span style="font-size: 30px;">Tip:</span></div>

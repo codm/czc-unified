@@ -1,3 +1,8 @@
-idf_component_register(SRCS "esp_ot_br.c"
-                       PRIV_REQUIRES esp_psram openthread esp_coex esp_wifi nvs_flash esp_ot_br_server spiffs esp_event
+idf_component_register(SRCS "main.cpp"
+                       REQUIRES    
+                                system_manager
+                                network
+                                nvs_flash
+                                esp_event
+
                        INCLUDE_DIRS ".")

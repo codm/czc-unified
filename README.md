@@ -73,7 +73,7 @@ E(1550) OPENTHREAD:[C] P-RadioSpinel-:     rx-timing
 E(1550) OPENTHREAD:[C] P-RadioSpinel-:     rx-on-when-idle
 ```
 
-- `rx-on-when-idle` has to be deactivated: -> Component config → OpenThread → Thread Core Features → Enable OpenThread radio capability rx on when idle
+- `rx-on-when-idle` has to be deactivated: -> Component config → OpenThread → Thread Core Features → Disable OpenThread radio capability rx on when idle
 
 - more importantly: `rx-timing` is hardcoded in the espressif openthread sdk. In `$IDF_PATH/esp-idf/components/openthread/src/port/esp_openthread_radio_spinel.cpp` the constant `OT_RADIO_CAPS_RECEIVE_TIMING` part of the `s_radio_caps` object has do be deleted. 
 

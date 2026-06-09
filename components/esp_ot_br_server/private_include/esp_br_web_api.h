@@ -41,6 +41,9 @@ extern "C" {
 #define ESP_OT_REST_API_FORM_NETWORK_PATH "/form_network"
 #define ESP_OT_REST_API_ADD_NETWORK_PREFIX_PATH "/add_prefix"
 #define ESP_OT_REST_API_DELETE_NETWORK_PREFIX_PATH "/delete_prefix"
+/* HTTP POST — firmware flash */
+#define ESP_OT_REST_API_FLASH_ESP_PATH "/flash/esp"
+#define ESP_OT_REST_API_FLASH_RCP_PATH "/flash/rcp"
 /* To implement in the future */
 #define ESP_OT_REST_API_COMMISSION_PATH "/commission"
 #define ESP_OT_REST_API_NETWORK "/networks"
