@@ -879,7 +879,10 @@ static esp_err_t esp_otbr_flash_esp_post_handler(httpd_req_t *req)
     if (s_flash_cbs.flash_esp) {
         ret = s_flash_cbs.flash_esp(s_flash_cbs.ctx, url_item->valuestring);
     }
-    httpd_resp_sendstr(req, ret == ESP_OK ? "{\"status\":\"started\"}" : "{\"status\":\"error\"}");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, ret == ESP_OK
+        ? "{\"status\":\"flashing\",\"message\":\"Flashing ESP firmware... Device will restart automatically.\"}"
+        : "{\"status\":\"error\",\"message\":\"Failed to start OTA task\"}");
 
 flash_esp_exit:
     cJSON_Delete(request);

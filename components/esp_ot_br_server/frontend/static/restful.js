@@ -517,7 +517,8 @@ function flash_list_error() {
 function parse_github_releases(releases) {
   var result = [];
   releases.forEach(function(release) {
-    if (release.draft || release.prerelease) return;
+    // if (release.draft || release.prerelease) return;
+    if (release.draft) return;
     release.assets.forEach(function(asset) {
       if (!asset.name.endsWith('.bin')) return;
       result.push({name: asset.name, version: release.tag_name, url: asset.browser_download_url});
@@ -600,10 +601,13 @@ function do_flash_with_url(url) {
       if (arg.reboot) {
         log.error = 0;
         log.content = 'Flash scheduled. Device is rebooting...';
+      } else if (arg.status === 'flashing' || arg.status === 'started') {
+        log.error = 0;
+        log.content = arg.message || 'Flashing firmware...';
       } else {
         console_show_response_result(arg);
         log.error = arg.error;
-        log.content = arg.message;
+        log.content = arg.message || 'Unknown response';
       }
       frontend_log_show(title, log);
     },
