@@ -8,6 +8,7 @@ System_manager::System_manager(Rcp_interface _rcp_interface, uart_port_t _rcp_ua
     ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &ota_event_handler, NULL));
     this->rcp_interface = _rcp_interface;
     this->rcp_uart_num = _rcp_uart_num;
+    this->ota_event_group = xEventGroupCreate();
 }
 
 System_manager::~System_manager()
@@ -153,8 +154,6 @@ void System_manager::ota_update_task(void* pvParameter)
 
     esp_https_ota_config_t ota_config = {
         .http_config = &http_config,
-        .partial_http_download = true,
-        .max_http_request_size = 1024 * 4,
     };
 
     // begin ota
@@ -188,10 +187,10 @@ void System_manager::ota_update_task(void* pvParameter)
 
     // test download
     if (!esp_https_ota_is_complete_data_received(ota_handle)) {
-        ESP_LOGE(TAG, "Download unvollständig");
+        ESP_LOGE(TAG, "Download incomplete");
         goto ota_abort;
     }
-    ESP_LOGD(TAG, "Download vollständig");
+    ESP_LOGD(TAG, "Download complete!");
 
     // finish ota
     ota_finish_err = esp_https_ota_finish(ota_handle);
@@ -199,7 +198,7 @@ void System_manager::ota_update_task(void* pvParameter)
 
     if (ota_finish_err != ESP_OK) {
         if (ota_finish_err == ESP_ERR_OTA_VALIDATE_FAILED) {
-            ESP_LOGE(TAG, "OTA finish: Image Validierung fehlgeschlagen");
+            ESP_LOGE(TAG, "OTA finish: Image validation failed!");
         } else {
             // ESP_LOGE(TAG, "esp_https_ota_finish Fehler: %s", esp_err_to_name(ota_finish_err));
         }
@@ -209,7 +208,7 @@ void System_manager::ota_update_task(void* pvParameter)
     }
 
     // restart esp
-    ESP_LOGI(TAG, "OTA erfolgreich - Neustart...");
+    ESP_LOGI(TAG, "OTA update completed - Rebooting...");
     // xEventGroupSetBits(self->ota_event_group, OTA_SUCCESS_BIT);
     vTaskDelay(pdMS_TO_TICKS(1000));
     esp_restart();
