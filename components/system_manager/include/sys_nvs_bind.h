@@ -27,7 +27,7 @@ namespace SysNvsBinding {
     /**
      * @brief   Returns Value Stored in NVS if the device was already started and RCP correctly flashed
      * 
-     * @returns  bool - DeviceStatus
+     * @returns  bool - deviceSetup
      */
     bool deviceSetup();
 

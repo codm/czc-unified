@@ -222,7 +222,17 @@ ota_abort:
     vTaskDelete(NULL);
 }
 
-void System_manager::ota_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+bool System_manager::isDeviceSetup()
+{
+    return SysNvsBinding::deviceSetup();
+}
+
+esp_err_t System_manager::writeDeviceSetup(bool isDeviceSetup)
+{
+    return SysNvsBinding::writeNvsDeviceSetup(isDeviceSetup);
+}
+
+void System_manager::ota_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     static char* TAG = "OTA";
     if (event_base == ESP_HTTPS_OTA_EVENT) {
