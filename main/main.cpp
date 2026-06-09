@@ -33,8 +33,8 @@ extern "C" void app_main(void) {
 
     if (system_manager.isDeviceSetup() == false) {
         char* rcp_v1_url = "https://github.com/codm/czc-ot-rcp-fw/releases/download/V1.0.0/czc_ot_rcp_fw_1.0.0.bin";
-        system_manager.initRcpFirmwareFlash(rcp_v1_url);
         system_manager.writeDeviceSetup(true);
+        system_manager.initRcpFirmwareFlash(rcp_v1_url);
     }
 
     if (system_manager.isRcpFlashPending()) {
