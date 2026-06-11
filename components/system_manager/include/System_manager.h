@@ -54,6 +54,22 @@ public:
     void flashRcpFirmwareWhenConfigured();
     bool isRcpFlashPending();
 
+    /**
+     * @brief       Checks NVS if Device was configured - wrapper
+     * 
+     * @returns     bool - deviceSetup | True if RCP is configured correctly false otherwise.
+     */
+    bool isDeviceSetup();
+
+    /**
+     * @brief       Writes deviceSetup status into NVS - wrapper
+     * 
+     * @param[in]   isDeviceSetup bool State to write into NVS
+     * 
+     * @returns     esp_err_t ESP_OK, ESP_FAIL
+     */
+    esp_err_t writeDeviceSetup(bool isDeviceSetup);
+
     static void ota_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 };
 

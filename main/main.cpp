@@ -31,6 +31,12 @@ extern "C" void app_main(void) {
     }
     vTaskDelay(pdMS_TO_TICKS(1000)); // wait 1s for Wifi to connect, proper check function has to be implemented
 
+    if (system_manager.isDeviceSetup() == false) {
+        char* rcp_v1_url = "https://github.com/codm/czc-ot-rcp-fw/releases/download/V1.0.0/czc_ot_rcp_fw_1.0.0.bin";
+        system_manager.writeDeviceSetup(true);
+        system_manager.initRcpFirmwareFlash(rcp_v1_url);
+    }
+
     if (system_manager.isRcpFlashPending()) {
         system_manager.flashRcpFirmwareWhenConfigured();
     } else {
