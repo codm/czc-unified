@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
-  <title>ESP32-OpenThread-AIOT</title>
+  <title>CZC Thread Border Router</title>
   <link href="/static/style.css" type="text/css" rel="stylesheet">
   <script src="/static/restful.js" defer="true"></script>
   <link href="/favicon.ico" rel="icon">
@@ -16,89 +16,103 @@
   <script src="https://d3js.org/d3.v3.min.js"></script>
   <style>
     .container {
-      width: 1500px;
+      max-width: 1500px;
+      width: 100%;
     }
   </style>
 </head>
 
 <body>
-  <header id="header" class="header fixed-top sticked" data-scrollto-offset="0">
-    <div class="container-fluid">
-      <div class="row">
-        <div class="col-md-4">
-          <a href="https://www.espressif.com/en" class="logo">
-            <h1>ESPRESSIF-<span style="color: #0ea2bd">OpenThread.</span></h1>
-          </a>
-        </div>
-        <div class="col-md-6 menu">
-          <nav id="navbar" class="navbar">
-            <ul>
-              <li class="nav-link"><a href="index.html#Main-Section"><span>Home</span></a>
-              </li>
-              <li><a class="nav-link" href="index.html#Scan">Scan</a></li>
-              <li><a class="nav-link" href="index.html#Form">Form</a></li>
-              <li><a class="nav-link" href="index.html#Settings">Settings</a></li>
-              <li><a class="nav-link" href="index.html#Status">Status</a></li>
-              <li><a class="nav-link" href="index.html#Topology">Topology</a></li>
-              <li><a class="nav-link" href="index.html#Contact">Contact</a></li>
-            </ul>
-          </nav>
-        </div>
-        <div class="col-md-2"></div>
-      </div>
-    </div>
+  <svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <symbol id="icon-overview" viewBox="0 0 16 16"><path d="M1.5 7 8 1.5 14.5 7M3 7v7h10V7M6.5 14V9.5h3V14"/></symbol>
+      <symbol id="icon-scan" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></symbol>
+      <symbol id="icon-form" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="currentColor" stroke="none"/><circle cx="11" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="7" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="icon-status" viewBox="0 0 16 16"><path d="M1 8h2.5l1.5-4 3 8 1.5-4H15"/></symbol>
+      <symbol id="icon-topology" viewBox="0 0 16 16"><circle cx="8" cy="2.5" r="1.8" fill="currentColor" stroke="none"/><circle cx="3" cy="13" r="1.8" fill="currentColor" stroke="none"/><circle cx="13" cy="13" r="1.8" fill="currentColor" stroke="none"/><path d="M8 4.3 4 11.5M8 4.3l4 7.2"/></symbol>
+      <symbol id="icon-firmware" viewBox="0 0 16 16"><path d="M8 1v8M4.5 6.5 8 10l3.5-3.5M2 13h12"/></symbol>
+      <symbol id="icon-menu" viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/></symbol>
+      <symbol id="icon-book" viewBox="0 0 448 512"><path d="M96 0C43 0 0 43 0 96L0 416c0 53 43 96 96 96l288 0 32 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l0-64c17.7 0 32-14.3 32-32l0-320c0-17.7-14.3-32-32-32L384 0 96 0zm0 384l256 0 0 64L96 448c-17.7 0-32-14.3-32-32s14.3-32 32-32zm32-240c0-8.8 7.2-16 16-16l192 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-192 0c-8.8 0-16-7.2-16-16zm16 48l192 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-192 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></symbol>
+      <symbol id="icon-github" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></symbol>
+      <symbol id="icon-mastodon" viewBox="0 0 16 16"><path d="M11.19 12.195c2.016-.24 3.77-1.475 3.99-2.603.348-1.778.32-4.339.32-4.339 0-3.47-2.286-4.488-2.286-4.488C12.062.238 10.083.017 8.027 0h-.05C5.92.017 3.942.238 2.79.765c0 0-2.285 1.017-2.285 4.488l-.002.662c-.004.64-.007 1.35.011 2.091.083 3.394.626 6.74 3.78 7.57 1.454.383 2.703.463 3.709.408 1.823-.1 2.847-.647 2.847-.647l-.06-1.317s-1.303.41-2.767.36c-1.45-.05-2.98-.156-3.215-1.928a4 4 0 0 1-.033-.496s1.424.346 3.228.428c1.103.05 2.137-.064 3.188-.189zm1.613-2.47H11.13v-4.08c0-.859-.364-1.295-1.091-1.295-.804 0-1.207.517-1.207 1.541v2.233H7.168V5.89c0-1.024-.403-1.541-1.207-1.541-.727 0-1.091.436-1.091 1.296v4.079H3.197V5.522q0-1.288.66-2.046c.456-.505 1.052-.764 1.793-.764.856 0 1.504.328 1.933.983L8 4.39l.417-.695c.429-.655 1.077-.983 1.934-.983.74 0 1.336.259 1.791.764q.662.757.661 2.046z"/></symbol>
+      <symbol id="icon-bluesky" viewBox="0 0 16 16"><path d="M3.468 1.948C5.303 3.325 7.276 6.118 8 7.616c.725-1.498 2.698-4.29 4.532-5.668C13.855.955 16 .186 16 2.632c0 .489-.28 4.105-.444 4.692-.572 2.04-2.653 2.561-4.504 2.246 3.236.551 4.06 2.375 2.281 4.2-3.376 3.464-4.852-.87-5.23-1.98-.07-.204-.103-.3-.103-.218 0-.081-.033.014-.102.218-.379 1.11-1.855 5.444-5.231 1.98-1.778-1.825-.955-3.65 2.28-4.2-1.85.315-3.932-.205-4.503-2.246C.28 6.737 0 3.12 0 2.632 0 .186 2.145.955 3.468 1.948"/></symbol>
+      <symbol id="icon-contact" viewBox="0 0 512 512"><path d="M215.4 96L144 96l-36.2 0L96 96l0 8.8L96 144l0 40.4 0 89L.2 202.5c1.6-18.1 10.9-34.9 25.7-45.8L48 140.3 48 96c0-26.5 21.5-48 48-48l76.6 0 49.9-36.9C232.2 3.9 243.9 0 256 0s23.8 3.9 33.5 11L339.4 48 416 48c26.5 0 48 21.5 48 48l0 44.3 22.1 16.4c14.8 10.9 24.1 27.7 25.7 45.8L416 273.4l0-89 0-40.4 0-39.2 0-8.8-11.8 0L368 96l-71.4 0-81.3 0zM0 448L0 242.1 217.6 403.3c11.1 8.2 24.6 12.7 38.4 12.7s27.3-4.4 38.4-12.7L512 242.1 512 448s0 0 0 0c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64c0 0 0 0 0 0zM176 160l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></symbol>
+    </defs>
+  </svg>
+  <header class="app-header">
+    <a href="#top" class="app-brand">
+      <svg class="app-logo" viewBox="0 0 3999 924" xmlns="http://www.w3.org/2000/svg">
+        <g transform="matrix(16.6667,0,0,16.6667,-2954,-6577)">
+          <g transform="matrix(1,0,0,1,0,15.89)">
+            <path d="M198.156,394C193.027,394 189.486,394.687 187.536,396.059C185.586,397.432 184.129,400.334 183.169,404.769L179.642,421.234C179.213,423.188 179,424.797 179,426.063C179,428.384 179.801,429.954 181.405,430.773C183.007,431.591 185.866,432 189.981,432L212.825,432L214.747,422.93L196.073,422.93C194.362,422.93 193.268,422.85 192.787,422.69C191.558,422.426 190.943,421.682 190.943,420.463C190.943,419.827 191.085,418.873 191.371,417.6L193.34,408.408C193.82,405.966 194.541,404.426 195.504,403.788C196.198,403.311 197.802,403.07 200.314,403.07L218.995,403.07L221,394L198.156,394Z" style="fill:rgb(237,102,27);fill-rule:nonzero;"/>
+          </g>
+          <g transform="matrix(1,0,0,1,0,15.89)">
+            <path d="M240.511,394C235.339,394 231.747,394.687 229.735,396.058C227.721,397.431 226.224,400.334 225.245,404.768L221.653,421.234C221.217,423.188 221,424.797 221,426.063C221,428.384 221.816,429.954 223.449,430.773C225.081,431.591 227.993,432 232.184,432L249.408,432C254.632,432 258.251,431.313 260.265,429.941C262.278,428.569 263.775,425.667 264.755,421.234L268.346,404.767C268.781,402.815 269,401.204 269,399.936C269,397.615 268.169,396.045 266.51,395.227C264.849,394.409 261.925,394 257.736,394L240.511,394ZM235.046,422.69C233.79,422.426 233.163,421.682 233.163,420.463C233.163,419.827 233.308,418.873 233.6,417.6L235.604,408.408C236.148,405.965 236.883,404.425 237.809,403.788C238.57,403.31 240.205,403.071 242.709,403.071L251.61,403.071C253.352,403.071 254.496,403.151 255.04,403.31C256.291,403.63 256.918,404.373 256.918,405.544C256.918,406.182 256.792,407.14 256.54,408.416L254.535,417.606C253.988,420.043 253.293,421.539 252.446,422.094C251.601,422.652 249.895,422.93 247.33,422.93L238.403,422.93C236.656,422.93 235.537,422.85 235.046,422.69Z" style="fill:rgb(237,102,27);fill-rule:nonzero;"/>
+          </g>
+          <g transform="matrix(1,0,0,1,0,1.89)">
+            <path d="M308.14,394L299.133,436.687L286.113,436.687C284.408,436.687 283.289,436.605 282.757,436.442C281.533,436.17 280.921,435.406 280.921,434.154C280.921,433.501 281.063,432.521 281.348,431.214L283.312,421.777C283.846,419.268 284.566,417.687 285.472,417.032C286.219,416.542 287.847,416.296 290.355,416.296L299.56,416.296L301.559,406.982L288.2,406.982C283.08,406.982 279.533,407.688 277.56,409.097C275.586,410.506 274.119,413.486 273.16,418.04L269.64,434.945C269.212,436.951 269,438.604 269,439.903C269,442.288 269.852,443.915 271.56,444.781C273.106,445.594 275.932,446 280.04,446L308.201,446L319,394L308.14,394Z" style="fill:rgb(237,102,27);fill-rule:nonzero;"/>
+          </g>
+          <g transform="matrix(-0.211831,0.977306,0.977306,0.211831,327.813,440.568)">
+            <path d="M1.26,-9.017L9.446,-9.017L7.286,0.95L-0.914,1.017L1.26,-9.017Z" style="fill:rgb(237,102,27);fill-rule:nonzero;"/>
+          </g>
+          <g transform="matrix(1,0,0,1,408.526,409.89)">
+            <path d="M0,38L-10.852,38L-5.728,14.416C-5.479,13.086 -5.354,12.129 -5.354,11.543C-5.354,10.32 -5.969,9.576 -7.193,9.31C-7.727,9.151 -8.846,9.07 -10.55,9.07L-19.261,9.07C-21.712,9.07 -23.31,9.31 -24.056,9.788C-25.015,10.426 -25.734,11.966 -26.214,14.41L-31.328,38L-42.185,38L-36.678,12.273C-36.519,10.725 -37.024,9.764 -38.196,9.391C-38.677,9.178 -39.875,9.07 -41.794,9.07L-50.51,9.07C-53.014,9.07 -54.641,9.31 -55.386,9.788C-56.293,10.426 -57.011,11.966 -57.544,14.41L-62.604,38L-73.526,38L-65.376,0L-54.454,0L-55.464,4.752C-53.387,1.585 -50.643,0 -47.232,0L-35.804,0C-32.128,0 -29.518,0.291 -27.972,0.871C-26.214,1.558 -25.201,2.773 -24.935,4.515C-24.243,2.931 -22.83,1.743 -20.698,0.95C-19.153,0.316 -17.582,0 -15.983,0L-4.555,0C-0.453,0 2.411,0.409 4.035,1.227C5.66,2.045 6.474,3.616 6.474,5.937C6.474,7.204 6.261,8.815 5.834,10.767L0,38" style="fill:white;"/>
+          </g>
+        </g>
+      </svg>
+      <span class="app-title">CZC Thread Border Router</span>
+    </a>
+    <button type="button" class="sidebar-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.app-body').classList.toggle('sidebar-open')">
+      <svg class="icon-stroke"><use href="#icon-menu"/></svg>
+    </button>
   </header>
-  <section class="main-section" id="Main-Section">
-    <div class="container text-center position-relative default-margin">
-      <h2>Espressif Thread Border Router <span>WEB-GUI</span></h2>
-      <div class="text-left" style="margin-top: 50px;">
+  <div class="app-body">
+    <div class="sidebar-backdrop" onclick="document.querySelector('.app-body').classList.remove('sidebar-open')"></div>
+    <nav class="app-sidebar">
+      <ul class="sidebar-nav">
+        <li><a href="#top"><svg class="icon-stroke"><use href="#icon-overview"/></svg> Overview</a></li>
+        <li><a href="#Scan"><svg class="icon-stroke"><use href="#icon-scan"/></svg> Discover</a></li>
+        <li><a href="#Form"><svg class="icon-stroke"><use href="#icon-form"/></svg> Form Network</a></li>
+        <li><a href="#Settings"><svg class="icon-stroke"><use href="#icon-settings"/></svg> Thread Settings</a></li>
+        <li><a href="#Firmware"><svg class="icon-stroke"><use href="#icon-firmware"/></svg> Firmware</a></li>
+        <li><a href="#Status"><svg class="icon-stroke"><use href="#icon-status"/></svg> Status</a></li>
+        <li><a href="#Topology"><svg class="icon-stroke"><use href="#icon-topology"/></svg> Topology</a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="sidebar-links">
+          <a href="https://github.com/codm/czc-ot-fw/blob/main/README.md" target="_blank" rel="noopener" title="Documentation"><svg class="icon"><use href="#icon-book"/></svg></a>
+          <a href="https://github.com/codm/czc-ot-fw" target="_blank" rel="noopener" title="GitHub"><svg class="icon"><use href="#icon-github"/></svg></a>
+          <a href="https://social.tchncs.de/@codm" target="_blank" rel="noopener" title="Mastodon"><svg class="icon"><use href="#icon-mastodon"/></svg></a>
+          <a href="https://bsky.app/profile/codmgmbh.bsky.social" target="_blank" rel="noopener" title="Bluesky"><svg class="icon"><use href="#icon-bluesky"/></svg></a>
+          <a href="https://www.codm.de/kontakt" target="_blank" rel="noopener" title="Kontakt"><svg class="icon"><use href="#icon-contact"/></svg></a>
+        </div>
+        <div class="sidebar-copyright">&copy; 2026 cod.m GmbH</div>
+      </div>
+    </nav>
+    <main id="top" class="app-main">
+  <section id="overview">
+    <div class="container">
+      <div class="section-header">
+        <h2>CZC Thread Border Router <span style="color: var(--color-primary)">Alpha</span></h2>
         <p>
-          &nbsp &nbsp &nbsp &nbsp Espressif Systems (688018.SH) is a public multinational, fabless semiconductor company
-          established in 2008,
-          with offices in China, the Czech Republic, India, Singapore and Brazil.
-          We have a passionate team of engineers and scientists from all over the world, focused on developing
-          cutting-edge wireless communication, low-power, AIoT solutions.
-          We have created the popular ESP8266, ESP32, ESP32-S, ESP32-C and ESP32-H series of chips, modules and
-          development boards.
-          By leveraging wireless computing, we provide green, versatile and cost-effective chipsets.
-          We are committed to offering solutions that are secure, robust and power-efficient.
-          At the same time, by open-sourcing our technology and solutions, we aim to enable developers to use
-          Espressif's solutions globally and build their own smart-connected devices.
+          This web interface is part of an early alpha build of the CZC OpenThread
+          Border Router firmware. Features and APIs are still under active
+          development and may change without notice.
+        </p>
+        <p>
+          Found a bug or unexpected behavior? Please check the
+          <a href="https://github.com/codm/czc-ot-fw#known-issues">Known Issues</a>
+          section in the README, and report new findings on
+          <a href="https://github.com/codm/czc-ot-fw/issues">GitHub Issues</a>.
         </p>
       </div>
     </div>
   </section>
-  <main id="main">
-    <section id="notice-section" class="notice-section">
-      <div class="container">
-        <div class="row">
-          <div class="col-md-5">
-            <div class="service-item">
-              <h4 class="text-center"><a href="https://github.com/espressif/esp-idf">Espressif IoT Development
-                  Framework.</a></h4>
-              <p> &nbsp &nbsp &nbsp &nbsp ESP-IDF is the development framework for Espressif SoCs supported on Windows,
-                Linux and macOS.
-                Espressif provides basic hardware and software resources to help application developers realize their
-                ideas using the ESP32 series hardware.
-              </p>
-            </div>
-          </div>
-          <div class="col-md-5 col-md-offset-2">
-            <div class="service-item">
-              <h4 class="text-center"><a href="https://github.com/espressif/esp-thread-br">ESP Thread Border Router
-                  SDK.</a></h4>
-              <p> &nbsp &nbsp &nbsp &nbsp ESP-Thread-BR is the official ESP Thread Border Router SDK.
-                It supports all fundamental network features to build a Thread Border Router and integrates rich product
-                level features for quick productization.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
     <section id="Scan" class="sub-section">
       <div class="container">
         <div class="section-header default-margin">
-          <h2><span style="color: #0ea2bd">Discover</span> Thread Network</h2>
+          <h2><span style="color: var(--color-primary)">Discover</span> Thread Network</h2>
           <p>Here, you can scan for available Thread networks, and choose to join one of them.</p>
         </div>
         <div class="row">
@@ -171,14 +185,13 @@
           <div class="row">
             <button class="btn-submit" style="margin-top: 1%; margin-left: 1275px;"
               onclick="http_server_scan_thread_network()">SCAN</button>
-          </div>         
+          </div>
         </div>
-      </div>
     </section>
     <section id="Form" class="sub-section">
       <div class="container">
         <div class="section-header default-margin">
-          <h2><span style="color: #0ea2bd">Form</span> Thread Network</h2>
+          <h2><span style="color: var(--color-primary)">Form</span> Thread Network</h2>
           <p>Here, the ESP-OpenThread network would be form using the parameter provided by you.</p>
         </div>
         <div class="part">
@@ -269,7 +282,7 @@
     <section id="Settings" class="sub-section">
       <div class="container">
         <div class="section-header default-margin">
-          <h2>Thread Network <span style="color: #0ea2bd">Settings</span></h2>
+          <h2>Thread Network <span style="color: var(--color-primary)">Settings</span></h2>
           <p>Here, setting the default options for the ESP-OpenThread network can make your Thread device more flexible.</p>
         </div>
         <div class="part">
@@ -309,20 +322,34 @@
             </form>
           </div><!-- End blog comments -->
         </div>
+      </div>
+    </section>
+    <section id="Firmware" class="sub-section">
+      <div class="container">
+        <div class="section-header default-margin">
+          <h2>Firmware <span style="color: var(--color-primary)">Updates</span></h2>
+          <p>Check for and install the latest firmware for the two chips on your CZC.</p>
+        </div>
         <div class="part">
           <div class="submit-form">
-            <div class="row">
-              <div class="col-md-8">
-                <h4>Firmware Update / Flash</h4>
+            <div class="firmware-boxes">
+              <div class="firmware-box">
+                <h5>ESP</h5>
+                <p>
+                  The ESP32 is the main chip on the CZC. It runs this firmware,
+                  provides Wi-Fi/Ethernet connectivity and the web interface,
+                  and hosts the Thread Border Router application.
+                </p>
+                <button type="button" class="btn btn-primary" onclick="frontend_flash_esp_button()">Show Available</button>
               </div>
-            </div>
-            <hr/>
-            <div class="row">
-              <div class="col-md-2">
-                <button type="button" class="btn btn-primary" onclick="frontend_flash_esp_button()">Flash ESP</button>
-              </div>
-              <div class="col-md-2">
-                <button type="button" class="btn btn-primary" onclick="frontend_flash_rcp_button()">Flash RCP</button>
+              <div class="firmware-box">
+                <h5>RCP</h5>
+                <p>
+                  The Radio Co-Processor (RCP) is a separate CC2652P7 chip
+                  dedicated to the IEEE 802.15.4/Thread radio. It is connected
+                  to the ESP32 via UART and controlled using the Spinel protocol.
+                </p>
+                <button type="button" class="btn btn-primary" onclick="frontend_flash_rcp_button()">Show Available</button>
               </div>
             </div>
           </div>
@@ -332,7 +359,7 @@
     <section id="Status" class="sub-section">
       <div class="container">
         <div class="section-header default-margin">
-          <h2>Thread Network <span style="color: #0ea2bd" onclick="http_server_get_thread_network_properties()">Status</span> </h2>
+          <h2>Thread Network <span style="color: var(--color-primary)" onclick="http_server_get_thread_network_properties()">Status</span> </h2>
           <p>The status of the ESP-OpenThread network, including its IPv6, network, OpenThread, RCP, WPAN, and other components, would be displayed here.</p>
         </div>
         <div class="row g-4 g-lg-5">
@@ -537,7 +564,7 @@
     <section id="Topology" class="sub-section">
       <div class="container">
         <div class="section-header default-margin">
-          <h2>Thread Network <span style="color: #0ea2bd">Topology</span></h2>
+          <h2>Thread Network <span style="color: var(--color-primary)">Topology</span></h2>
           <p>The network topology structure of Thread will be shown in a more intuitive and detailed manner here.</p>
         </div>
         <div class="part">
@@ -568,30 +595,6 @@
         </div>
       </div>
     </section>
-    <section id="Contact" class="contact">
-      <div class="container">
-        <div class="section-header default-margin">
-          <h2>Contact <span style="color: #0ea2bd">Us</span></h2>
-          <p>If you meet some questions or have a few advises for us, there is a way to contact us.</p>
-        </div>
-        <div class="row">
-          <div class="col-md-11">
-            <div class="info">
-              <h3>Get in Touch</h3>
-              <p>The following is a list of contact information that may be helpful to you, including Sales Questions, Technical Inquiries, 
-                  Get-Samples, and Comments & Suggestions.</p>
-              <div class="info-item">
-                <div>
-                  <h4>Technical Inquiries:</h4>
-                  <a href="https://www.espressif.com/en/contact-us/technical-inquiries">
-                    Do you have any technical questions about our products?</a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
     <div id="flash_window" class="dialog">
       <div class="dialog-content" style="width: 620px; max-width: 90vw;">
         <h2 id="flash_window_title">Select Firmware</h2>
@@ -613,68 +616,15 @@
         <button type = "button" class="dialog-button" style ="width: 60px; height: 30px; " onclick="frontend_log_close(this)">Okay</button>
       </div>
     </div>
-  </main>
-  <footer id="footer" class="footer">
-    <div class="footer-content">
-      <div class="container">
-        <div class="row">
-
-          <div class="col-lg-3 col-md-6">
-            <div class="footer-info">
-              <h3>Espressif</h3>
-              <p>
-                Bibo Road, Pudong New Area, Shanghai <br>
-                NY 201203, China<br><br>
-                <strong>SHARE::CONNECT::INNOVATE</strong><br>
-              </p>
-            </div>
-          </div>
-
-          <div class="col-lg-2 col-md-6 footer-links">
-            <h4>Products</h4>
-            <ul>
-              <li><i></i> <a href="https://www.espressif.com/en/products/socs">SoCs</a></li>
-              <li><i></i> <a href="https://www.espressif.com/en/products/modules">Modules</a></li>
-              <li><i></i> <a href="https://www.espressif.com/en/products/devKits">DeKits</a></li>
-            </ul>
-          </div>
-
-          <div class="col-lg-3 col-md-6 footer-links">
-            <h4>Documents</h4>
-            <ul>
-              <li> <a href="https://www.espressif.com/en/support/documents/technical-documents">Technical Documents</a>
-              </li>
-              <li> <a href="https://www.espressif.com/en/support/documents/certificates">Certificates</a></li>
-              <li> <a href="https://www.espressif.com/en/support/documents/pcns">PCNs</a></li>
-              <li> <a href="https://www.espressif.com/en/support/documents/advisories">Advisories</a></li>
-            </ul>
-          </div>
-
-          <div class="col-lg-4 col-md-6 footer-newsletter">
-            <h4>Some Advice</h4>
-            <p>Join us to create an interconnection of all things world</p>
-            <form action="" method="post">
-              <a href="https://www.espressif.com/en/subscribe"><input type="email" name="email"><input type="button"
-                  value="Subscribe"></a>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="footer-legal text-center">
-      <div class="container flex-lg-row justify-content-center justify-content-lg-between align-items-center">
-        <div class="align-items-center align-items-lg-start">
-          <div class="copyright">
-            &copy; Copyright <strong><span>@2022 ESPRESSIF SYSTEMS (SHANGHAI) CO., LTD.</span></strong>. All Rights
-            Reserved
-          </div>
-          <div class="credits">
-            Designed by ESPRESSIF's 15.4 Group
-          </div>
-        </div>
-      </div>
-    </div>
-  </footer>
+    </main>
+  </div>
+  <script>
+    document.querySelectorAll('.sidebar-nav a').forEach(function (link) {
+      link.addEventListener('click', function () {
+        document.querySelector('.app-body').classList.remove('sidebar-open');
+      });
+    });
+  </script>
 </body>
 
 </html>

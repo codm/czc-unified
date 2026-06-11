@@ -77,9 +77,15 @@ esp_err_t SysNvsBinding::clearRcpFlashConfig()
         return ret;
     }
 
-    ret = nvs_erase_all(handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to erase NVS namespace: %s", esp_err_to_name(ret));
+    ret = nvs_erase_key(handle, NVS_KEY_RCP_URL);
+    if (ret != ESP_OK && ret != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGE(TAG, "Failed to erase rcp_url: %s", esp_err_to_name(ret));
+        goto cleanup;
+    }
+
+    ret = nvs_erase_key(handle, NVS_KEY_RCP_PENDING);
+    if (ret != ESP_OK && ret != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGE(TAG, "Failed to erase rcp_pending: %s", esp_err_to_name(ret));
         goto cleanup;
     }
 
@@ -108,7 +114,7 @@ bool SysNvsBinding::rcpFlashPending()
     ret = nvs_get_u8(handle, NVS_KEY_RCP_PENDING, &pending);
     nvs_close(handle);
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to read pending from NVS");
+        ESP_LOGW(TAG, "Failed to read pending from NVS: %s", esp_err_to_name(ret));
         return false;
     }
 
@@ -143,18 +149,21 @@ esp_err_t SysNvsBinding::writeNvsDeviceSetup(bool isDeviceSetup)
     esp_err_t ret = nvs_open(NVS_SYS_NAMESPACE, NVS_READWRITE, &handle);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Error while trying to open NvsDeviceSetup - READWRITE | Error: %s", esp_err_to_name(ret));
-        goto cleanup;
+        return ret;
     }
 
     ret = nvs_set_u8(handle, NVS_KEY_DEVICE_SETUP, (uint8_t)isDeviceSetup);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write deviceSetup: %s", esp_err_to_name(ret));
-        goto cleanup;
+        nvs_close(handle);
+        return ret;
     }
 
-    return ESP_OK;
+    ret = nvs_commit(handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to commit deviceSetup: %s", esp_err_to_name(ret));
+    }
 
-    cleanup:
     nvs_close(handle);
-    return ESP_FAIL;
+    return ret;
 }
