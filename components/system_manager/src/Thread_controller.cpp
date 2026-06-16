@@ -1,5 +1,6 @@
 #include "Thread_controller.h"
 #include "nvs_flash.h"
+#include "esp_openthread_border_router.h"
 
 const char* Thread_controller::TAG = "esp_ot_br";
 
@@ -37,7 +38,7 @@ esp_err_t Thread_controller::init(const system_flash_callbacks_t *flash_cbs)
 
     ESP_ERROR_CHECK(esp_vfs_eventfd_register(&eventfd_config));
     ESP_ERROR_CHECK(mdns_init());
-    ESP_ERROR_CHECK(mdns_hostname_set("esp-ot-br"));
+    ESP_ERROR_CHECK(mdns_hostname_set("codm-otbr"));
 
     // configure webserver start on ETH / STA GOT IP Events
     web_server_conf = {
@@ -62,10 +63,33 @@ esp_err_t Thread_controller::init(const system_flash_callbacks_t *flash_cbs)
 esp_err_t Thread_controller::start()
 {
     ESP_LOGI(TAG, "Start init");
+
+    // Backbone netif must be set before esp_openthread_start so the border
+    // router can advertise OMR prefixes via RA and forward packets between
+    // the Thread mesh and the home network.
+    esp_netif_t *backbone_if = esp_netif_get_handle_from_ifkey("ETH_DEF");
+    if (backbone_if == nullptr) {
+        ESP_LOGW(TAG, "ETH_DEF netif not found, trying WIFI_STA_DEF");
+        backbone_if = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    }
+    if (backbone_if != nullptr) {
+        esp_openthread_set_backbone_netif(backbone_if);
+    } else {
+        ESP_LOGE(TAG, "No backbone netif found — border routing will not work!");
+    }
+
     ESP_ERROR_CHECK(esp_openthread_start(&config));
+
+    // border_router_init internally calls esp_openthread_task_switching_lock_release,
+    // which asserts that the calling task holds s_openthread_task_mutex.
+    // esp_openthread_lock_acquire acquires both mutexes, satisfying that requirement.
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    ESP_ERROR_CHECK(esp_openthread_border_router_init());
+    esp_openthread_lock_release();
+
     ESP_LOGI(TAG, "Start auto start");
     // ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
-    ot_network_auto_start();  
+    ot_network_auto_start();
     ESP_LOGI(TAG, "OTBR started!");
     
     thread_active = true;
