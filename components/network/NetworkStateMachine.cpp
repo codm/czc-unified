@@ -97,6 +97,12 @@ void NetworkStateMachine::network_event_handler(void *arg, esp_event_base_t even
 
     if (event_base == IP_EVENT) {
         switch (event_id) {
+            case IP_EVENT_GOT_IP6: {
+                auto *ip6_event = static_cast<ip_event_got_ip6_t *>(event_data);
+                ESP_LOGI(TAG, "Got IPv6: " IPV6STR, IPV62STR(ip6_event->ip6_info.ip));
+                break;
+            }
+
             case IP_EVENT_STA_GOT_IP:
                 ESP_LOGI(TAG, "Wifi got IP");
                 if(self->initTimer) esp_timer_stop(self->initTimer);
@@ -123,6 +129,7 @@ void NetworkStateMachine::network_event_handler(void *arg, esp_event_base_t even
                 self->setState(NetworkState::ETHERNET);
                 ESP_LOGI(TAG, "Ethernet got IP -> changed mode to Ethernet");
                 auto *ip_event = static_cast<ip_event_got_ip_t *>(event_data);
+                esp_netif_create_ip6_linklocal(ip_event->esp_netif);
                 EthernetAPI::logNetDiag(ip_event->esp_netif);
                 break;
             }
