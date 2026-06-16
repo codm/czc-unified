@@ -31,7 +31,7 @@ build when capturing logs.
 2. **Connect the CZC**: plug it into your PC via USB (serial console) and into your
    network via a LAN cable.
 
-   Once booted, the web interface is reachable at [http://esp-ot-br.local](http://esp-ot-br.local).
+   Once booted, the web interface is reachable at [http://codm-otbr.local](http://codm-otbr.local).
 
 3. **Configure CoolTerm**:
    - Open "Options".
@@ -68,7 +68,7 @@ build when capturing logs.
 4. Wait a few minuets until your ESP32 has successfully setup and started its Webinterface (This can take a while depending on your internet connection speed). 
 > NOTE: After the first flash the ESP automatically Downloads the RCP firmware and flashes the Radio-Co-Processor. This does not yet have a visual output besides Debug prints.
 
-5. Open [http://esp-ot-br.local](http://esp-ot-br.local) and you can start setting up a Thread Network!
+5. Open [http://codm-otbr.local](http://codm-otbr.local) and you can start setting up a Thread Network!
 
 ## Home Assistant Integration (Thread Border Router & Matter)
 
