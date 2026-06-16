@@ -70,6 +70,98 @@ build when capturing logs.
 
 5. Open [http://esp-ot-br.local](http://esp-ot-br.local) and you can start setting up a Thread Network!
 
+## Home Assistant Integration (Thread Border Router & Matter)
+
+This guide explains how to integrate your CZC border router into Home Assistant using Thread and Matter over Thread.
+
+---
+
+### Prerequisites
+
+- Home Assistant installed and running (on the same local network as your device)
+- Home Assistant Companion App installed on your smartphone
+- **Bluetooth enabled** on your smartphone (required for the pairing process)
+- Your smartphone must be connected to the **same local network** as Home Assistant
+
+---
+
+### Step 1 — Install the Thread Integration
+
+1. In Home Assistant, navigate to **Settings → Devices & Services**.
+2. Click **+ Add Integration** and search for **Thread**.
+3. Install the Thread integration.
+
+---
+
+### Step 2 — Add a Thread Border Router
+
+1. In **Settings → Devices & Services**, click the **gear icon (⚙)** next to the Thread integration to open its settings.
+2. Click the **three-dot menu (⋮)** in the top-right corner.
+3. Select **Add Thread Border Router** and follow the on-screen instructions.
+4. Once added, open the border router's details and select **Make Preferred Network** to designate it as the primary Thread network.
+
+---
+
+### Step 3 — Install the Matter Integration (for Matter over Thread)
+
+If your device uses **Matter over Thread**, you also need the Matter integration:
+
+1. Navigate to **Settings → Devices & Services**.
+2. Click **+ Add Integration**, search for **Matter**, and install it.
+3. During setup, you will also be prompted to install the **Matter Server** (the commissioner add-on). Install it and wait for it to start — this component handles all Matter commissioning and communication.
+
+---
+
+### Step 4 — Connect Your Device
+
+1. Open the **Home Assistant Companion App** on your smartphone.
+2. Go to **Settings → Companion App → Troubleshooting → Synchronize Thread Credentials**. This ensures your phone shares the Thread network credentials with Home Assistant so it can act as a commissioning bridge.
+3. Back in Home Assistant, go to **Settings → Devices & Services → Devices** and click **+ Add Device**.
+4. **Put your device into pairing mode** (refer to your device's documentation for how to do this).
+5. **Scan the QR code** displayed on or shipped with your device to complete commissioning.
+
+---
+
+### Troubleshooting
+
+#### Pairing fails or device is not found
+
+- Make sure **Bluetooth is enabled** on your phone — it is required during the commissioning process even if the device ultimately connects via Thread.
+- Confirm your phone is on the **same local network** as your Home Assistant instance.
+- Try **clearing the cache** of the Home Assistant Companion App: on Android go to *App Info → Storage → Clear Cache*; on iOS, delete and reinstall the app. This resolves stale credential or state issues in the app.
+
+#### Pairing fails due to IPv6 not being enabled
+
+Thread requires IPv6. If pairing fails immediately, the cause is often that IPv6 is not enabled inside the **Docker container that runs the Thread integration within Home Assistant**. Note that this is unrelated to whether Home Assistant itself is running in Docker — it specifically concerns the internal Thread container that Home Assistant manages.
+
+**There is currently no UI option for this — it must be changed from the command line.**
+
+For full details refer to the official documentation: [https://www.home-assistant.io/integrations/thread/#home-assistant-operating-system](https://www.home-assistant.io/integrations/thread/#home-assistant-operating-system)
+
+To check and enable IPv6:
+
+1. Open the **Terminal & SSH** add-on (or any equivalent terminal app).
+
+2. Check the current setting:
+   ```
+   ha docker info
+   ```
+   If `enable_ipv6` shows `null` or `false`, proceed to the next step.
+
+3. Enable IPv6 for the Docker environment Home Assistant uses:
+   ```
+   ha docker options --enable-ipv6=true
+   ```
+
+4. Reboot Home Assistant for the change to take effect:
+   ```
+   ha host reboot
+   ```
+
+> **Note:** If Home Assistant OS is running inside a virtual machine, make sure the VM itself has IPv6 connectivity. If your hypervisor is routing traffic (rather than bridging), IPv6 forwarding may also need to be enabled on the hypervisor — refer to your hypervisor's documentation for instructions.
+
+---
+
 ## Overview
 
 This Firmware implements an [OpenThread Border Router](https://openthread.io/guides/border-router) based on a ESP32 and a CC2652P7 Radio-Co-Processor (RCP).
