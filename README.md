@@ -98,7 +98,8 @@ This guide explains how to integrate your CZC border router into Home Assistant 
 1. In **Settings → Devices & Services**, click the **gear icon (⚙)** next to the Thread integration to open its settings.
 2. Click the **three-dot menu (⋮)** in the top-right corner.
 3. Select **Add Thread Border Router** and follow the on-screen instructions.
-4. Once added, open the border router's details and select **Make Preferred Network** to designate it as the primary Thread network.
+4. You will be prompted fill in the URL of the OTBRs REST API: `http://device-ip` or `http://codm-otbr.local`.
+5. Once added, open the border router's details and select **Make Preferred Network** to designate it as the primary Thread network.
 
 ---
 
