@@ -63,12 +63,18 @@ build when capturing logs.
 2. Connect your CZC to LAN
 > IMPORTANT NOTE: Currently ESP, RCP Firmware Updates are only supported via LAN. 
 
-3. Open [ESP Webflasher](https://web.esphome.io/). Upload the downloaded firmware and flash the CZC.
+3. Open [ESP Webflasher](https://docs.codm.de/en/zigbee/coordinator/web-installer/). Pick the appropriate OTBR Firmware Version.
 
 4. Wait a few minuets until your ESP32 has successfully setup and started its Webinterface (This can take a while depending on your internet connection speed). 
 > NOTE: After the first flash the ESP automatically Downloads the RCP firmware and flashes the Radio-Co-Processor. This does not yet have a visual output besides Debug prints.
 
 5. Open [http://codm-otbr.local](http://codm-otbr.local) and you can start setting up a Thread Network!
+
+## Wifi / SoftAP
+
+When no Wifi was previously configured and LAN is not connected the CZC opens up an Access Point named `OTBR-Codm` with the password: `codmcodm`.
+After you connected your Device to the network you can open the wifi configuration interface on `192.168.4.1` and enter your Wifi credentials.
+>NOTE: Currently there is no fallback implemented if you enter wrong credentials. So make sure they are correct on your first try!
 
 ## Home Assistant Integration (Thread Border Router & Matter)
 
