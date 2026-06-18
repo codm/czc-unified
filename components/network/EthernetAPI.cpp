@@ -38,10 +38,11 @@ void EthernetAPI::initEthernet()
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &EthernetAPI::eth_event_handler, NULL));
 
     // ip stack config
-    esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH(); 
-    esp_netif_t *eth_netif = esp_netif_new(&cfg); 
+    esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
+    esp_netif_t *eth_netif = esp_netif_new(&cfg);
+    esp_netif_set_hostname(eth_netif, "codm-otbr");
 
-    esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle)); 
+    esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle));
     esp_eth_start(eth_handle); 
     ethIsInitialised = true;
 }

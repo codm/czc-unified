@@ -29,6 +29,7 @@ void WirelessAPI::setWirelessConfig(char *_ssid, char *_password)
 void WirelessAPI::initAccessPoint()
 {
     if(!apNetif) apNetif = esp_netif_create_default_wifi_ap();
+    esp_netif_set_hostname(apNetif, "codm-otbr");
 
     wifi_init_config_t initAccessPointConfig = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&initAccessPointConfig));
@@ -103,6 +104,7 @@ void WirelessAPI::initWifi()
     }
 
     if(!wifiNetif) wifiNetif = esp_netif_create_default_wifi_sta();
+    esp_netif_set_hostname(wifiNetif, "codm-otbr");
 
     wifi_init_config_t initWifiConfig = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&initWifiConfig));
