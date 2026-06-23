@@ -15,11 +15,6 @@
 #include "esp_openthread_types.h"
 #include "esp_vfs_dev.h"
 #include "esp_vfs_eventfd.h"
-#include "mdns.h"
-extern "C" {
-#include "ot_examples_br.h"
-#include "ot_examples_common.h"
-}
 
 #include "esp_br_web.h"
 #include "esp_spiffs.h"

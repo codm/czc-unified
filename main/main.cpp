@@ -12,24 +12,14 @@ extern "C" void app_main(void) {
     Rcp_interface rcp_interface;
     System_manager system_manager(rcp_interface, UART_NUM_2);
 
-    EthernetAPI ethernetAPI;
-    
-    WirelessAPI wirelessAPI("otbr-codm", "codmcodm", 2); // default AP 
-    
-    NetworkStateMachine networkStateMachine(ethernetAPI, wirelessAPI);
-    networkStateMachine.initNetworkStateMachine();
+    NetworkStateMachine networkStateMachine;
     
     if (!system_manager.isRcpFlashPending()) {
         system_manager.initThread();
     }
 
-    ESP_LOGI(TAG, "Init completed!, waiting for Internet connection, %d", networkStateMachine.getState());
-    // wait until network connection is setup
-    while (networkStateMachine.getState() != NetworkState::WLAN &&
-           networkStateMachine.getState() != NetworkState::ETHERNET) {
-        vTaskDelay(100);
-    }
-    vTaskDelay(pdMS_TO_TICKS(1000)); // wait 1s for Wifi to connect, proper check function has to be implemented
+    ESP_LOGI(TAG, "Init completed!, waiting for Internet connection");
+    networkStateMachine.waitUntilInternetIsConnected();
 
     if (system_manager.isDeviceSetup() == false) {
         char* rcp_v1_url = "https://github.com/codm/czc-ot-rcp-fw/releases/download/V1.0.0/czc_ot_rcp_fw_1.0.0.bin";

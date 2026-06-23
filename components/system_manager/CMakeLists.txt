@@ -16,7 +16,6 @@ idf_component_register(
         esp_driver_uart
         spiffs
         esp_driver_gpio
-        espressif__mdns
 
         # Thread Controller requires 
         openthread
@@ -24,8 +23,6 @@ idf_component_register(
         esp_ot_br_server 
         spiffs
         esp_wifi
-        espressif__mdns
-        ot_examples_br
-        ot_examples_common
 )
+
 # split into priv and non priv required and check different requires it they are really needed 

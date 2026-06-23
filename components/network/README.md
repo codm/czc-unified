@@ -1,120 +1,202 @@
 # Network Component
 
+Manages network connectivity for the CODM OTBR device. A state machine coordinates
+between Ethernet, WiFi (STA), and a configuration AccessPoint, persisting credentials
+in NVS.
+
+---
+
+## Architecture
+
+```mermaid
+classDiagram
+    class NetworkStateMachine {
+        -NetworkState currentState
+        -EthernetAPI ethernetAPI
+        -WirelessAPI wirelessAPI
+        -esp_timer_handle_t initTimer
+        -esp_timer_handle_t retryTimer
+        +getState() NetworkState
+        +setState(NetworkState)
+    }
+
+    class EthernetAPI {
+        -bool ethIsConnected
+        -bool ethIsInitialised
+        +initEthernet()
+        +closeEthernet()
+        +getEthIsConnected() bool
+        +setEthIsConnected(bool)
+        +logNetDiag(esp_netif_t*)
+    }
+
+    class WirelessAPI {
+        -ActiveWirelessMode activeWirelessMode
+        -bool wifiIsConnected
+        -char ssid[32]
+        -char password[64]
+        -SoftapConfig softapConfig
+        +initWifi()
+        +closeWifi()
+        +initAccessPoint()
+        +closeAccessPoint()
+        +startConfigPollingTask()
+        +reconnect()
+        +setWirelessConfig(const char*, const char*)
+        +getActiveWirelessMode() ActiveWirelessMode
+        +setWifiIsConnected(bool)
+    }
+
+    class NvsBinding {
+        <<static>>
+        +readNetworkConfig(NetworkConfig) esp_err_t
+        +writeNetworkConfig(NetworkConfig) esp_err_t
+        +networkConfigExists() bool
+    }
+
+    class NetworkConfig {
+        +char ssid[32]
+        +char password[64]
+        +bool wifiConfigured
+    }
+
+    class SoftapConfig {
+        +char ssid[32]
+        +char password[64]
+        +uint8_t maxConnected
+    }
+
+    class NetworkState {
+        <<enumeration>>
+        INIT
+        ETHERNET
+        WIFI
+        ACCESS_POINT
+        RETRY_WIFI
+    }
+
+    class ActiveWirelessMode {
+        <<enumeration>>
+        OFF
+        WIFI
+        ACCESSPOINT
+    }
+
+    NetworkStateMachine *-- EthernetAPI : owns
+    NetworkStateMachine *-- WirelessAPI : owns
+    NetworkStateMachine ..> NvsBinding : uses
+    NetworkStateMachine ..> NetworkConfig : reads / writes
+    NetworkStateMachine -- NetworkState : currentState
+    WirelessAPI *-- SoftapConfig : owns
+    WirelessAPI -- ActiveWirelessMode : activeWirelessMode
+    NvsBinding ..> NetworkConfig : serialises
+```
+
+---
+
 ## State Machine
 
 ```mermaid
 stateDiagram-v2
-    direction TB
+    direction LR
 
     [*] --> INIT
 
-    %% ── INIT ──────────────────────────────────────────────────────────────
-    INIT --> ETHERNET    : IP_EVENT_ETH_GOT_IP\nsetEthIsConnected(true)\ninitTimer gestoppt
-    INIT --> WLAN        : IP_EVENT_STA_GOT_IP [Eth nicht verbunden]\nsetWifiIsConnected(true)\ninitTimer gestoppt\n[NVS] writeNetworkConfig()
-    INIT --> ACCESS_POINT: NETWORK_EVENT_INIT_TIMEOUT [5s, keine Verbindung]\ncloseWifi() falls aktiv
+    INIT --> ETHERNET     : ETH_GOT_IP
+    INIT --> WIFI         : STA_GOT_IP [no Eth]
 
-    %% ── ACCESS_POINT ──────────────────────────────────────────────────────
-    ACCESS_POINT --> WLAN: NETWORK_EVENT_CONFIG_UPDATED\n(Credentials vom Captive Portal)\ncloseAccessPoint()
+    INIT --> ACCESS_POINT : INIT_TIMEOUT [5 s]
+    ACCESS_POINT --> RETRY_WIFI : CONFIG_UPDATED
 
-    %% ── WLAN ──────────────────────────────────────────────────────────────
-    WLAN --> RETRY_WIFI : NETWORK_EVENT_WIFI_DISCONNECTED\n[WiFi bleibt aktiv]
-    WLAN --> ETHERNET   : IP_EVENT_ETH_GOT_IP\ncloseWifi()
-    WLAN --> ETHERNET   : IP_EVENT_STA_LOST_IP\nsetWifiIsConnected(false)\ncloseWifi()
+    WIFI --> ETHERNET   : ETH_GOT_IP
+    WIFI --> ETHERNET   : STA_LOST_IP
 
-    %% ── RETRY_WIFI ────────────────────────────────────────────────────────
-    RETRY_WIFI --> WLAN        : IP_EVENT_STA_GOT_IP\nsetWifiIsConnected(true)\nretryTimer gestoppt\n[NVS] writeNetworkConfig()
-    RETRY_WIFI --> ACCESS_POINT: NETWORK_EVENT_RETRY_TIMEOUT\n[NVS: kein Config — erstes Verbinden]\nretryTimer gestoppt\ncloseWifi()
-    RETRY_WIFI --> ETHERNET    : NETWORK_EVENT_RETRY_TIMEOUT\n[NVS: Config vorhanden]\nretryTimer gestoppt\ncloseWifi()
+    WIFI --> RETRY_WIFI   : WIFI_DISCONNECTED
+    RETRY_WIFI --> WIFI   : STA_GOT_IP
 
-    %% ── ETHERNET ──────────────────────────────────────────────────────────
-    ETHERNET --> WLAN        : IP_EVENT_ETH_LOST_IP [NVS: Config vorhanden]\nsetEthIsConnected(false)\ncloseEthernet()\n[NVS] readNetworkConfig()\nsetWirelessConfig()
-    ETHERNET --> ACCESS_POINT: IP_EVENT_ETH_LOST_IP [NVS: kein Config]\nsetEthIsConnected(false)\ncloseEthernet()
-
-    %% ── Entry-Actions (Notes) ─────────────────────────────────────────────
-    note right of INIT
-        Entry:
-        ethernetAPI.initEthernet()
-        initTimer starten (5s)
-        [NVS] networkConfigExists()?
-          ja → readNetworkConfig()
-             → setWirelessConfig()
-             → initWifi()
-    end note
-
-    note right of ACCESS_POINT
-        Entry:
-        initAccessPoint()
-        apWaitUntilConnected()
-        (FreeRTOS Task wartet auf
-         Captive Portal Config)
-    end note
-
-    note right of RETRY_WIFI
-        Entry:
-        reconnect()
-        retryTimer starten (10s Deadline)
-    end note
-
-    note left of WLAN
-        Entry:
-        initWifi() [nur falls mode == OFF]
-    end note
-
-    note left of ETHERNET
-        Entry:
-        initEthernet() [nur falls nicht init]
-    end note
+    ETHERNET --> RETRY_WIFI   : ETH_LOST_IP [NVS config]
+    ETHERNET --> ACCESS_POINT : ETH_LOST_IP [no NVS]
+    RETRY_WIFI --> ACCESS_POINT : RETRY_TIMEOUT [10 s]
 ```
 
-**NVS Namespace:** `wifi_cfg` — Keys: `ssid`, `password`, `configured`
+> **Event prefix:** `ETH_GOT_IP` = `IP_EVENT_ETH_GOT_IP`, `STA_GOT_IP` = `IP_EVENT_STA_GOT_IP`,
+> `WIFI_DISCONNECTED` = `NETWORK_EVENT_WIFI_DISCONNECTED`, etc.
+>
+> **`CONFIG_UPDATED`** (`NETWORK_EVENT_CONFIG_UPDATED`) can fire from any active state —
+> it always tears down the current interface and transitions to `RETRY_WIFI`.
 
 ---
 
-## Manuelle Test-Routine
+### States
 
-### 1 — Kaltstart ohne Ethernet, ohne WiFi-Config (NVS leer)
-- Board booten, kein Ethernet, kein gespeichertes WiFi
-- **Erwartung:** Nach ~5s öffnet sich der AccessPoint
-- Mit Handy/Laptop nach SSID scannen → AP sichtbar
+| State | Description |
+|---|---|
+| `INIT` | Boot state. Ethernet starts immediately; WiFi starts if NVS credentials exist. A 5-second timer runs — if no interface delivers an IP the AccessPoint opens. |
+| `ETHERNET` | Ethernet is the active uplink with a valid IP. |
+| `WIFI` | WiFi STA is the active uplink with a valid IP. |
+| `RETRY_WIFI` | WiFi is connecting or reconnecting. A 10-second timer runs; on expiry the AccessPoint reopens. Entered whenever a WiFi connection attempt is needed, regardless of the previous state. |
+| `ACCESS_POINT` | No usable uplink. A SoftAP + config webserver is open so the user can submit WiFi credentials. |
 
-### 2 — WiFi über AccessPoint konfigurieren
-- Mit AP verbinden, Webserver öffnen, SSID + Passwort eingeben
-- **Erwartung:** AP schließt sich, Board versucht WiFi-Verbindung → Log zeigt `WLAN` State
+---
 
-### 3 — WiFi-Verbindung kurz unterbrechen (Router kurz aus/an)
-- Im WLAN-State: Router kurz ausschalten (~3s), wieder einschalten
-- **Erwartung:** Board geht in RETRY_WIFI, versucht reconnect, bekommt IP zurück → zurück in WLAN
-- Log: `Wifi disconnected -> starting retry timer` → `Wifi got IP -> changed mode to Wifi`
+### Connection Routes
 
-- Im WLAN-State: Router aus, **nicht** wieder einschalten
-- **Erwartung:** Nach ~10s Retry-Timeout → AccessPoint öffnet sich wieder (da `nvsWifiConfigExists = false`)
-- Log: `First connection attempt timed out, no stored config -> reopening AccessPoint`
+**1 — Boot → Ethernet**
+`INIT → ETHERNET`
+Ethernet cable present at boot. `IP_EVENT_ETH_GOT_IP` arrives before the 5-second init timeout.
 
-### 5 — Kaltstart mit Ethernet
-- Board booten, Ethernet-Kabel eingesteckt
+**2 — Boot → WiFi**
+`INIT → WIFI`
+NVS holds credentials, WiFi connects, and `IP_EVENT_STA_GOT_IP` arrives before the 5-second timeout without Ethernet being active.
 
-- **Erwartung:** Vor 5s-Timeout kommt `IP_EVENT_ETH_GOT_IP` → State wechselt zu ETHERNET, kein AP öffnet sich
-- Log: `Ethernet got IP -> changed mode to Ethernet`
+**3 — Boot → AccessPoint**
+`INIT → ACCESS_POINT`
+Neither Ethernet nor WiFi delivers an IP within 5 seconds. The AccessPoint opens for initial setup.
 
-### 6 — Ethernet während WiFi-Betrieb einstecken
-- Im WLAN-State: Ethernet-Kabel einstecken
-- **Erwartung:** `IP_EVENT_ETH_GOT_IP` → State wechselt zu ETHERNET, WiFi wird geschlossen
-- Log: `Ethernet got IP -> changed mode to Ethernet`
+**4 — AccessPoint → WiFi (credentials accepted)**
+`ACCESS_POINT → RETRY_WIFI → WIFI`
+User submits credentials via the config webserver. WiFi connects and an IP is obtained within 10 seconds.
 
-### 7 — Ethernet abziehen (mit gespeichertem WiFi)
-- Im ETHERNET-State: Kabel abziehen, NVS Config vorhanden
-- **Erwartung:** `IP_EVENT_ETH_LOST_IP` → `readNetworkConfig()` → State wechselt zu WLAN
-- Log: `Ethernet lost IP -> WiFi config found, switching to Wifi`
+**5 — AccessPoint → AccessPoint (wrong credentials)**
+`ACCESS_POINT → RETRY_WIFI → ACCESS_POINT`
+Credentials submitted but the connection fails or the 10-second retry window expires. The AccessPoint reopens so the user can try again.
 
-### 8 — Ethernet abziehen (ohne WiFi-Config)
-- Im ETHERNET-State: Kabel abziehen, NVS leer
-- **Erwartung:** `IP_EVENT_ETH_LOST_IP` → AccessPoint öffnet sich
-- Log: `Ethernet lost IP -> no WiFi config, opening AccessPoint`
+**6 — WiFi disconnect → reconnect**
+`WIFI → RETRY_WIFI → WIFI`
+WiFi drops (e.g. brief router outage). The connection is restored within the 10-second retry window.
 
-### 9 — WiFi-Config ändern während WLAN aktiv
-- Im WLAN-State: `NETWORK_EVENT_CONFIG_UPDATED` triggern (z.B. über den Webserver)
-- **Erwartung:** WiFi schließt sich, State wechselt zu WLAN und verbindet mit neuer Config
+**7 — WiFi disconnect → timeout**
+`WIFI → RETRY_WIFI → ACCESS_POINT`
+WiFi drops and cannot reconnect within 10 seconds. The AccessPoint reopens.
 
-### 10 — Reboot / `closeNetworkStateMachine()` aufrufen
-- Während Retry-Timer läuft: Board rebooten oder close aufrufen
-- **Erwartung:** Kein Crash, Timer wird sauber gestoppt und gelöscht
+**8 — Ethernet takes over from WiFi**
+`WIFI → ETHERNET`
+Ethernet cable is plugged in while WiFi is active. `IP_EVENT_ETH_GOT_IP` triggers a switch; WiFi is closed.
+
+**9 — WiFi IP lost**
+`WIFI → ETHERNET`
+`IP_EVENT_STA_LOST_IP` is received. The state machine falls back to Ethernet.
+
+**10 — Ethernet lost, WiFi fallback**
+`ETHERNET → RETRY_WIFI → WIFI`
+Ethernet loses its IP and NVS credentials exist. WiFi starts and obtains an IP within 10 seconds.
+
+**11 — Ethernet lost, no WiFi config**
+`ETHERNET → ACCESS_POINT`
+Ethernet loses its IP and no NVS credentials are stored. The AccessPoint opens.
+
+**12 — WiFi config update**
+`* → RETRY_WIFI → WIFI / ACCESS_POINT`
+`NETWORK_EVENT_CONFIG_UPDATED` tears down the current interface from any state, writes the new credentials to NVS, and starts a fresh WiFi connection attempt through `RETRY_WIFI`.
+
+---
+
+## NVS Storage
+
+Namespace: `wifi_cfg` — Keys: `ssid`, `password`, `configured`
+
+| Event | NVS operation |
+|---|---|
+| First successful WiFi IP (`IP_EVENT_STA_GOT_IP`) | `writeNetworkConfig()` |
+| Boot with stored config | `readNetworkConfig()` → `setWirelessConfig()` → `initWifi()` |
+| Ethernet lost, config present (`IP_EVENT_ETH_LOST_IP`) | `readNetworkConfig()` → `setWirelessConfig()` |

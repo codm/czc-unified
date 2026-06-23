@@ -1,6 +1,8 @@
 #include "Thread_controller.h"
 #include "nvs_flash.h"
 #include "esp_openthread_border_router.h"
+#include "esp_openthread_lock.h"
+#include "openthread/dataset.h"
 
 const char* Thread_controller::TAG = "esp_ot_br";
 
@@ -37,8 +39,6 @@ esp_err_t Thread_controller::init(const system_flash_callbacks_t *flash_cbs)
     };
 
     ESP_ERROR_CHECK(esp_vfs_eventfd_register(&eventfd_config));
-    ESP_ERROR_CHECK(mdns_init());
-    ESP_ERROR_CHECK(mdns_hostname_set("codm-otbr"));
 
     // configure webserver start on ETH / STA GOT IP Events
     web_server_conf = {
@@ -88,8 +88,11 @@ esp_err_t Thread_controller::start()
     esp_openthread_lock_release();
 
     ESP_LOGI(TAG, "Start auto start");
-    // ESP_ERROR_CHECK(esp_openthread_state_indicator_init(esp_openthread_get_instance()));
-    ot_network_auto_start();
+    otOperationalDatasetTlvs dataset;
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    otError ot_err = otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset);
+    ESP_ERROR_CHECK(esp_openthread_auto_start((ot_err == OT_ERROR_NONE) ? &dataset : NULL));
+    esp_openthread_lock_release();
     ESP_LOGI(TAG, "OTBR started!");
     
     thread_active = true;
