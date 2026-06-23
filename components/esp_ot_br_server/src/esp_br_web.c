@@ -1021,17 +1021,18 @@ static esp_err_t httpd_resp_send_spiffs_file(httpd_req_t *req, char *path)
     ESP_LOGI(WEB_TAG, "-------------------------------------------");
     ESP_LOGI(WEB_TAG, "Reading %s", path);
 
-    FILE *fp = fopen(path, "r"); // Open and read file
+    FILE *fp = fopen(path, "rb"); // Open in binary mode (gzip files contain null bytes)
 
     ESP_RETURN_ON_FALSE(fp, ESP_FAIL, WEB_TAG, "Failed to open %s file", path);
 
-    char buf[FILE_CHUNK_SIZE]; // the size of chunk
-    while (!feof(fp) && !ferror(fp)) {
-        fread(buf, FILE_CHUNK_SIZE - 1, 1, fp);
-        buf[FILE_CHUNK_SIZE - 1] = '\0';
-        httpd_resp_sendstr_chunk(req, buf);
-        memset(buf, 0, sizeof(buf));
-    };
+    char buf[FILE_CHUNK_SIZE];
+    size_t read_len;
+    while ((read_len = fread(buf, 1, FILE_CHUNK_SIZE, fp)) > 0) {
+        if (httpd_resp_send_chunk(req, buf, read_len) != ESP_OK) {
+            fclose(fp);
+            return ESP_FAIL;
+        }
+    }
     return fclose(fp) == 0 ? ESP_OK : ESP_FAIL;
 }
 
@@ -1049,8 +1050,9 @@ static esp_err_t httpd_resp_send_spiffs_file(httpd_req_t *req, char *path)
  */
 static esp_err_t index_html_get_handler(httpd_req_t *req, char *path)
 {
+    ESP_RETURN_ON_ERROR(httpd_resp_set_hdr(req, "Content-Encoding", "gzip"), WEB_TAG, "Failed to set gzip header");
     ESP_RETURN_ON_ERROR(httpd_resp_send_spiffs_file(req, path), WEB_TAG, "Failed to send index html file");
-    ESP_RETURN_ON_ERROR(httpd_resp_sendstr_chunk(req, NULL), WEB_TAG, "Failed to send http string chunk");
+    ESP_RETURN_ON_ERROR(httpd_resp_send_chunk(req, NULL, 0), WEB_TAG, "Failed to send http string chunk");
     return ESP_OK;
 }
 
@@ -1058,8 +1060,9 @@ static esp_err_t style_css_get_handler(httpd_req_t *req, char *path)
 {
     // send content-type："text/css" in http-header
     ESP_RETURN_ON_ERROR(httpd_resp_set_type(req, "text/css"), WEB_TAG, "Failed to set http text/css type");
+    ESP_RETURN_ON_ERROR(httpd_resp_set_hdr(req, "Content-Encoding", "gzip"), WEB_TAG, "Failed to set gzip header");
     ESP_RETURN_ON_ERROR(httpd_resp_send_spiffs_file(req, path), WEB_TAG, "Failed to send css file");
-    ESP_RETURN_ON_ERROR(httpd_resp_sendstr_chunk(req, NULL), WEB_TAG, "Failed to send http string chunk");
+    ESP_RETURN_ON_ERROR(httpd_resp_send_chunk(req, NULL, 0), WEB_TAG, "Failed to send http string chunk");
     return ESP_OK;
 }
 
@@ -1068,8 +1071,9 @@ static esp_err_t script_js_get_handler(httpd_req_t *req, char *path)
     // send content-type："application/javascript" in http-header
     ESP_RETURN_ON_ERROR(httpd_resp_set_type(req, "application/javascript"), WEB_TAG,
                         "Failed to set http application/javascript type");
+    ESP_RETURN_ON_ERROR(httpd_resp_set_hdr(req, "Content-Encoding", "gzip"), WEB_TAG, "Failed to set gzip header");
     ESP_RETURN_ON_ERROR(httpd_resp_send_spiffs_file(req, path), WEB_TAG, "Failed to send js file");
-    ESP_RETURN_ON_ERROR(httpd_resp_sendstr_chunk(req, NULL), WEB_TAG, "Failed to send http string chunk");
+    ESP_RETURN_ON_ERROR(httpd_resp_send_chunk(req, NULL, 0), WEB_TAG, "Failed to send http string chunk");
     return ESP_OK;
 }
 

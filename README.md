@@ -319,6 +319,28 @@ Embedded HTTP server providing the OpenThread REST API and the Web GUI, based on
 | `frontend/` | Web GUI (HTML/CSS/JS), embedded into the SPIFFS image at build time |
 | `include/`, `private_include/` | Public and private headers |
 
+### Flash Partition Layout
+
+The firmware uses a custom partition table ([`partitions.csv`](partitions.csv)) that enables dual-bank OTA updates and reserves a small SPIFFS partition for the web GUI assets.
+
+| Name | Type | Offset | Size (hex) | Size (bytes) | Size |
+|---|---|---|---|---|---|
+| `nvs` | NVS data | `0x009000` | `0x6000` | 24,576 | 24 KB |
+| `phy_init` | PHY calibration | `0x00F000` | `0x1000` | 4,096 | 4 KB |
+| `ota_0` | App (OTA slot 0) | `0x010000` | `0x1F0000` | 2,031,616 | ~1.94 MB |
+| `ota_1` | App (OTA slot 1) | `0x200000` | `0x1F0000` | 2,031,616 | ~1.94 MB |
+| `ota_data` | OTA boot selector | `0x3F0000` | `0x2000` | 8,192 | 8 KB |
+| `spiffs` | Web GUI assets | `0x3F2000` | `0xE000` | 57,344 | 56 KB |
+| **Total** | | | | **4,194,304** | **4 MB** |
+
+**OTA update flow:** The ESP-IDF OTA mechanism alternates between `ota_0` and `ota_1`. The `ota_data` partition records which slot is active. A `/flash/esp` OTA update writes the new image into the *inactive* slot and switches the `ota_data` pointer — the previously running firmware remains intact in the other slot until the next update.
+
+**SPIFFS:** Holds the gzip-compressed web GUI files (`index.html`, `restful.js`, `style.css`). The `wifi_configuration.html` is additionally embedded directly into the app binary as a fallback. See [`components/esp_ot_br_server/README.md`](components/esp_ot_br_server/README.md) for details on the build process.
+
+> **Note:** Switching between the OTBR and the CZC Zigbee firmware over-the-air is not yet possible because the two firmwares use different partition layouts. See [Zigbee to OTBR complications](#zigbee-to-otbr-complications) for details.
+
+---
+
 ### Class Diagram
 
 The diagram shows the main classes, their relationships, and how the C++ application

@@ -32,28 +32,31 @@ static EventGroupHandle_t s_wifi_event_group = NULL;
 static char s_configured_ssid[32] = "";
 static char s_configured_password[64] = "";
 
-// Embedded HTML files (will be added via SPIFFS)
-extern const char wifi_configuration_html_start[] asm("_binary_wifi_configuration_html_start");
+// Embedded gzipped HTML (via EMBED_FILES)
+extern const uint8_t wifi_configuration_html_start[] asm("_binary_wifi_configuration_html_start");
+extern const uint8_t wifi_configuration_html_end[]   asm("_binary_wifi_configuration_html_end");
 
 // HTTP handlers for WiFi configuration
 static esp_err_t wifi_config_index_handler(httpd_req_t *req)
 {
     // Try to read from SPIFFS first, fallback to embedded
-    FILE *fp = fopen("/spiffs/wifi_configuration.html", "r");
+    FILE *fp = fopen("/spiffs/wifi_configuration.html", "rb");
     if (fp) {
+        httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
         char buf[1024];
         size_t read_len;
-        while ((read_len = fread(buf, 1, sizeof(buf) - 1, fp)) > 0) {
-            buf[read_len] = '\0';
-            httpd_resp_sendstr_chunk(req, buf);
+        while ((read_len = fread(buf, 1, sizeof(buf), fp)) > 0) {
+            httpd_resp_send_chunk(req, buf, read_len);
         }
         fclose(fp);
-        httpd_resp_sendstr_chunk(req, NULL);
+        httpd_resp_send_chunk(req, NULL, 0);
         return ESP_OK;
     }
 
-    // Fallback to embedded HTML
-    httpd_resp_send(req, wifi_configuration_html_start, strlen(wifi_configuration_html_start));
+    // Fallback to embedded gzipped HTML
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    httpd_resp_send(req, (const char *)wifi_configuration_html_start,
+                    wifi_configuration_html_end - wifi_configuration_html_start);
     return ESP_OK;
 }
 
