@@ -1,4 +1,6 @@
-#pragma once
+#ifndef NETWORK_NVS_H_
+#define NETWORK_NVS_H_
+
 #include "esp_err.h"
 
 #define NVS_WIFI_NAMESPACE "wifi_cfg"
@@ -15,3 +17,5 @@ namespace NvsBinding {
     esp_err_t clearNetworkConfig();
     bool networkConfigExists();
 }
+
+#endif /* NETWORK_NVS_H_ */

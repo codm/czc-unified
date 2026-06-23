@@ -1,4 +1,6 @@
-#pragma once
+#ifndef NETWORK_EVENT_H_
+#define NETWORK_EVENT_H_
+
 #include "esp_event.h"
 
 // base NetworkStateMachine on events
@@ -9,3 +11,5 @@ enum {
     NETWORK_EVENT_RETRY_TIMEOUT,
     NETWORK_EVENT_WIFI_DISCONNECTED
 };
+
+#endif /* NETWORK_EVENT_H_ */

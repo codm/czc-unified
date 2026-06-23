@@ -37,8 +37,6 @@ esp_err_t Thread_controller::init(const system_flash_callbacks_t *flash_cbs)
     };
 
     ESP_ERROR_CHECK(esp_vfs_eventfd_register(&eventfd_config));
-    ESP_ERROR_CHECK(mdns_init());
-    ESP_ERROR_CHECK(mdns_hostname_set("codm-otbr"));
 
     // configure webserver start on ETH / STA GOT IP Events
     web_server_conf = {
