@@ -15,9 +15,6 @@
 #include "esp_br_web.h"
 #include "esp_br_web_api.h"
 #include "esp_br_web_base.h"
-#if CONFIG_OPENTHREAD_BR_SOFTAP_SETUP
-#include "esp_br_wifi_config.h"
-#endif
 #include "esp_check.h"
 #include "esp_err.h"
 #include "esp_event.h"
@@ -29,7 +26,6 @@
 #include "esp_spiffs.h"
 #include "esp_vfs.h"
 #include "http_parser.h"
-#include "protocol_examples_common.h"
 
 #include "openthread/dataset.h"
 #include "openthread/error.h"

@@ -3,331 +3,37 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Wi-Fi Configuration and SoftAP support for ESP Thread Border Router
+ * Wi-Fi Configuration Web server for ESP Thread Border Router
  */
 
 #include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
 
 #include "cJSON.h"
 #include "esp_br_web.h"
 #include "esp_br_wifi_config.h"
 #include "esp_check.h"
 #include "esp_err.h"
-#include "esp_event.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
-#include "esp_mac.h"
-#include "esp_netif.h"
-#include "esp_wifi.h"
-#include "nvs.h"
-#include "nvs_flash.h"
-#include "lwip/ip_addr.h"
-#include "lwip/netdb.h"
-#include "lwip/sockets.h"
 
 #define WIFI_CONFIG_TAG "wifi_config"
-#define WIFI_SCAN_DONE_BIT BIT0
 #define WIFI_CONFIGURED_BIT BIT1
-#define DNS_PORT 53
 #define MAX_SSID_LEN 32
 #define MAX_PASSWORD_LEN 64
 
 static bool s_wifi_config_mode = false;
-static esp_netif_t *s_ap_netif = NULL;
 static httpd_handle_t s_wifi_config_server = NULL;
 static EventGroupHandle_t s_wifi_event_group = NULL;
-static wifi_ap_record_t *s_ap_records = NULL;
-static uint16_t s_ap_count = 0;
-static TaskHandle_t s_dns_task_handle = NULL;
-static SemaphoreHandle_t s_dns_task_semaphore = NULL;
-static int s_dns_socket = -1;
-static esp_event_handler_instance_t s_wifi_event_handler_instance = NULL;
-static char s_softap_ssid[32] = "";
 static char s_configured_ssid[32] = "";
 static char s_configured_password[64] = "";
 
 // Embedded HTML files (will be added via SPIFFS)
 extern const char wifi_configuration_html_start[] asm("_binary_wifi_configuration_html_start");
-
-static esp_err_t wifi_config_dns_server_start(void);
-static void wifi_config_dns_server_stop(void);
-static void wifi_config_dns_server_task(void *arg);
-static esp_err_t wifi_config_start_softap(void);
-static void wifi_config_stop_softap(void);
-static void wifi_config_wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
-
-// DNS Server implementation
-static esp_err_t wifi_config_dns_server_start(void)
-{
-    esp_err_t ret = ESP_OK;
-    s_dns_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    ESP_GOTO_ON_FALSE(s_dns_socket >= 0, ESP_FAIL, exit, WIFI_CONFIG_TAG, "Failed to create DNS socket");
-
-    // Set socket to reuse address
-    int opt = 1;
-    setsockopt(s_dns_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-    // Set socket to non-blocking mode
-    int flags = fcntl(s_dns_socket, F_GETFL, 0);
-    fcntl(s_dns_socket, F_SETFL, flags | O_NONBLOCK);
-
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_addr.sin_port = htons(DNS_PORT);
-
-    ESP_GOTO_ON_FALSE(bind(s_dns_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) >= 0, ESP_FAIL, exit,
-                      WIFI_CONFIG_TAG, "Failed to bind DNS port %d", DNS_PORT);
-
-    // Create semaphore for task synchronization
-    s_dns_task_semaphore = xSemaphoreCreateBinary();
-    ESP_GOTO_ON_FALSE(s_dns_task_semaphore != NULL, ESP_ERR_NO_MEM, exit, WIFI_CONFIG_TAG,
-                      "Failed to create DNS task semaphore");
-    ESP_GOTO_ON_FALSE(xTaskCreate(wifi_config_dns_server_task, "dns_server", 4096, NULL, 5, &s_dns_task_handle) ==
-                          pdPASS,
-                      ESP_ERR_NO_MEM, exit, WIFI_CONFIG_TAG, "Failed to create DNS server task");
-
-    ESP_LOGI(WIFI_CONFIG_TAG, "DNS server started");
-    return ESP_OK;
-
-exit:
-    if (s_dns_task_semaphore) {
-        vSemaphoreDelete(s_dns_task_semaphore);
-        s_dns_task_semaphore = NULL;
-    }
-    if (s_dns_socket >= 0) {
-        close(s_dns_socket);
-        s_dns_socket = -1;
-    }
-    return ret;
-}
-
-static void wifi_config_dns_server_stop(void)
-{
-    // Close socket first to signal task to exit
-    if (s_dns_socket >= 0) {
-        close(s_dns_socket);
-        s_dns_socket = -1;
-    }
-
-    if (s_dns_task_handle && s_dns_task_semaphore) {
-        TaskHandle_t task_handle = s_dns_task_handle;
-        // Wait for task to signal completion via semaphore (task will exit when it detects socket is closed)
-        if (xSemaphoreTake(s_dns_task_semaphore, pdMS_TO_TICKS(1000)) != pdTRUE) {
-            // Timeout: task didn't exit in time, force delete
-            ESP_LOGW(WIFI_CONFIG_TAG, "DNS task did not exit in time, forcing deletion");
-            if (s_dns_task_handle) {
-                vTaskDelete(task_handle);
-                s_dns_task_handle = NULL;
-            }
-        }
-    }
-
-    // Clean up semaphore
-    if (s_dns_task_semaphore) {
-        vSemaphoreDelete(s_dns_task_semaphore);
-        s_dns_task_semaphore = NULL;
-    }
-
-    ESP_LOGI(WIFI_CONFIG_TAG, "DNS server stopped");
-}
-
-static void wifi_config_dns_server_task(void *arg)
-{
-    // Store gateway IP address locally to avoid accessing potentially invalid pointer
-    esp_ip4_addr_t gateway_addr;
-    IP4_ADDR(&gateway_addr, 192, 168, 4, 1);
-
-    char buffer[512];
-
-    while (s_dns_task_handle != NULL) {
-        if (s_dns_socket < 0) {
-            break;
-        }
-
-        struct sockaddr_in client_addr;
-        socklen_t client_addr_len = sizeof(client_addr);
-        int len = recvfrom(s_dns_socket, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &client_addr_len);
-        if (len < 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                ESP_LOGE(WIFI_CONFIG_TAG, "DNS recvfrom failed, errno=%d", errno);
-            }
-            vTaskDelay(pdMS_TO_TICKS(100));
-            continue;
-        }
-
-        // Check minimum DNS query length (12 bytes header)
-        if (len < 12) {
-            continue;
-        }
-
-        // Check buffer size to prevent overflow
-        if (len + 16 > sizeof(buffer)) {
-            continue;
-        }
-
-        // Simple DNS response: point all queries to gateway IP
-        buffer[2] |= 0x80; // Set response flag (QR = 1)
-        buffer[3] |= 0x80; // Set Recursion Available (RA = 1)
-        buffer[7] = 1;     // Set answer count to 1
-
-        // Add answer section
-        memcpy(&buffer[len], "\xc0\x0c", 2); // Name pointer to question name
-        len += 2;
-        memcpy(&buffer[len], "\x00\x01\x00\x01\x00\x00\x00\x1c\x00\x04", 10); // Type A, class IN, TTL 28, data length 4
-        len += 10;
-        memcpy(&buffer[len], &gateway_addr.addr, 4); // Gateway IP
-        len += 4;
-
-        int sent = sendto(s_dns_socket, buffer, len, 0, (struct sockaddr *)&client_addr, client_addr_len);
-        if (sent < 0) {
-            ESP_LOGE(WIFI_CONFIG_TAG, "DNS sendto failed, errno=%d", errno);
-        }
-    }
-    // Signal completion via semaphore before clearing task handle
-    if (s_dns_task_semaphore) {
-        xSemaphoreGive(s_dns_task_semaphore);
-    }
-    // Clear task handle before exiting to signal completion
-    s_dns_task_handle = NULL;
-    vTaskDelete(NULL);
-}
-
-// SoftAP implementation
-static esp_err_t wifi_config_start_softap(void)
-{
-    esp_err_t ret = ESP_OK;
-    uint8_t mac[6];
-
-    // Create AP netif
-    s_ap_netif = esp_netif_create_default_wifi_ap();
-    ESP_RETURN_ON_FALSE(s_ap_netif != NULL, ESP_FAIL, WIFI_CONFIG_TAG, "Failed to create AP netif");
-
-    // Set AP IP address to 192.168.4.1
-    esp_netif_ip_info_t ip_info;
-    IP4_ADDR(&ip_info.ip, 192, 168, 4, 1);
-    IP4_ADDR(&ip_info.gw, 192, 168, 4, 1);
-    IP4_ADDR(&ip_info.netmask, 255, 255, 255, 0);
-
-    esp_netif_dhcps_stop(s_ap_netif);
-    ESP_ERROR_CHECK(esp_netif_set_ip_info(s_ap_netif, &ip_info));
-    esp_netif_dhcps_start(s_ap_netif);
-
-    // Start DNS server
-    wifi_config_dns_server_start();
-
-    // Get MAC address for SSID
-    ESP_ERROR_CHECK(esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP));
-
-    // Generate SSID: ESP-ThreadBR-XXXX
-    snprintf(s_softap_ssid, sizeof(s_softap_ssid), "ESP-ThreadBR-%02X%02X", mac[4], mac[5]);
-
-    // Configure WiFi AP
-    wifi_config_t wifi_config = {};
-    strncpy((char *)wifi_config.ap.ssid, s_softap_ssid, sizeof(wifi_config.ap.ssid) - 1);
-    wifi_config.ap.ssid[sizeof(wifi_config.ap.ssid) - 1] = '\0';
-    wifi_config.ap.ssid_len = strlen(s_softap_ssid);
-    wifi_config.ap.max_connection = 4;
-    wifi_config.ap.authmode = WIFI_AUTH_OPEN;
-    wifi_config.ap.beacon_interval = 100; // Set beacon interval to 100ms for better discoverability
-
-    // Initialize WiFi if not already initialized
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ret = esp_wifi_init(&cfg);
-    ESP_RETURN_ON_FALSE(ret == ESP_OK || ret == ESP_ERR_INVALID_STATE, ret, WIFI_CONFIG_TAG,
-                        "Failed to initialize WiFi: %s", esp_err_to_name(ret));
-
-    // Register event handlers
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_config_wifi_event_handler,
-                                                        NULL, &s_wifi_event_handler_instance));
-
-    // Set WiFi mode and start AP
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-    ESP_ERROR_CHECK(esp_wifi_start());
-
-    ESP_LOGI(WIFI_CONFIG_TAG, "SoftAP started with SSID: %s", s_softap_ssid);
-
-    return ESP_OK;
-}
-
-static void wifi_config_stop_softap(void)
-{
-    // Stop DNS server first (this may take some time)
-    wifi_config_dns_server_stop();
-
-    // Unregister event handlers before stopping WiFi
-    if (s_wifi_event_handler_instance) {
-        esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, s_wifi_event_handler_instance);
-        s_wifi_event_handler_instance = NULL;
-    }
-
-    esp_wifi_stop();
-    esp_wifi_deinit();
-
-    if (s_ap_netif) {
-        esp_netif_destroy(s_ap_netif);
-        s_ap_netif = NULL;
-    }
-
-    ESP_LOGI(WIFI_CONFIG_TAG, "SoftAP stopped");
-}
-
-// WiFi event handlers
-static void wifi_config_wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
-{
-    switch (event_id) {
-    case WIFI_EVENT_AP_STACONNECTED: {
-        wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *)event_data;
-        ESP_LOGI(WIFI_CONFIG_TAG, "Station " MACSTR " joined, AID=%d", MAC2STR(event->mac), event->aid);
-        break;
-    }
-    case WIFI_EVENT_AP_STADISCONNECTED: {
-        wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t *)event_data;
-        ESP_LOGI(WIFI_CONFIG_TAG, "Station " MACSTR " left, AID=%d", MAC2STR(event->mac), event->aid);
-        break;
-    }
-    case WIFI_EVENT_SCAN_DONE: {
-        wifi_event_sta_scan_done_t *event = (wifi_event_sta_scan_done_t *)event_data;
-        ESP_LOGI(WIFI_CONFIG_TAG, "Scan done, number: %d", event->number);
-
-        if (s_ap_records) {
-            free(s_ap_records);
-            s_ap_records = NULL;
-        }
-        s_ap_count = event->number;
-        if (s_ap_count > 0) {
-            s_ap_records = malloc(sizeof(wifi_ap_record_t) * s_ap_count);
-            if (s_ap_records) {
-                esp_wifi_scan_get_ap_records(&s_ap_count, s_ap_records);
-            } else {
-                ESP_LOGE(WIFI_CONFIG_TAG, "Failed to allocate memory for AP records");
-            }
-        }
-
-        // Signal scan completion
-        if (s_wifi_event_group) {
-            xEventGroupSetBits(s_wifi_event_group, WIFI_SCAN_DONE_BIT);
-        }
-        break;
-    }
-    default:
-        // Unhandled event, ignore
-        break;
-    }
-}
 
 // HTTP handlers for WiFi configuration
 static esp_err_t wifi_config_index_handler(httpd_req_t *req)
@@ -348,64 +54,6 @@ static esp_err_t wifi_config_index_handler(httpd_req_t *req)
 
     // Fallback to embedded HTML
     httpd_resp_send(req, wifi_configuration_html_start, strlen(wifi_configuration_html_start));
-    return ESP_OK;
-}
-
-static esp_err_t wifi_config_scan_handler(httpd_req_t *req)
-{
-    // Ensure event group exists
-    assert(s_wifi_event_group);
-
-    // Clear scan done bit before starting scan
-    xEventGroupClearBits(s_wifi_event_group, WIFI_SCAN_DONE_BIT);
-
-    // Trigger a new scan
-    wifi_scan_config_t scan_config = {.ssid = NULL,
-                                      .bssid = NULL,
-                                      .channel = 0,
-                                      .show_hidden = true,
-                                      .scan_type = WIFI_SCAN_TYPE_ACTIVE,
-                                      .scan_time = {.active = {.min = 100, .max = 300}}};
-
-    esp_err_t ret = esp_wifi_scan_start(&scan_config, false);
-    if (ret != ESP_OK) {
-        ESP_LOGE(WIFI_CONFIG_TAG, "Failed to start scan: %s", esp_err_to_name(ret));
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, "{\"error\":\"Failed to start scan\"}", HTTPD_RESP_USE_STRLEN);
-        return ret;
-    }
-
-    // Wait for scan to complete using event group (max 10 seconds)
-    EventBits_t bits =
-        xEventGroupWaitBits(s_wifi_event_group, WIFI_SCAN_DONE_BIT, pdTRUE, pdFALSE, pdMS_TO_TICKS(10000));
-    if (!(bits & WIFI_SCAN_DONE_BIT)) {
-        ESP_LOGW(WIFI_CONFIG_TAG, "Scan timeout after 10 seconds");
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_send(req, "{\"error\":\"Scan timeout\"}", HTTPD_RESP_USE_STRLEN);
-        return ESP_ERR_TIMEOUT;
-    }
-
-    cJSON *root = cJSON_CreateObject();
-    cJSON *aps = cJSON_CreateArray();
-
-    // Add scanned APs
-    for (int i = 0; i < s_ap_count && s_ap_records; i++) {
-        cJSON *ap = cJSON_CreateObject();
-        cJSON_AddStringToObject(ap, "ssid", (char *)s_ap_records[i].ssid);
-        cJSON_AddNumberToObject(ap, "rssi", s_ap_records[i].rssi);
-        cJSON_AddNumberToObject(ap, "authmode", s_ap_records[i].authmode);
-        cJSON_AddItemToArray(aps, ap);
-    }
-
-    cJSON_AddItemToObject(root, "aps", aps);
-
-    char *json_str = cJSON_Print(root);
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_send(req, json_str, strlen(json_str));
-
-    cJSON_free(json_str);
-    cJSON_Delete(root);
     return ESP_OK;
 }
 
@@ -521,9 +169,6 @@ esp_err_t wifi_config_start_webserver(void)
     httpd_uri_t index_uri = {.uri = "/", .method = HTTP_GET, .handler = wifi_config_index_handler, .user_ctx = NULL};
     httpd_register_uri_handler(s_wifi_config_server, &index_uri);
 
-    httpd_uri_t scan_uri = {.uri = "/scan", .method = HTTP_GET, .handler = wifi_config_scan_handler, .user_ctx = NULL};
-    httpd_register_uri_handler(s_wifi_config_server, &scan_uri);
-
     httpd_uri_t submit_uri = {
         .uri = "/submit", .method = HTTP_POST, .handler = wifi_config_submit_handler, .user_ctx = NULL};
     httpd_register_uri_handler(s_wifi_config_server, &submit_uri);
@@ -577,9 +222,6 @@ esp_err_t esp_br_wifi_config_start(void)
                           "Failed to create event group");
     }
 
-    // Start SoftAP
-    // ESP_GOTO_ON_ERROR(wifi_config_start_softap(), cleanup, WIFI_CONFIG_TAG, "Failed to start SoftAP");
-
     // Start Web server
     ESP_GOTO_ON_ERROR(wifi_config_start_webserver(), cleanup, WIFI_CONFIG_TAG, "Failed to start Web server");
 
@@ -588,9 +230,6 @@ esp_err_t esp_br_wifi_config_start(void)
     ESP_LOGI(WIFI_CONFIG_TAG, "Access web interface at: http://192.168.4.1");
 
     return ESP_OK;
-
-// cleanup_softap:
-//     wifi_config_stop_softap();
 
 cleanup:
     if (s_wifi_event_group) {
@@ -606,14 +245,7 @@ esp_err_t esp_br_wifi_config_stop(void)
         return ESP_OK;
     }
 
-    // esp_netif_dhcps_stop(s_ap_netif);
     wifi_config_stop_webserver();
-    // wifi_config_stop_softap();
-
-    if (s_ap_records) {
-        free(s_ap_records);
-        s_ap_records = NULL;
-    }
 
     if (s_wifi_event_group) {
         vEventGroupDelete(s_wifi_event_group);
@@ -664,7 +296,7 @@ esp_err_t esp_br_wifi_config_get_configured_wifi(char *ssid, size_t ssid_len, ch
         password[password_len - 1] = '\0';
         ESP_LOGI("HAR", "pswd copied");
     }
-    
+
     ESP_LOGI("CHECK CHECK", "Saving password... ssid len: %s, %d , psw len: %s, %d", ssid, ssid_len, password, password_len);
 
     return ESP_OK;
@@ -673,29 +305,4 @@ esp_err_t esp_br_wifi_config_get_configured_wifi(char *ssid, size_t ssid_len, ch
 bool esp_br_wifi_config_is_active(void)
 {
     return s_wifi_config_mode;
-}
-
-esp_err_t esp_br_wifi_config_get_softap_info(char *ssid, size_t ssid_len, char *ip_addr, size_t ip_addr_len)
-{
-    if (!s_wifi_config_mode) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    if (ssid && ssid_len) {
-        strncpy(ssid, s_softap_ssid, ssid_len - 1);
-        ssid[ssid_len - 1] = '\0';
-    }
-
-    if (ip_addr && ip_addr_len > 0 && s_ap_netif) {
-        esp_netif_ip_info_t ip_info;
-        if (esp_netif_get_ip_info(s_ap_netif, &ip_info) == ESP_OK) {
-            snprintf(ip_addr, ip_addr_len, IPSTR, IP2STR(&ip_info.ip));
-        } else {
-            // Fallback to default IP
-            strncpy(ip_addr, "192.168.4.1", ip_addr_len - 1);
-            ip_addr[ip_addr_len - 1] = '\0';
-        }
-    }
-
-    return ESP_OK;
 }

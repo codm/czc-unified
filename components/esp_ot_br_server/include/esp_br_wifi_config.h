@@ -65,21 +65,6 @@ esp_err_t esp_br_wifi_config_stop(void);
  */
 bool esp_br_wifi_config_is_active(void);
 
-/**
- * @brief WARNING NOT IMPLEMENTED CORRECTLY ATM Get current SoftAP SSID and IP address
- *
- * This function can be used to get the SoftAP information when the mode is active.
- *
- * @param[out] ssid Buffer to store the SoftAP SSID (can be NULL if not needed)
- * @param[in] ssid_len Maximum length of the ssid buffer
- * @param[out] ip_addr Buffer to store the SoftAP IP address (can be NULL if not needed)
- * @param[in] ip_addr_len Maximum length of the ip_addr buffer
- * @return
- *      - ESP_OK: SoftAP info retrieved successfully
- *      - ESP_ERR_INVALID_STATE: SoftAP mode is not active
- *      - ESP_ERR_INVALID_ARG: Invalid arguments
- */
-esp_err_t esp_br_wifi_config_get_softap_info(char *ssid, size_t ssid_len, char *ip_addr, size_t ip_addr_len);
 
 #ifdef __cplusplus
 }
