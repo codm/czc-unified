@@ -6,25 +6,12 @@
 
 #pragma once
 
+#include "firmware_callbacks.h"
 #include "network_config.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/**
- * @brief Firmware / device-mode callbacks — filled by AppController.
- *        ctx is an AppController* cast to void*.
- */
-typedef struct {
-    esp_err_t (*flash_rcp)        (void *ctx, const char *url);
-    esp_err_t (*flash_esp)        (void *ctx, const char *url);
-    esp_err_t (*set_mode)         (void *ctx, int mode);
-    esp_err_t (*get_mode)         (void *ctx, int *mode_out);
-    /** Returns 1 if device has been provisioned, 0 on first boot. */
-    esp_err_t (*get_device_setup) (void *ctx, int *setup_out);
-    void *ctx;
-} web_firmware_callbacks_t;
 
 /**
  * @brief Start the border router web server immediately.

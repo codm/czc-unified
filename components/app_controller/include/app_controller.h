@@ -2,7 +2,7 @@
 #define CZC_APP_CONTROLLER_H_
 
 #include "esp_err.h"
-#include "esp_br_web.h"
+#include "firmware_callbacks.h"
 #include "update_manager.h"
 #include "firmware_manager.h"
 

@@ -24,7 +24,7 @@ idf_component_register(
     SRC_DIRS src
     INCLUDE_DIRS include
     PRIV_INCLUDE_DIRS private_include
-    REQUIRES network
+    REQUIRES network firmware_manager
     PRIV_REQUIRES ${requires}
     EMBED_FILES "favicon.ico"
 )

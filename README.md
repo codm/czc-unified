@@ -70,11 +70,13 @@ build when capturing logs.
 
 5. Open [http://codm-otbr.local](http://codm-otbr.local) and you can start setting up a Thread Network!
 
-## Wifi / SoftAP
+## WiFi / SoftAP
 
-When no Wifi was previously configured and LAN is not connected the CZC opens up an Access Point named `OTBR-Codm` with the password: `codmcodm`.
-After you connected your Device to the network you can open the wifi configuration interface on `192.168.4.1` and enter your Wifi credentials.
->NOTE: Currently there is no fallback implemented if you enter wrong credentials. So make sure they are correct on your first try!
+When no WiFi is configured and no Ethernet connection is available, the CZC opens an Access Point named `otbr-codm` with password `codmcodm`.
+
+Connect to the AP and open **[http://192.168.4.1](http://192.168.4.1)** — the full web interface is served directly (no separate captive portal). Go to the **Network** section to configure WiFi credentials or a static Ethernet IP.
+
+Once internet connectivity is established, the device switches to normal operation mode automatically.
 
 ## Home Assistant Integration (Thread Border Router & Matter)
 
@@ -171,9 +173,18 @@ To check and enable IPv6:
 
 ## Overview
 
-This Firmware implements an [OpenThread Border Router](https://openthread.io/guides/border-router) based on a ESP32 and a CC2652P7 Radio-Co-Processor (RCP).
+Multi-mode coordinator firmware for the cod.m CZC device (ESP32 + CC2652P7 RCP). Supported modes:
 
-This Project uses parts of the [Espressif example OTBR implementation](https://github.com/espressif/esp-idf/blob/master/examples/openthread/ot_br/README.md). 
+| Mode | Description |
+|---|---|
+| **Thread OTBR** | OpenThread Border Router — connects a Thread mesh to IP |
+| **Zigbee Coordinator USB** | Serial proxy over USB to a host application (e.g. Zigbee2MQTT) |
+| **Zigbee Coordinator Network** | TCP proxy to a network host application |
+| **Zigbee Router** | Standalone Zigbee router — RCP operates independently |
+
+The active mode is selected on first boot via the web interface. Changing mode re-flashes the RCP with the matching firmware and reboots the device.
+
+The OpenThread stack is based on the [Espressif OTBR example](https://github.com/espressif/esp-idf/blob/master/examples/openthread/ot_br/README.md).
 
 ## How to use Border Router
 
@@ -261,63 +272,74 @@ This Chapter gives Architectural and specific Project coding Documentation
 
 ```
 czc_ot_firmware/
-├── main/                         Application entry point
-│   ├── main.cpp                  app_main(): boot sequence, network init,
-│   │                             RCP-flash handling, starts the OTBR stack
-│   └── Kconfig.projbuild         
+├── main/
+│   └── main.cpp                  Boot sequence, wires all components
 │
 ├── components/
-│   ├── system_manager/           Core orchestration layer (C++) — see below
-│   ├── network/                  Network connectivity state machine (C++) — see below
-│   └── esp_ot_br_server/         REST API + Web GUI (C) — see below
+│   ├── app_controller/           Composition root + boot orchestrator
+│   │   ├── include/app_controller.h
+│   │   ├── private_include/app_nvs.h
+│   │   └── src/app_controller.cpp, app_nvs.cpp
+│   │
+│   ├── update_manager/           RCP (BSL) + ESP (OTA) firmware updates
+│   │   ├── include/update_manager.h
+│   │   ├── private_include/rcp_hal.h, rcp_updater.h, ota_updater.h
+│   │   └── src/
+│   │
+│   ├── firmware_manager/         Protocol stack selection (Thread / Zigbee)
+│   │   ├── include/firmware_manager.h   ← DeviceMode enum
+│   │   ├── private_include/protocol_controller.h, thread_controller.h,
+│   │   │                               zigbee_proxy_controller.h, proxy_transport.h
+│   │   └── src/
+│   │
+│   ├── status_light/             Event-driven LED manager (zero upstream deps)
+│   │   ├── include/status_light_event.h, status_light_manager.h, status_light_hal.h
+│   │   └── src/
+│   │
+│   ├── board_config/             Hardware constants in Board:: namespace
+│   │   └── include/board_config.h
+│   │
+│   ├── network/                  Ethernet + WiFi state machine
+│   │   └── include/NetworkStateMachine.h, network_config.h, nvs_bind.h
+│   │
+│   └── esp_ot_br_server/         HTTP server + web frontend (C)
+│       ├── include/esp_br_web.h  ← web callback structs + esp_br_web_start()
+│       └── frontend/             HTML/JS/CSS (gzip-compressed into SPIFFS)
 │
-├── partitions.csv                Flash partition table of this firmware (OTA-enabled)
-├── partition_table/
-│   └── partitionTable.csv        Reference: partition table of the CZC Zigbee firmware
-├── sdkconfig*                    ESP-IDF build configuration (defaults + CI variants)
-├── .devcontainer/                VSCode Dev Container setup for ESP-IDF
-└── image/                        Images used in this README
+└── partitions.csv                Flash partition table
 ```
 
 #### Components
 
-##### `system_manager`
+##### `app_controller`
 
-Owns the firmware/network lifecycle and bridges the C++ application core with the C
-webserver component.
+Composition root. Runs the boot-decision-tree on every boot and routes web API requests to the appropriate sub-manager. Owns all NVS keys for boot state (`device_setup`, `rcp_pending`, `rcp_url`, `device_mode`) via the private `AppNvs` namespace.
 
-| File | Description |
-|---|---|
-| `System_manager` | Top-level orchestrator: ESP OTA updates, RCP flash scheduling, device-setup state (NVS) |
-| `Thread_controller` | Starts/stops the OpenThread stack and the embedded webserver, hardware RCP reset |
-| `Rcp_interface` | Downloads RCP firmware and flashes the CC2652 over UART via BSL |
-| `sys_nvs_bind` | NVS persistence for a pending RCP flash and the device-setup flag |
+##### `update_manager`
+
+Wraps two updaters with different execution models:
+- **`RcpUpdater`** — downloads TI binary into the OTA staging partition, then drives the CC2652 BSL over UART (`RcpHal`). Runs at boot-time only.
+- **`OtaUpdater`** — thin `esp_https_ota` wrapper for live ESP firmware updates.
+
+Both use the same OTA partition; a `busy` flag prevents simultaneous access.
+
+##### `firmware_manager`
+
+Selects and starts the correct `ProtocolController` implementation based on `DeviceMode`:
+- `ThreadController` — OTBR stack (Spinel over UART).
+- `ZigbeeProxyController` — transparent serial proxy (USB or TCP). *(stub — not yet fully implemented)*
+
+##### `status_light`
+
+Event-driven LED manager. Other components post `LedState` events; the manager applies priority arbitration and drives the GPIO LEDs via a 100 ms `esp_timer` tick. See [`components/status_light/README.md`](components/status_light/README.md).
 
 ##### `network`
 
-Implements the Ethernet / Wi-Fi / SoftAP connectivity state machine — see
-[components/network/README.md](components/network/README.md) for the full state diagram.
-
-| File | Description |
-|---|---|
-| `NetworkStateMachine` | Switches between Ethernet, Wi-Fi, SoftAP and retry states |
-| `EthernetAPI` | RMII Ethernet driver wrapper |
-| `WirelessAPI` | Wi-Fi station + SoftAP wrapper |
-| `nvs_bind` | NVS persistence for Wi-Fi credentials |
+Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWifiConfig()`, `getEthernetConfig()`, `setEthernetConfig()`, `getNetworkStatus()` and `fillNetworkCallbacks()`. NVS bindings in `NvsBinding` namespace support full IP configuration (DHCP / static IP / gateway / DNS).
 
 ##### `esp_ot_br_server`
 
-Embedded HTTP server providing the OpenThread REST API and the Web GUI, based on the
-[Espressif OTBR example](https://github.com/espressif/esp-idf/blob/master/examples/openthread/ot_br/README.md).
-
-| File | Description |
-|---|---|
-| `src/esp_br_web.c` | httpd server setup, route table and request handlers (incl. `/flash/esp`, `/flash/rcp`) |
-| `src/esp_br_web_api.c` | OpenThread REST resource implementations (node info, dataset, topology, ...) |
-| `src/esp_br_web_base.c` | JSON ⇄ OpenThread struct (de)serialization helpers |
-| `src/esp_br_wifi_config.c` | SoftAP captive portal for the initial Wi-Fi setup |
-| `frontend/` | Web GUI (HTML/CSS/JS), embedded into the SPIFFS image at build time |
-| `include/`, `private_include/` | Public and private headers |
+HTTP server providing the OpenThread REST API and the web GUI. Defines two C callback structs (`web_firmware_callbacks_t` in `esp_br_web.h`, `web_network_callbacks_t` in `network_config.h`) that decouple it from the C++ application layer.
 
 ### Flash Partition Layout
 
@@ -343,177 +365,157 @@ The firmware uses a custom partition table ([`partitions.csv`](partitions.csv)) 
 
 ### Class Diagram
 
-The diagram shows the main classes, their relationships, and how the C++ application
-core (`system_manager`, `network`) connects to the C-based webserver
-(`esp_ot_br_server`) via the `system_flash_callbacks_t` bridge described under
-[API Endpoints](#api-endpoints).
-
 ```mermaid
 classDiagram
-    direction LR
+    direction TB
 
-    class main {
-        <<entry point>>
-        +app_main()
+    class AppController {
+        -UpdateManager& updateManager
+        -FirmwareManager& firmwareManager
+        +run() void
+        +fillFirmwareCallbacks(cbs) void
+        +requestRcpFlash(url) esp_err_t
+        +requestEspFlash(url) esp_err_t
+        +requestModeChange(mode) esp_err_t
+        +getCurrentMode() DeviceMode
     }
 
-    class System_manager {
-        -Rcp_interface rcp_interface
-        -Thread_controller thread_controller
-        -uart_port_t rcp_uart_num
-        -EventGroupHandle_t ota_event_group
-        +initThread() esp_err_t
-        +startThread() esp_err_t
-        +flashEspFirmware(url)
-        +flashRcpFirmware(url)
-        +initRcpFirmwareFlash(url)
-        +flashRcpFirmwareWhenConfigured()
-        +isRcpFlashPending() bool
-        +isDeviceSetup() bool
-        +writeDeviceSetup(bool) esp_err_t
+    class UpdateManager {
+        -bool busy
+        +flashRcp(url) esp_err_t
+        +flashEsp(url) esp_err_t
+    }
+    class RcpUpdater {
+        -RcpHal hal
+        +flash(url) esp_err_t
+    }
+    class RcpHal {
+        -uart_port_t uartPort
+        -bool bslMode
+        +init(uart) esp_err_t
+        +enterBootloader() esp_err_t
+        +eraseFlash() esp_err_t
+        +beginFlash(addr, size) esp_err_t
+        +sendData(data, len) esp_err_t
+        +reset() esp_err_t
+    }
+    class OtaUpdater {
+        +flash(url) esp_err_t
     }
 
-    class Thread_controller {
-        -bool thread_active
-        -esp_openthread_config_t config
-        +init(flash_cbs) esp_err_t
+    class FirmwareManager {
+        -DeviceMode activeMode
+        +start(mode) esp_err_t
+        +getActiveMode() DeviceMode
+    }
+    class ProtocolController {
+        <<interface>>
         +start() esp_err_t
         +stop() esp_err_t
-        +is_running() bool
+        +isRunning() bool
     }
-
-    class Rcp_interface {
-        -uart_port_t rcp_uart
-        -bool bsl_mode
-        +rcp_update_init(uart) esp_err_t
-        +rcp_update_start(url) esp_err_t
-        +get_update_event_group() EventGroupHandle_t
+    class ThreadController {
+        +start() esp_err_t
+        +stop() esp_err_t
+        +isRunning() bool
     }
-
-    class system_flash_callbacks_t {
-        <<C struct>>
-        +flash_esp(ctx, url) esp_err_t
-        +flash_rcp(ctx, url) esp_err_t
-        +ctx void*
-    }
-
-    class esp_br_web {
-        <<C module>>
-        +esp_br_web_start(base_path, flash_cbs)
+    class ZigbeeProxyController {
+        +start() esp_err_t
+        +stop() esp_err_t
+        +isRunning() bool
     }
 
     class NetworkStateMachine {
-        -NetworkState currentState
-        -EthernetAPI ethernetAPI
-        -WirelessAPI wirelessAPI
-        +initNetworkStateMachine()
-        +closeNetworkStateMachine()
-        +setState(NetworkState)
-        +getState() NetworkState
+        +getWifiConfig(out) esp_err_t
+        +setWifiConfig(cfg) esp_err_t
+        +getEthernetConfig(out) esp_err_t
+        +setEthernetConfig(cfg) esp_err_t
+        +getNetworkStatus(out) esp_err_t
+        +fillNetworkCallbacks(cbs) void
     }
 
-    class EthernetAPI {
-        -ethernetConfig ethConfig
-        -bool ethIsConnected
-        +initEthernet()
-        +closeEthernet()
-        +getEthIsConnected() bool
+    class StatusLightManager {
+        +init() esp_err_t
     }
 
-    class WirelessAPI {
-        -ActiveWirelessMode activeWirelessMode
-        -bool wifiIsConnected
-        +initWifi()
-        +closeWifi()
-        +initAccessPoint()
-        +closeAccessPoint()
-        +reconnect()
-        +getActiveWirelessMode() ActiveWirelessMode
-    }
+    AppController o-- UpdateManager
+    AppController o-- FirmwareManager
+    UpdateManager *-- RcpUpdater
+    UpdateManager *-- OtaUpdater
+    RcpUpdater *-- RcpHal
+    FirmwareManager o-- ProtocolController
+    ProtocolController <|.. ThreadController
+    ProtocolController <|.. ZigbeeProxyController
+```
 
-    class NetworkState {
-        <<enumeration>>
-        INIT
-        ETHERNET
-        WLAN
-        ACCESS_POINT
-        RETRY_ETHERNET
-        RETRY_WIFI
-    }
+### Boot-Decision-Tree
 
-    main --> System_manager : creates
-    main --> NetworkStateMachine : creates
-    main --> EthernetAPI : creates
-    main --> WirelessAPI : creates
+```mermaid
+flowchart TD
+    boot(["Boot"])
+    net["Network up\n(NetworkStateMachine)"]
+    web["Web server start"]
+    q1{"rcp_flash_pending?"}
+    flash["update_manager.flashRcp(url)"]
+    rb["esp_restart()"]
+    q2{"device_setup?"}
+    wait["Block — wait for mode\nselection via web UI"]
+    q3["Read DeviceMode from NVS"]
+    start["firmware_manager.start(mode)"]
+    run(["Normal operation"])
 
-    System_manager *-- Rcp_interface
-    System_manager *-- Thread_controller
-    System_manager ..> system_flash_callbacks_t : builds (this = ctx)
-    Thread_controller ..> system_flash_callbacks_t : forwards
-    Thread_controller ..> esp_br_web : starts
-    esp_br_web ..> system_flash_callbacks_t : invokes
-
-    NetworkStateMachine o-- EthernetAPI
-    NetworkStateMachine o-- WirelessAPI
-    NetworkStateMachine ..> NetworkState : uses
+    boot --> net --> web --> q1
+    q1 -->|yes| flash --> rb --> boot
+    q1 -->|no| q2
+    q2 -->|"no (first boot)"| wait -->|"POST /device/mode"| rb
+    q2 -->|yes| q3 --> start --> run
 ```
 
 ### API Endpoints
 
-Most REST endpoints are inherited from the
-[Espressif OTBR example](https://github.com/espressif/esp-idf/blob/master/examples/openthread/ot_br/README.md)
-and documented in
-[`components/esp_ot_br_server/src/openapi.yaml`](components/esp_ot_br_server/src/openapi.yaml).
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/flash/rcp` | Schedule RCP firmware update (NVS intent + reboot) |
+| `POST` | `/flash/esp` | Start live ESP OTA update |
+| `GET` | `/device/mode` | Returns `{"mode": <int>, "device_setup": <bool>}` |
+| `POST` | `/device/mode` | Set device mode — `{"mode": <int>}` |
+| `GET` | `/network/wifi` | Read WiFi config from NVS |
+| `POST` | `/network/wifi` | Write WiFi config + trigger reconnect |
+| `GET` | `/network/ethernet` | Read Ethernet config from NVS |
+| `POST` | `/network/ethernet` | Write Ethernet config + trigger reinit |
+| `GET` | `/network/status` | Returns `{"mode": <int>, "ip": "<str>", "connected": <bool>}` |
+| `GET` | `/get_properties` | OpenThread network properties |
+| `GET/DELETE` | `/node` | OpenThread node info |
+| `GET/PUT` | `/node/dataset/active` | Active Thread dataset |
+| `GET` | `/available_network` | Scan for Thread networks |
+| `POST` | `/join_network` | Join a Thread network |
+| `POST` | `/form_network` | Form a new Thread network |
+| `GET` | `/topology` | Thread network topology |
 
-This project adds two **custom endpoints** for remote firmware updates:
+#### Bridging the C web server and the C++ application
 
-| Endpoint | Method | Purpose | Request body | Response |
-|---|---|---|---|---|
-| `/flash/esp` | `POST` | Starts an OTA update of the ESP32 itself | `{ "url": "<firmware.ota.bin>" }` | `{ "status": "flashing", "message": "..." }` |
-| `/flash/rcp` | `POST` | Schedules a firmware update of the CC2652 RCP (downloads now, flashes via BSL on next boot) | `{ "url": "<rcp_firmware.bin>" }` | `{ "status": "started" }` |
-
-> **Testing:** A browser address bar cannot send POST requests. Use e.g. `curl`:
-> ```bash
-> curl -X POST http://<device-ip>/flash/rcp \
->      -H "Content-Type: application/json" \
->      -d '{"url": "https://example.com/rcp_firmware.bin"}'
-> ```
-
-#### Bridging the C webserver and the C++ application
-
-The webserver (`esp_br_web.c`) is plain C, and all its handlers share the fixed signature
-`esp_err_t handler(httpd_req_t *req)` — there is no room for extra parameters. The
-`System_manager`, which actually performs the flashing, lives in C++ and is invisible to
-the webserver. The two are connected through a small callback struct defined in
-[`esp_br_web.h`](components/esp_ot_br_server/include/esp_br_web.h):
+The web server (`esp_br_web.c`) is plain C. It receives two C callback structs at startup that forward web API requests to the C++ application layer without knowing anything about it:
 
 ```c
-typedef struct {
-    esp_err_t (*flash_esp)(void *ctx, const char *url);
-    esp_err_t (*flash_rcp)(void *ctx, const char *url);
-    void *ctx;   // opaque pointer, cast back to System_manager* in the adapters
-} system_flash_callbacks_t;
+// Filled by AppController::fillFirmwareCallbacks() — ctx = AppController*
+typedef struct { ...; void *ctx; } web_firmware_callbacks_t;  // esp_br_web.h
+
+// Filled by NetworkStateMachine::fillNetworkCallbacks() — ctx = NetworkStateMachine*
+typedef struct { ...; void *ctx; } web_network_callbacks_t;   // network_config.h
 ```
 
-**How the struct travels through the program:**
+`main.cpp` wires both before starting the web server:
+```cpp
+web_firmware_callbacks_t fwCbs{};
+appController.fillFirmwareCallbacks(&fwCbs);
 
-1. `System_manager::initThread()` builds a `system_flash_callbacks_t`, pointing the
-   function pointers at two `static` adapter functions and setting `ctx = this`.
-2. `Thread_controller::init(flash_cbs)` receives the struct and forwards it unchanged to
-   the webserver.
-3. `esp_br_web_start(base_path, flash_cbs)` copies the struct **by value** into a static,
-   file-scope variable `s_flash_cbs` — a copy is required because the original struct
-   lives on `initThread()`'s stack and would be invalid once that function returns.
-4. The HTTP handlers `esp_otbr_flash_esp_post_handler` / `esp_otbr_flash_rcp_post_handler`
-   parse `{"url": ...}` from the request body and call
-   `s_flash_cbs.flash_esp(s_flash_cbs.ctx, url)` / `s_flash_cbs.flash_rcp(...)`.
-5. The static adapter functions `flash_esp_cb` / `flash_rcp_cb` (in `System_manager.cpp`)
-   `static_cast` `ctx` back to `System_manager*` and call `flashEspFirmware(url)` /
-   `initRcpFirmwareFlash(url)`.
+web_network_callbacks_t netCbs{};
+network.fillNetworkCallbacks(&netCbs);
 
-This keeps the webserver completely free of `System_manager`/C++ knowledge while still
-letting it trigger application-level actions. The same pattern can be reused for future
-endpoints by extending `system_flash_callbacks_t` (or adding a similar struct).
+esp_br_web_start("/spiffs", &fwCbs, &netCbs);
+```
+
+HTTP handlers parse the JSON body and call the matching function pointer. `AppController` and `NetworkStateMachine` remain invisible to the web server.
 
 ### Firmware Flash
 
@@ -522,14 +524,16 @@ Both flash endpoints reboot the device once the update has been applied.
 - **ESP firmware (`/flash/esp`)** — A standard ESP-IDF **OTA update**: the new image is
   streamed directly into the inactive `ota_0`/`ota_1` partition via `esp_https_ota_*`,
   the boot partition is switched, and the device reboots into the new firmware.
+  Handled by `OtaUpdater` (in `update_manager`).
 
-- **RCP firmware (`/flash/rcp`)** — The CC2652P7 cannot be updated over HTTP directly, so
-  this happens in two steps:
-  1. The RCP firmware binary is downloaded over HTTPS into the ESP32's OTA partition
-     (used purely as temporary storage — the ESP's own firmware is *not* changed).
-  2. After a reboot, the OpenThread stack is stopped and `Rcp_interface` flashes the
-     downloaded image to the CC2652 over UART using TI's **BSL (Boot Strap Loader)**
-     protocol (sync, erase, download, send-data, CRC, reset).
+- **RCP firmware (`/flash/rcp`)** — The CC2652P7 cannot be updated over HTTP directly.
+  `AppController::requestRcpFlash()` writes the URL and a pending flag to NVS, then
+  reboots. On the next boot, `AppController::run()` detects the pending flag and calls
+  `UpdateManager::flashRcp()`, which:
+  1. Downloads the TI binary over HTTPS into the OTA staging partition (`RcpUpdater`).
+  2. Drives the CC2652 BSL over UART (`RcpHal`): sync → bank-erase → download → send-data → reset.
+  
+  The OTA partition is used as raw byte storage for the RCP binary — the ESP's own firmware is never modified during an RCP flash.
 
 #### Github Download
 

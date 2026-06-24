@@ -5,7 +5,6 @@ idf_component_register(
     REQUIRES
         update_manager
         firmware_manager
-        esp_ot_br_server
         nvs_flash
         esp_system
         log

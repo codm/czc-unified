@@ -1345,7 +1345,7 @@ static httpd_uri_t s_device_handlers[] = {
  *      -   ESP_OK: on success
  *      -   ESP_FAIL: on failure
  */
-static httpd_handle_t *start_esp_br_http_server(const char *base_path, const char *host_ip)
+static httpd_handle_t *start_esp_br_http_server(const char *base_path)
 {
     ESP_RETURN_ON_FALSE(base_path, NULL, WEB_TAG, "Invalid http server path");
 
@@ -1356,7 +1356,6 @@ static httpd_handle_t *start_esp_br_http_server(const char *base_path, const cha
     cJSON_InitHooks(&hooks);
 #endif
 
-    strcpy(s_server.ip, host_ip);
     strlcpy(s_server.data.base_path, base_path, ESP_VFS_PATH_MAX + 1);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -1366,10 +1365,9 @@ static httpd_handle_t *start_esp_br_http_server(const char *base_path, const cha
     config.stack_size = 8 * 1024;
     s_server.port = config.server_port;
 
-    // start http_server
     ESP_RETURN_ON_FALSE(!httpd_start(&s_server.handle, &config), NULL, WEB_TAG, "Failed to start web server");
 
-    httpd_uri_t default_uris_get = {.uri = "/*", // Match all URIs of type /path/to/file
+    httpd_uri_t default_uris_get = {.uri = "/*",
                                     .method = HTTP_GET,
                                     .handler = default_urls_get_handler,
                                     .user_ctx = &s_server.data};
@@ -1379,11 +1377,7 @@ static httpd_handle_t *start_esp_br_http_server(const char *base_path, const cha
     httpd_server_register_http_uri(&s_server, s_device_handlers, sizeof(s_device_handlers) / sizeof(httpd_uri_t));
     httpd_register_uri_handler(s_server.handle, &default_uris_get);
 
-    // Show the login address in the console
-    ESP_LOGI(WEB_TAG, "%s\r\n", "<========server start========>");
-    ESP_LOGI(WEB_TAG, "http://%s\r\n", s_server.ip);
-    ESP_LOGI(WEB_TAG, "%s\r\n", "<============================>");
-
+    ESP_LOGI(WEB_TAG, "Web server started on port %d (all interfaces)", s_server.port);
     return s_server.handle;
 }
 
@@ -1392,7 +1386,7 @@ void connect_handler(void *arg, esp_event_base_t event_base, int32_t event_id, v
     httpd_handle_t *server = (httpd_handle_t *)arg;
     ESP_RETURN_ON_FALSE(server, , WEB_TAG, "Http server is invalid, failed to start it");
     ESP_LOGI(WEB_TAG, "Start the web server for Openthread Border Router");
-    *server = (httpd_handle_t *)start_esp_br_http_server(base_path, s_server.ip);
+    *server = (httpd_handle_t *)start_esp_br_http_server(base_path);
 }
 
 /*-----------------------------------------------------
@@ -1423,7 +1417,7 @@ void esp_br_web_start(const char *base_path,
 {
     if (fw_cbs)  s_fw_cbs  = *fw_cbs;
     if (net_cbs) s_net_cbs = *net_cbs;
-    if (start_esp_br_http_server(base_path, "192.168.178.162") == NULL) {
+    if (start_esp_br_http_server(base_path) == NULL) {
         ESP_LOGE(WEB_TAG, "Failed to start web server");
     }
 }
