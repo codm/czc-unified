@@ -38,6 +38,43 @@
     .mode-card-selected { border-color: var(--color-primary); background: #fdf5f0; }
     .mode-card h4 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
     .mode-card p  { margin: 0; font-size: 13px; color: #555; }
+    /* Network config split layout */
+    .network-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+    }
+    @media (max-width: 720px) {
+      .network-split { grid-template-columns: 1fr; }
+    }
+    .network-panel {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .network-panel-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .net-field-label {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 10px 0 4px;
+    }
+    .net-dhcp-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0 8px;
+    }
+    input:disabled {
+      opacity: 0.4;
+      background: #f0f0f0 !important;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 
@@ -352,91 +389,62 @@
         </div>
         <div class="part">
           <div class="submit-form">
-            <div style="margin-bottom:20px;">
-              <button id="btn-tab-ethernet" class="btn btn-primary" onclick="switchNetworkTab('ethernet')">Ethernet</button>
-              <button id="btn-tab-wifi"     class="btn btn-default" onclick="switchNetworkTab('wifi')" style="margin-left:8px;">WiFi</button>
-            </div>
+            <div class="network-split">
 
-            <!-- Ethernet -->
-            <div id="network-tab-ethernet">
-              <form id="eth-config-form">
-                <div class="row">
-                  <div class="col-md-4 form-group" style="display:flex; align-items:center; gap:8px;">
+              <!-- Ethernet (left) -->
+              <div class="network-panel">
+                <p class="network-panel-title">Ethernet</p>
+                <form id="eth-config-form">
+                  <div class="net-dhcp-row">
                     <input type="checkbox" id="eth-dhcp" name="dhcp" checked onchange="toggleStaticIpFields('eth')">
-                    <span style="font-size:16px; font-weight:700;">Use DHCP</span>
+                    <label for="eth-dhcp" style="font-size:15px; font-weight:700; margin:0; cursor:pointer;">Use DHCP</label>
                   </div>
-                </div>
-                <div id="eth-static-fields" style="display:none;">
-                  <div class="row">
-                    <div class="col-md-6 form-group">
-                      <p style="font-size:16px; font-weight:700;">Static IP</p>
-                      <input name="static_ip" type="text" class="form-control" placeholder="192.168.1.100">
-                    </div>
-                    <div class="col-md-6 form-group">
-                      <p style="font-size:16px; font-weight:700;">Gateway</p>
-                      <input name="gateway" type="text" class="form-control" placeholder="192.168.1.1">
-                    </div>
+                  <div id="eth-static-fields">
+                    <p class="net-field-label">Static IP</p>
+                    <input name="static_ip" type="text" class="form-control" placeholder="192.168.1.100" disabled>
+                    <p class="net-field-label">Gateway</p>
+                    <input name="gateway" type="text" class="form-control" placeholder="192.168.1.1" disabled>
+                    <p class="net-field-label">DNS Primary</p>
+                    <input name="dns_primary" type="text" class="form-control" placeholder="8.8.8.8" disabled>
+                    <p class="net-field-label">DNS Secondary</p>
+                    <input name="dns_secondary" type="text" class="form-control" placeholder="8.8.4.4" disabled>
                   </div>
-                  <div class="row">
-                    <div class="col-md-6 form-group">
-                      <p style="font-size:16px; font-weight:700;">DNS Primary</p>
-                      <input name="dns_primary" type="text" class="form-control" placeholder="8.8.8.8">
-                    </div>
-                    <div class="col-md-6 form-group">
-                      <p style="font-size:16px; font-weight:700;">DNS Secondary</p>
-                      <input name="dns_secondary" type="text" class="form-control" placeholder="8.8.4.4">
-                    </div>
+                  <div style="margin-top:16px;">
+                    <button type="button" class="btn btn-primary" onclick="saveNetworkConfig('ethernet')">Save</button>
+                    <span id="eth-save-status" style="margin-left:10px; display:none;"></span>
                   </div>
-                </div>
-                <button type="button" class="btn btn-primary" onclick="saveNetworkConfig('ethernet')">Save</button>
-                <span id="eth-save-status" style="margin-left:10px; display:none;"></span>
-              </form>
-            </div>
+                </form>
+              </div>
 
-            <!-- WiFi -->
-            <div id="network-tab-wifi" style="display:none;">
-              <form id="wifi-config-form">
-                <div class="row">
-                  <div class="col-md-6 form-group">
-                    <p style="font-size:16px; font-weight:700;">SSID</p>
-                    <input name="ssid" type="text" class="form-control" placeholder="Network name">
-                  </div>
-                  <div class="col-md-6 form-group">
-                    <p style="font-size:16px; font-weight:700;">Password</p>
-                    <input name="password" type="password" class="form-control" placeholder="Password">
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="col-md-4 form-group" style="display:flex; align-items:center; gap:8px;">
+              <!-- WiFi (right) -->
+              <div class="network-panel">
+                <p class="network-panel-title">WiFi</p>
+                <form id="wifi-config-form">
+                  <p class="net-field-label">SSID</p>
+                  <input name="ssid" type="text" class="form-control" placeholder="Network name">
+                  <p class="net-field-label">Password</p>
+                  <input name="password" type="password" class="form-control" placeholder="Password">
+                  <div class="net-dhcp-row" style="margin-top:12px;">
                     <input type="checkbox" id="wifi-dhcp" name="dhcp" checked onchange="toggleStaticIpFields('wifi')">
-                    <span style="font-size:16px; font-weight:700;">Use DHCP</span>
+                    <label for="wifi-dhcp" style="font-size:15px; font-weight:700; margin:0; cursor:pointer;">Use DHCP</label>
                   </div>
-                </div>
-                <div id="wifi-static-fields" style="display:none;">
-                  <div class="row">
-                    <div class="col-md-6 form-group">
-                      <p style="font-size:16px; font-weight:700;">Static IP</p>
-                      <input name="static_ip" type="text" class="form-control" placeholder="192.168.1.100">
-                    </div>
-                    <div class="col-md-6 form-group">
-                      <p style="font-size:16px; font-weight:700;">Gateway</p>
-                      <input name="gateway" type="text" class="form-control" placeholder="192.168.1.1">
-                    </div>
+                  <div id="wifi-static-fields">
+                    <p class="net-field-label">Static IP</p>
+                    <input name="static_ip" type="text" class="form-control" placeholder="192.168.1.100" disabled>
+                    <p class="net-field-label">Gateway</p>
+                    <input name="gateway" type="text" class="form-control" placeholder="192.168.1.1" disabled>
+                    <p class="net-field-label">DNS Primary</p>
+                    <input name="dns_primary" type="text" class="form-control" placeholder="8.8.8.8" disabled>
+                    <p class="net-field-label">DNS Secondary</p>
+                    <input name="dns_secondary" type="text" class="form-control" placeholder="8.8.4.4" disabled>
                   </div>
-                  <div class="row">
-                    <div class="col-md-6 form-group">
-                      <p style="font-size:16px; font-weight:700;">DNS Primary</p>
-                      <input name="dns_primary" type="text" class="form-control" placeholder="8.8.8.8">
-                    </div>
-                    <div class="col-md-6 form-group">
-                      <p style="font-size:16px; font-weight:700;">DNS Secondary</p>
-                      <input name="dns_secondary" type="text" class="form-control" placeholder="8.8.4.4">
-                    </div>
+                  <div style="margin-top:16px;">
+                    <button type="button" class="btn btn-primary" onclick="saveNetworkConfig('wifi')">Save</button>
+                    <span id="wifi-save-status" style="margin-left:10px; display:none;"></span>
                   </div>
-                </div>
-                <button type="button" class="btn btn-primary" onclick="saveNetworkConfig('wifi')">Save</button>
-                <span id="wifi-save-status" style="margin-left:10px; display:none;"></span>
-              </form>
+                </form>
+              </div>
+
             </div>
           </div>
         </div>
