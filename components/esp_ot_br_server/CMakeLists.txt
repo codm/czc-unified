@@ -24,8 +24,9 @@ idf_component_register(
     SRC_DIRS src
     INCLUDE_DIRS include
     PRIV_INCLUDE_DIRS private_include
+    REQUIRES network
     PRIV_REQUIRES ${requires}
-    EMBED_FILES "favicon.ico" "${FRONTEND_GZ_DIR}/wifi_configuration.html"
+    EMBED_FILES "favicon.ico"
 )
 
 # Everything below is skipped in IDF's script mode (dependency analysis stops at idf_component_register)

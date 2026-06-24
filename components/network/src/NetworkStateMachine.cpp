@@ -13,10 +13,10 @@ NetworkStateMachine::NetworkStateMachine()
     ethernetAPI.initEthernet();
     if(nvsWifiConfigExists()) {
         ESP_LOGW(TAG, "Wifi was previously configured, loading config from NVS and starting wifi");
-        NetworkConfig config;
-        if(NvsBinding::readNetworkConfig(config) == ESP_OK)
+        wifi_config_data_t cfg{};
+        if(NvsBinding::readWifiConfig(cfg) == ESP_OK)
         {
-            wirelessAPI.setWirelessConfig(config.ssid, config.password);
+            wirelessAPI.setWirelessConfig(cfg.ssid, cfg.password);
             wirelessAPI.initWifi();
         }
     }
@@ -122,13 +122,11 @@ void NetworkStateMachine::onWifiGotIp()
     wirelessAPI.setWifiIsConnected(true);
 
     ESP_LOGI(TAG, "Saving Wifi config to NVS...");
-    NetworkConfig config;
-    strncpy(config.ssid, wirelessAPI.getSsid(), sizeof(config.ssid) - 1);
-    config.ssid[sizeof(config.ssid) - 1] = '\0';
-    strncpy(config.password, wirelessAPI.getPassword(), sizeof(config.password) - 1);
-    config.password[sizeof(config.password) - 1] = '\0';
-    config.wifiConfigured = true;
-    NvsBinding::writeNetworkConfig(config);
+    wifi_config_data_t cfg{};
+    NvsBinding::readWifiConfig(cfg);  // preserve existing DHCP/IP/DNS settings
+    strlcpy(cfg.ssid,     wirelessAPI.getSsid(),     sizeof(cfg.ssid));
+    strlcpy(cfg.password, wirelessAPI.getPassword(), sizeof(cfg.password));
+    NvsBinding::writeWifiConfig(cfg);
     
     if (!ethernetAPI.getEthIsConnected())
     {
@@ -158,12 +156,12 @@ void NetworkStateMachine::onEthernetLostIp()
 {
     ESP_LOGW(TAG, "Ethernet lost IP");
     ethernetAPI.setEthIsConnected(false);
-    if(NvsBinding::networkConfigExists())
+    if(NvsBinding::wifiConfigExists())
     {
-        NetworkConfig config;
-        if(NvsBinding::readNetworkConfig(config) == ESP_OK)
+        wifi_config_data_t cfg{};
+        if(NvsBinding::readWifiConfig(cfg) == ESP_OK)
         {
-            wirelessAPI.setWirelessConfig(config.ssid, config.password);
+            wirelessAPI.setWirelessConfig(cfg.ssid, cfg.password);
             setState(NetworkState::RETRY_WIFI);
             ESP_LOGI(TAG, "Ethernet lost IP -> WiFi config found, switching to Wifi");
         }
@@ -185,6 +183,9 @@ void NetworkStateMachine::network_event_handler(void *arg, esp_event_base_t even
     switch (event_id) {
         case NETWORK_EVENT_CONFIG_UPDATED:
             self->onWifiConfigUpdated();
+            break;
+        case NETWORK_EVENT_ETH_CONFIG_UPDATED:
+            self->onEthernetConfigUpdated();
             break;
         case NETWORK_EVENT_INIT_TIMEOUT:
             self->onInitTimeout();
@@ -295,8 +296,7 @@ esp_err_t NetworkStateMachine::initNewState(NetworkState newState)
     switch (currentState) {
         case NetworkState::ACCESS_POINT:
             if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF) {
-                wirelessAPI.initAccessPoint(); // evade double init at first initialisation
-                wirelessAPI.startConfigPollingTask();
+                wirelessAPI.initAccessPoint();
             }
             break;
         case NetworkState::WIFI:
@@ -338,5 +338,121 @@ void NetworkStateMachine::waitUntilInternetIsConnected()
 
 bool NetworkStateMachine::nvsWifiConfigExists()
 {
-    return NvsBinding::networkConfigExists();
+    return NvsBinding::wifiConfigExists();
+}
+
+void NetworkStateMachine::onEthernetConfigUpdated()
+{
+    ESP_LOGI(TAG, "Ethernet config changed — reinitialising interface");
+    if(ethernetAPI.getEthIsInitialised())
+    {
+        ethernetAPI.closeEthernet();
+    }
+
+    ethernet_config_data_t cfg{};
+    NvsBinding::readEthernetConfig(cfg);
+
+    esp_netif_t* netif{esp_netif_get_handle_from_ifkey("ETH_DEF")};
+    if (netif)
+    {
+        if (cfg.dhcp)
+        {
+            esp_netif_dhcpc_start(netif);
+        }
+        else
+        {
+            esp_netif_dhcpc_stop(netif);
+            esp_netif_ip_info_t info{};
+            ipaddr_aton(cfg.static_ip, (ip_addr_t*)&info.ip);
+            ipaddr_aton(cfg.gateway,   (ip_addr_t*)&info.gw);
+            ip4_addr_set_u32(&info.netmask, PP_HTONL(0xFFFFFF00UL));  // /24 default
+            esp_netif_set_ip_info(netif, &info);
+        }
+    }
+
+    ethernetAPI.initEthernet();
+    setState(NetworkState::INIT);
+    initAndStartInitTimer();
+}
+
+// -----------------------------------------------------------------------------
+// Network config public API
+// -----------------------------------------------------------------------------
+
+esp_err_t NetworkStateMachine::getWifiConfig(wifi_config_data_t* out)
+{
+    return NvsBinding::readWifiConfig(*out);
+}
+
+esp_err_t NetworkStateMachine::setWifiConfig(const wifi_config_data_t* cfg)
+{
+    esp_err_t ret{NvsBinding::writeWifiConfig(*cfg)};
+    if (ret == ESP_OK)
+    {
+        esp_event_post(NETWORK_EVENT, NETWORK_EVENT_CONFIG_UPDATED, nullptr, 0, portMAX_DELAY);
+    }
+    return ret;
+}
+
+esp_err_t NetworkStateMachine::getEthernetConfig(ethernet_config_data_t* out)
+{
+    return NvsBinding::readEthernetConfig(*out);
+}
+
+esp_err_t NetworkStateMachine::setEthernetConfig(const ethernet_config_data_t* cfg)
+{
+    esp_err_t ret{NvsBinding::writeEthernetConfig(*cfg)};
+    if (ret == ESP_OK)
+    {
+        esp_event_post(NETWORK_EVENT, NETWORK_EVENT_ETH_CONFIG_UPDATED, nullptr, 0, portMAX_DELAY);
+    }
+    return ret;
+}
+
+esp_err_t NetworkStateMachine::getNetworkStatus(network_status_t* out)
+{
+    memset(out, 0, sizeof(*out));
+    out->mode      = static_cast<int>(currentState);
+    out->connected = (currentState == NetworkState::ETHERNET ||
+                      currentState == NetworkState::WIFI);
+
+    if (out->connected)
+    {
+        const char* ifkey{currentState == NetworkState::ETHERNET ? "ETH_DEF" : "WIFI_STA_DEF"};
+        esp_netif_t* netif{esp_netif_get_handle_from_ifkey(ifkey)};
+        if (netif)
+        {
+            esp_netif_ip_info_t info{};
+            if (esp_netif_get_ip_info(netif, &info) == ESP_OK)
+            {
+                snprintf(out->ip, sizeof(out->ip), IPSTR, IP2STR(&info.ip));
+            }
+        }
+    }
+    return ESP_OK;
+}
+
+void NetworkStateMachine::fillNetworkCallbacks(web_network_callbacks_t* cbs)
+{
+    cbs->get_wifi_config = [](void* ctx, wifi_config_data_t* out)
+    {
+        return static_cast<NetworkStateMachine*>(ctx)->getWifiConfig(out);
+    };
+    cbs->set_wifi_config = [](void* ctx, const wifi_config_data_t* cfg)
+    {
+        return static_cast<NetworkStateMachine*>(ctx)->setWifiConfig(cfg);
+    };
+    cbs->get_ethernet_config = [](void* ctx, ethernet_config_data_t* out)
+    {
+        return static_cast<NetworkStateMachine*>(ctx)->getEthernetConfig(out);
+    };
+    cbs->set_ethernet_config = [](void* ctx, const ethernet_config_data_t* cfg)
+    {
+        return static_cast<NetworkStateMachine*>(ctx)->setEthernetConfig(cfg);
+    };
+    cbs->get_network_status = [](void* ctx, network_status_t* out)
+    {
+        return static_cast<NetworkStateMachine*>(ctx)->getNetworkStatus(out);
+    };
+    cbs->ctx = this;
 }

@@ -43,16 +43,16 @@ public:
     void run();
 
     /**
-     * @brief Fill a `system_flash_callbacks_t` struct with the static C shims
-     *        that forward web API calls to this AppController instance.
+     * @brief Fill a `web_firmware_callbacks_t` struct with static C shims
+     *        that forward firmware / mode requests to this AppController instance.
      *
      *        Call this before `esp_br_web_start()` in main.
      *
-     * @param[out] cbs  Callback struct to fill
+     * @param[out] cbs  Firmware callback struct to fill
      *
      * @return void
      */
-    void fillWebCallbacks(system_flash_callbacks_t* cbs);
+    void fillFirmwareCallbacks(web_firmware_callbacks_t* cbs);
 
     /**
      * @brief Schedule an RCP firmware update: write intent to NVS and reboot.

@@ -2,11 +2,13 @@
 #define NVS_H_
 
 #include "esp_log.h"
+#include "esp_netif.h"
 
 #include "EthernetAPI.h"
 #include "WirelessAPI.h"
 #include "nvs_bind.h"
 #include "network_event.h"
+#include "network_config.h"
 #include "esp_timer.h"
 
 enum class NetworkState {
@@ -99,6 +101,12 @@ private:
     void onWifiConfigUpdated();
 
     /**
+     * @brief Applies the new Ethernet IP configuration from NVS (DHCP or static IP)
+     *        and reinitialises the Ethernet interface.
+     */
+    void onEthernetConfigUpdated();
+
+    /**
      * @brief Fired when the init timer expires. Opens the AccessPoint if no connection
      *        was established during the init window.
      */
@@ -161,14 +169,73 @@ public:
 
     /**
      * @brief Wait until a valid internet connection is available
-     * 
+     *
      *        --> getState == WIFI || getState == Ethernet
-     * 
+     *
      * @warning Blocking!
-     * 
-     * @returns When internet is connected successfully 
+     *
+     * @returns When internet is connected successfully
      */
     void waitUntilInternetIsConnected();
+
+    /**
+     * @brief Read the current WiFi configuration from NVS.
+     *
+     * @param[out] out  Destination struct
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t getWifiConfig(wifi_config_data_t* out);
+
+    /**
+     * @brief Persist a new WiFi configuration to NVS and post
+     *        `NETWORK_EVENT_CONFIG_UPDATED` to trigger reconnection.
+     *
+     * @param[in] cfg  New configuration to apply
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t setWifiConfig(const wifi_config_data_t* cfg);
+
+    /**
+     * @brief Read the current Ethernet configuration from NVS.
+     *
+     * @param[out] out  Destination struct
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t getEthernetConfig(ethernet_config_data_t* out);
+
+    /**
+     * @brief Persist a new Ethernet configuration to NVS and post
+     *        `NETWORK_EVENT_ETH_CONFIG_UPDATED` to trigger reinitialisation.
+     *
+     * @param[in] cfg  New configuration to apply
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t setEthernetConfig(const ethernet_config_data_t* cfg);
+
+    /**
+     * @brief Return the current network connection status.
+     *
+     * @param[out] out  Destination struct
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t getNetworkStatus(network_status_t* out);
+
+    /**
+     * @brief Fill a `web_network_callbacks_t` struct with static C shims
+     *        that forward network config requests to this NetworkStateMachine instance.
+     *
+     *        Call this before `esp_br_web_start()` in main.
+     *
+     * @param[out] cbs  Network callback struct to fill
+     *
+     * @return void
+     */
+    void fillNetworkCallbacks(web_network_callbacks_t* cbs);
 };
 
 

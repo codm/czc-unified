@@ -6,7 +6,6 @@
 #include "esp_event.h"
 #include "esp_mac.h"
 #include "esp_log.h"
-#include "esp_br_wifi_config.h"
 #include "network_event.h"
 
 enum class ActiveWirelessMode {
@@ -106,13 +105,6 @@ public:
      * @brief Stop the SoftAP, deregister the event handler and stop the wifi-config webserver.
      */
     void closeAccessPoint();
-
-    /**
-     * @brief Spawn a FreeRTOS task that blocks on `esp_br_wifi_config_get_configured_wifi`
-     *        until the user submits credentials via the config webserver.
-     *        On success the task posts `NETWORK_EVENT_CONFIG_UPDATED` and terminates.
-     */
-    void startConfigPollingTask();
 
     /**
      * @brief Initialise and start Wifi in STA mode with the currently stored credentials.

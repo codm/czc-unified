@@ -19,6 +19,25 @@
       max-width: 1500px;
       width: 100%;
     }
+    .mode-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 520px) {
+      .mode-cards { grid-template-columns: 1fr; }
+    }
+    .mode-card {
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 20px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .mode-card:hover { border-color: var(--color-primary); background: #fdf5f0; }
+    .mode-card-selected { border-color: var(--color-primary); background: #fdf5f0; }
+    .mode-card h4 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+    .mode-card p  { margin: 0; font-size: 13px; color: #555; }
   </style>
 </head>
 
@@ -75,6 +94,7 @@
         <li><a href="#Scan"><svg class="icon-stroke"><use href="#icon-scan"/></svg> Discover</a></li>
         <li><a href="#Form"><svg class="icon-stroke"><use href="#icon-form"/></svg> Form Network</a></li>
         <li><a href="#Settings"><svg class="icon-stroke"><use href="#icon-settings"/></svg> Thread Settings</a></li>
+        <li><a href="#Network"><svg class="icon-stroke"><use href="#icon-settings"/></svg> Network</a></li>
         <li><a href="#Firmware"><svg class="icon-stroke"><use href="#icon-firmware"/></svg> Firmware</a></li>
         <li><a href="#Status"><svg class="icon-stroke"><use href="#icon-status"/></svg> Status</a></li>
         <li><a href="#Topology"><svg class="icon-stroke"><use href="#icon-topology"/></svg> Topology</a></li>
@@ -321,6 +341,104 @@
               </div>
             </form>
           </div><!-- End blog comments -->
+        </div>
+      </div>
+    </section>
+    <section id="Network" class="sub-section">
+      <div class="container">
+        <div class="section-header default-margin">
+          <h2>Network <span style="color: var(--color-primary)">Configuration</span></h2>
+          <p>Configure the network interfaces of your CZC device. Changes take effect immediately and trigger a reconnect.</p>
+        </div>
+        <div class="part">
+          <div class="submit-form">
+            <div style="margin-bottom:20px;">
+              <button id="btn-tab-ethernet" class="btn btn-primary" onclick="switchNetworkTab('ethernet')">Ethernet</button>
+              <button id="btn-tab-wifi"     class="btn btn-default" onclick="switchNetworkTab('wifi')" style="margin-left:8px;">WiFi</button>
+            </div>
+
+            <!-- Ethernet -->
+            <div id="network-tab-ethernet">
+              <form id="eth-config-form">
+                <div class="row">
+                  <div class="col-md-4 form-group" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="eth-dhcp" name="dhcp" checked onchange="toggleStaticIpFields('eth')">
+                    <span style="font-size:16px; font-weight:700;">Use DHCP</span>
+                  </div>
+                </div>
+                <div id="eth-static-fields" style="display:none;">
+                  <div class="row">
+                    <div class="col-md-6 form-group">
+                      <p style="font-size:16px; font-weight:700;">Static IP</p>
+                      <input name="static_ip" type="text" class="form-control" placeholder="192.168.1.100">
+                    </div>
+                    <div class="col-md-6 form-group">
+                      <p style="font-size:16px; font-weight:700;">Gateway</p>
+                      <input name="gateway" type="text" class="form-control" placeholder="192.168.1.1">
+                    </div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-6 form-group">
+                      <p style="font-size:16px; font-weight:700;">DNS Primary</p>
+                      <input name="dns_primary" type="text" class="form-control" placeholder="8.8.8.8">
+                    </div>
+                    <div class="col-md-6 form-group">
+                      <p style="font-size:16px; font-weight:700;">DNS Secondary</p>
+                      <input name="dns_secondary" type="text" class="form-control" placeholder="8.8.4.4">
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="saveNetworkConfig('ethernet')">Save</button>
+                <span id="eth-save-status" style="margin-left:10px; display:none;"></span>
+              </form>
+            </div>
+
+            <!-- WiFi -->
+            <div id="network-tab-wifi" style="display:none;">
+              <form id="wifi-config-form">
+                <div class="row">
+                  <div class="col-md-6 form-group">
+                    <p style="font-size:16px; font-weight:700;">SSID</p>
+                    <input name="ssid" type="text" class="form-control" placeholder="Network name">
+                  </div>
+                  <div class="col-md-6 form-group">
+                    <p style="font-size:16px; font-weight:700;">Password</p>
+                    <input name="password" type="password" class="form-control" placeholder="Password">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-md-4 form-group" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="wifi-dhcp" name="dhcp" checked onchange="toggleStaticIpFields('wifi')">
+                    <span style="font-size:16px; font-weight:700;">Use DHCP</span>
+                  </div>
+                </div>
+                <div id="wifi-static-fields" style="display:none;">
+                  <div class="row">
+                    <div class="col-md-6 form-group">
+                      <p style="font-size:16px; font-weight:700;">Static IP</p>
+                      <input name="static_ip" type="text" class="form-control" placeholder="192.168.1.100">
+                    </div>
+                    <div class="col-md-6 form-group">
+                      <p style="font-size:16px; font-weight:700;">Gateway</p>
+                      <input name="gateway" type="text" class="form-control" placeholder="192.168.1.1">
+                    </div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-6 form-group">
+                      <p style="font-size:16px; font-weight:700;">DNS Primary</p>
+                      <input name="dns_primary" type="text" class="form-control" placeholder="8.8.8.8">
+                    </div>
+                    <div class="col-md-6 form-group">
+                      <p style="font-size:16px; font-weight:700;">DNS Secondary</p>
+                      <input name="dns_secondary" type="text" class="form-control" placeholder="8.8.4.4">
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="saveNetworkConfig('wifi')">Save</button>
+                <span id="wifi-save-status" style="margin-left:10px; display:none;"></span>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -614,6 +732,54 @@
           <p id = "log_window_content" style="display: inline-block;">Known</p>
         </div>
         <button type = "button" class="dialog-button" style ="width: 60px; height: 30px; " onclick="frontend_log_close(this)">Okay</button>
+      </div>
+    </div>
+    <!-- Internet-waiting overlay (first boot) -->
+    <div id="internet-waiting-overlay" class="dialog" style="display:none; background:rgba(0,0,0,0.75); z-index:9000;">
+      <div class="dialog-content" style="text-align:center; padding:48px 40px; max-width:480px;">
+        <h2 style="margin-bottom:16px;">Setting up your CZC</h2>
+        <p>Waiting for an internet connection before device mode can be selected...</p>
+        <p style="margin-top:8px; font-size:13px; color:gray;">
+          Connect via Ethernet or configure WiFi below, then return here.
+        </p>
+        <p id="waiting-status-text" style="margin-top:16px; font-size:13px; color:#aaa;"></p>
+        <div style="margin-top:24px;">
+          <a href="#Network" onclick="document.getElementById('internet-waiting-overlay').style.display='none';"
+             class="btn btn-default">Configure Network</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode selection popup (first boot, shown after internet connected) -->
+    <div id="mode-selection-modal" class="dialog" style="display:none;">
+      <div class="dialog-content" style="max-width:640px; width:92vw; padding:32px;">
+        <h2 style="margin-bottom:8px;">Welcome to CZC</h2>
+        <p style="color:gray; margin-bottom:24px;">
+          Select the operating mode. The matching RCP firmware will be flashed automatically.
+        </p>
+        <div class="mode-cards">
+          <div class="mode-card" id="mode-card-0" onclick="selectMode(0)">
+            <h4>Thread OTBR</h4>
+            <p>OpenThread Border Router &mdash; connects your Thread mesh to IP.</p>
+          </div>
+          <div class="mode-card" id="mode-card-1" onclick="selectMode(1)">
+            <h4>Zigbee Coordinator USB</h4>
+            <p>Zigbee coordinator with USB serial proxy to a host application.</p>
+          </div>
+          <div class="mode-card" id="mode-card-2" onclick="selectMode(2)">
+            <h4>Zigbee Coordinator Network</h4>
+            <p>Zigbee coordinator with TCP network proxy to a host application.</p>
+          </div>
+          <div class="mode-card" id="mode-card-3" onclick="selectMode(3)">
+            <h4>Zigbee Router</h4>
+            <p>Standalone Zigbee router &mdash; RCP operates independently, ESP idles.</p>
+          </div>
+        </div>
+        <div id="mode-confirm-bar" style="display:none; margin-top:20px; padding-top:16px; border-top:1px solid #e0e0e0;">
+          <p style="margin-bottom:12px;">Selected: <strong id="mode-confirm-name"></strong></p>
+          <button id="mode-confirm-btn" class="btn btn-primary" onclick="confirmModeSelection()">Confirm &amp; Flash RCP</button>
+          <button class="btn btn-default" onclick="cancelModeSelection()" style="margin-left:8px;">Back</button>
+        </div>
       </div>
     </div>
     </main>

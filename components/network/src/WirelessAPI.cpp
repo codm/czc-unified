@@ -50,11 +50,8 @@ void WirelessAPI::initAccessPoint()
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &apConfig));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "Accesspoint started, SSID: %s Psw: %s", apConfig.ap.ssid, apConfig.ap.password);
+    ESP_LOGI(TAG, "Accesspoint started, SSID: %s — connect and open http://192.168.4.1 to configure", apConfig.ap.ssid);
     activeWirelessMode = ActiveWirelessMode::ACCESSPOINT;
-
-    ESP_LOGI(TAG, "Starting wifi config webserver");
-    ESP_ERROR_CHECK(esp_br_wifi_config_start());
 }
 
 void WirelessAPI::closeAccessPoint()
@@ -63,33 +60,6 @@ void WirelessAPI::closeAccessPoint()
     esp_wifi_stop();
     esp_wifi_deinit();
     activeWirelessMode = ActiveWirelessMode::OFF;
-    esp_br_wifi_config_stop();
-}
-
-void WirelessAPI::startConfigPollingTask()
-{
-    xTaskCreate(
-        [](void* arg) {
-            WirelessAPI* self = static_cast<WirelessAPI*>(arg);
-            esp_err_t ret = ESP_ERR_TIMEOUT;
-
-            while (ret == ESP_ERR_TIMEOUT) {
-                ret = esp_br_wifi_config_get_configured_wifi(
-                    self->ssid, sizeof(self->ssid), self->password, sizeof(self->password), 100
-                );
-            }
-
-            if (ret == ESP_OK)
-                esp_event_post(NETWORK_EVENT, NETWORK_EVENT_CONFIG_UPDATED, nullptr, 0, portMAX_DELAY);
-
-            vTaskDelete(NULL);
-        },
-        "wifi_config_poll",
-        4096,
-        this,
-        5,
-        NULL
-    );
 }
 
 // -----------------------------------------------------------------------------

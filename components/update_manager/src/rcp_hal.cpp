@@ -218,6 +218,7 @@ bool RcpHal::waitAck(uint32_t timeoutMs)
                 }
             }
         }
+        ESP_LOGI(TAG, "waiting...");
         vTaskDelay(1);
     }
 

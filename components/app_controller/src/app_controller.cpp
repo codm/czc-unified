@@ -9,8 +9,24 @@
 
 static const char* TAG = "AppController";
 
-constexpr const char* FIRST_BOOT_RCP_URL =
+constexpr const char* RCP_URL_THREAD  =
     "https://github.com/codm/czc-ot-rcp-fw/releases/download/V1.0.0/czc_ot_rcp_fw_1.0.0.bin";
+constexpr const char* RCP_URL_ZIGBEE_COORD =
+    "https://raw.githubusercontent.com/codm/czc-fw/zb_fws/ti/coordinator/CC1352P7_coordinator_20250321.bin";
+constexpr const char* RCP_URL_ZIGBEE_ROUTER =
+    "https://raw.githubusercontent.com/codm/czc-fw/zb_fws/ti/router/CC1352P7_router_20250403.bin";
+
+static const char* rcpUrlForMode(DeviceMode mode)
+{
+    switch (mode)
+    {
+        case DeviceMode::THREAD:        return RCP_URL_THREAD;
+        case DeviceMode::ZIGBEE_USB:    return RCP_URL_ZIGBEE_COORD;
+        case DeviceMode::ZIGBEE_NET:    return RCP_URL_ZIGBEE_COORD;
+        case DeviceMode::ZIGBEE_ROUTER: return RCP_URL_ZIGBEE_ROUTER;
+    }
+    return RCP_URL_THREAD;
+}
 
 AppController::AppController(UpdateManager& updateMgr, FirmwareManager& firmwareMgr)
     : updateManager{updateMgr}, firmwareManager{firmwareMgr}
@@ -50,15 +66,16 @@ void AppController::run()
         }
     }
 
-    // 2. First boot — RCP not yet provisioned
+    // 2. First boot — wait for the user to select a mode via the web UI.
+    //    requestModeChange() will write device_setup, RCP URL and pending flag,
+    //    then reboot — this loop never exits on its own.
     if (!AppNvs::readDeviceSetup())
     {
-        ESP_LOGI(TAG, "First boot — scheduling initial RCP flash");
-        AppNvs::writeRcpUrl(FIRST_BOOT_RCP_URL);
-        AppNvs::writeRcpPending(true);
-        AppNvs::writeDeviceSetup(true);
-        vTaskDelay(pdMS_TO_TICKS(200));
-        esp_restart();
+        ESP_LOGI(TAG, "First boot — waiting for mode selection via web UI");
+        while (true)
+        {
+            vTaskDelay(portMAX_DELAY);
+        }
     }
 
     // 3. Normal boot — start the configured protocol stack
@@ -84,8 +101,11 @@ esp_err_t AppController::requestEspFlash(const char* url)
 
 esp_err_t AppController::requestModeChange(DeviceMode mode)
 {
-    ESP_RETURN_ON_ERROR(AppNvs::writeDeviceMode(mode), TAG, "Write device mode failed");
-    ESP_LOGI(TAG, "Mode change to %d — rebooting", static_cast<int>(mode));
+    ESP_RETURN_ON_ERROR(AppNvs::writeDeviceMode(mode),           TAG, "Write device mode failed");
+    ESP_RETURN_ON_ERROR(AppNvs::writeRcpUrl(rcpUrlForMode(mode)), TAG, "Write RCP URL failed");
+    ESP_RETURN_ON_ERROR(AppNvs::writeRcpPending(true),            TAG, "Write RCP pending failed");
+    ESP_RETURN_ON_ERROR(AppNvs::writeDeviceSetup(true),           TAG, "Write device setup failed");
+    ESP_LOGI(TAG, "Mode change to %d scheduled — rebooting", static_cast<int>(mode));
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();
     return ESP_OK;
@@ -96,7 +116,7 @@ DeviceMode AppController::getCurrentMode()
     return firmwareManager.getActiveMode();
 }
 
-void AppController::fillWebCallbacks(system_flash_callbacks_t* cbs)
+void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
 {
     cbs->flash_rcp = [](void* ctx, const char* url)
     {
@@ -105,6 +125,20 @@ void AppController::fillWebCallbacks(system_flash_callbacks_t* cbs)
     cbs->flash_esp = [](void* ctx, const char* url)
     {
         return static_cast<AppController*>(ctx)->requestEspFlash(url);
+    };
+    cbs->set_mode = [](void* ctx, int mode)
+    {
+        return static_cast<AppController*>(ctx)->requestModeChange(static_cast<DeviceMode>(mode));
+    };
+    cbs->get_mode = [](void* ctx, int* mode_out)
+    {
+        *mode_out = static_cast<int>(static_cast<AppController*>(ctx)->getCurrentMode());
+        return ESP_OK;
+    };
+    cbs->get_device_setup = [](void* ctx, int* setup_out)
+    {
+        *setup_out = AppNvs::readDeviceSetup() ? 1 : 0;
+        return ESP_OK;
     };
     cbs->ctx = this;
 }
