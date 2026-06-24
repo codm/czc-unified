@@ -205,6 +205,12 @@ void NetworkStateMachine::onWifiConfigUpdated()
     if(wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::WIFI) wirelessAPI.closeWifi();
     else if(wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::ACCESSPOINT) wirelessAPI.closeAccessPoint();
     else if(ethernetAPI.getEthIsInitialised()) ethernetAPI.closeEthernet();
+
+    wifi_config_data_t cfg{};
+    if (NvsBinding::readWifiConfig(cfg) == ESP_OK) {
+        wirelessAPI.setWirelessConfig(cfg.ssid, cfg.password);
+    }
+
     setState(NetworkState::RETRY_WIFI);
 }
 
