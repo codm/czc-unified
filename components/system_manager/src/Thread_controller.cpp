@@ -1,8 +1,52 @@
 #include "Thread_controller.h"
-#include "nvs_flash.h"
-#include "esp_openthread_border_router.h"
+
+#include "board_config.h"
+#include "esp_log.h"
+#include "esp_check.h"
+#include "esp_coexist.h"
+#include "esp_openthread.h"
 #include "esp_openthread_lock.h"
+#include "esp_openthread_netif_glue.h"
+#include "esp_openthread_border_router.h"
+#include "esp_vfs_dev.h"
+#include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "nvs_flash.h"
 #include "openthread/dataset.h"
+#include <string.h>
+
+#define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()                   \
+    {                                                           \
+        .radio_mode = RADIO_MODE_UART_RCP,                      \
+        .radio_uart_config = {                                  \
+            .port = Board::RCP_UART,                            \
+            .uart_config =                                      \
+                {                                               \
+                    .baud_rate = Board::SPINEL_BAUD,            \
+                    .data_bits = UART_DATA_8_BITS,              \
+                    .parity = UART_PARITY_DISABLE,              \
+                    .stop_bits = UART_STOP_BITS_1,              \
+                    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,      \
+                    .rx_flow_ctrl_thresh = 0,                   \
+                    .source_clk = UART_SCLK_DEFAULT,            \
+                },                                              \
+            .rx_pin = Board::RCP_UART_RX,                       \
+            .tx_pin = Board::RCP_UART_TX,                       \
+        },                                                      \
+    }
+
+#define ESP_OPENTHREAD_DEFAULT_HOST_CONFIG()           \
+    {                                                  \
+        .host_connection_mode = HOST_CONNECTION_MODE_NONE, \
+    }
+
+#define ESP_OPENTHREAD_DEFAULT_PORT_CONFIG()   \
+    {                                          \
+        .storage_partition_name = "nvs",       \
+        .netif_queue_size = 10,                \
+        .task_queue_size = 10,                 \
+    }
 
 const char* Thread_controller::TAG = "esp_ot_br";
 
@@ -12,16 +56,16 @@ void Thread_controller::rcp_failure_hardware_reset_handler()
     gpio_config_t reset_pin_config;
     memset(&reset_pin_config, 0, sizeof(reset_pin_config));
     reset_pin_config.intr_type = GPIO_INTR_DISABLE;
-    reset_pin_config.pin_bit_mask = BIT(PIN_TO_RCP_RESET);
+    reset_pin_config.pin_bit_mask = BIT(Board::CC_RST_PIN);
     reset_pin_config.mode = GPIO_MODE_OUTPUT;
     reset_pin_config.pull_down_en = GPIO_PULLDOWN_DISABLE;
     reset_pin_config.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&reset_pin_config);
-    gpio_set_level(PIN_TO_RCP_RESET, 0);
+    gpio_set_level(Board::CC_RST_PIN, 0);
     vTaskDelay(pdMS_TO_TICKS(10));
-    gpio_set_level(PIN_TO_RCP_RESET, 1);
+    gpio_set_level(Board::CC_RST_PIN, 1);
     vTaskDelay(pdMS_TO_TICKS(30));
-    gpio_reset_pin(PIN_TO_RCP_RESET);
+    gpio_reset_pin(Board::CC_RST_PIN);
 }
 
 esp_err_t Thread_controller::init(const system_flash_callbacks_t *flash_cbs)

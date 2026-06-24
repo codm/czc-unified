@@ -1,7 +1,8 @@
 idf_component_register(
     SRC_DIRS src
     INCLUDE_DIRS include
-    REQUIRES 
+    REQUIRES
+        board_config
         freertos
         esp_system
         esp_event

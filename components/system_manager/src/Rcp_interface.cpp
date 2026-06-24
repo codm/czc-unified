@@ -1,5 +1,36 @@
 #include "Rcp_interface.h"
 
+#include "board_config.h"
+#include "esp_log.h"
+#include "esp_check.h"
+#include "driver/uart.h"
+#include "driver/gpio.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "esp_partition.h"
+#include "esp_ota_ops.h"
+#include "freertos/task.h"
+
+constexpr size_t   HTTP_READ_BUFFER_SIZE  = 1024;
+constexpr size_t   BSL_TRANSFER_SIZE      = 252;
+constexpr uint32_t BEGIN_ZB_ADDR          = 0x00000000;
+
+constexpr uint8_t BSL_CMD_PING         = 0x20;
+constexpr uint8_t BSL_CMD_DOWNLOAD     = 0x21;
+constexpr uint8_t BSL_CMD_GET_STATUS   = 0x23;
+constexpr uint8_t BSL_CMD_SEND_DATA    = 0x24;
+constexpr uint8_t BSL_CMD_RESET        = 0x25;
+constexpr uint8_t BSL_CMD_SECTOR_ERASE = 0x26;
+constexpr uint8_t BSL_CMD_CRC32        = 0x27;
+constexpr uint8_t BSL_CMD_GET_CHIP_ID  = 0x28;
+constexpr uint8_t BSL_CMD_MEMORY_READ  = 0x2A;
+constexpr uint8_t BSL_CMD_BANK_ERASE   = 0x2C;
+constexpr uint8_t BSL_CMD_SET_CCFG     = 0x2D;
+constexpr uint8_t BSL_CMD_UART_SYNC    = 0x55;
+
+constexpr uint8_t BSL_ACK  = 0xCC;
+constexpr uint8_t BSL_NACK = 0x33;
+
 const char* Rcp_interface::TAG = "RCP-Interface";
 
 Rcp_interface::Rcp_interface(/* args */)
@@ -15,24 +46,24 @@ esp_err_t Rcp_interface::rcp_update_init(uart_port_t _rcp_uart)
     this->rcp_uart = _rcp_uart;
 
     gpio_config_t rst_conf = {
-        .pin_bit_mask = (1ULL << RST_PIN),
+        .pin_bit_mask = (1ULL << Board::CC_RST_PIN),
         .mode         = GPIO_MODE_OUTPUT,
         .pull_up_en   = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
     ESP_RETURN_ON_ERROR(gpio_config(&rst_conf), TAG, "RST GPIO config failed");
-    gpio_set_level(RST_PIN, 1);
+    gpio_set_level(Board::CC_RST_PIN, 1);
     gpio_config_t bsl_conf = {
-        .pin_bit_mask = (1ULL << BSL_PIN),
+        .pin_bit_mask = (1ULL << Board::CC_BSL_PIN),
         .mode         = GPIO_MODE_OUTPUT,
         .pull_up_en   = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
     ESP_RETURN_ON_ERROR(gpio_config(&bsl_conf), TAG, "BSL GPIO config failed");
-    gpio_set_drive_capability(BSL_PIN, GPIO_DRIVE_CAP_3);
-    gpio_set_level(BSL_PIN, 1);
+    gpio_set_drive_capability(Board::CC_BSL_PIN, GPIO_DRIVE_CAP_3);
+    gpio_set_level(Board::CC_BSL_PIN, 1);
 
     return ESP_OK;
 }
@@ -111,7 +142,7 @@ esp_err_t Rcp_interface::bsl_uart_acquire(void)
     }
 
     uart_config_t uart_cfg = {
-        .baud_rate  = BSL_UART_BAUD,
+        .baud_rate  = Board::BSL_BAUD,
         .data_bits  = UART_DATA_8_BITS,
         .parity     = UART_PARITY_DISABLE,
         .stop_bits  = UART_STOP_BITS_1,
@@ -119,12 +150,12 @@ esp_err_t Rcp_interface::bsl_uart_acquire(void)
         .source_clk = UART_SCLK_DEFAULT,
     };
     ESP_RETURN_ON_ERROR(uart_param_config(rcp_uart, &uart_cfg), TAG, "uart_param_config failed");
-    ESP_RETURN_ON_ERROR(uart_set_pin(rcp_uart, BSL_UART_TX, BSL_UART_RX, 
+    ESP_RETURN_ON_ERROR(uart_set_pin(rcp_uart, Board::RCP_UART_TX, Board::RCP_UART_RX, 
         UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE), TAG, "uart_set_pin failed");
     ESP_RETURN_ON_ERROR(uart_driver_install(rcp_uart, 1024, 0, 0, NULL, 0),
                         TAG, "uart_driver_install failed");
     uart_flush_input(rcp_uart);
-    ESP_LOGI(TAG, "[UART] BSL UART ready at %d baud", BSL_UART_BAUD);
+    ESP_LOGI(TAG, "[UART] BSL UART ready at %d baud", Board::BSL_BAUD);
     return ESP_OK;
 }
 
@@ -348,15 +379,15 @@ esp_err_t Rcp_interface::bsl_enter_bootloader(void)
 {
     if(bsl_mode == false) {
         ESP_LOGD(TAG, "[BSL] RST=0, BSL=0");
-        ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 0), TAG, "Error on RST set");
-        ESP_RETURN_ON_ERROR(gpio_set_level(BSL_PIN, 0), TAG, "Error on BSL set");
-        ESP_LOGD(TAG, "[BSL] level readback: RST=%d BSL=%d", gpio_get_level(RST_PIN), gpio_get_level(BSL_PIN));
+        ESP_RETURN_ON_ERROR(gpio_set_level(Board::CC_RST_PIN, 0), TAG, "Error on RST set");
+        ESP_RETURN_ON_ERROR(gpio_set_level(Board::CC_BSL_PIN, 0), TAG, "Error on BSL set");
+        ESP_LOGD(TAG, "[BSL] level readback: RST=%d BSL=%d", gpio_get_level(Board::CC_RST_PIN), gpio_get_level(Board::CC_BSL_PIN));
         vTaskDelay(pdMS_TO_TICKS(50));
         ESP_LOGD(TAG, "[BSL] RST=1 (CC2652 samples BSL now)");
-        ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 1), TAG, "Error on RST set");
+        ESP_RETURN_ON_ERROR(gpio_set_level(Board::CC_RST_PIN, 1), TAG, "Error on RST set");
         vTaskDelay(pdMS_TO_TICKS(500));
         ESP_LOGD(TAG, "[BSL] BSL=1");
-        ESP_RETURN_ON_ERROR(gpio_set_level(BSL_PIN, 1), TAG, "Error on BSL set");
+        ESP_RETURN_ON_ERROR(gpio_set_level(Board::CC_BSL_PIN, 1), TAG, "Error on BSL set");
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 
@@ -464,9 +495,9 @@ esp_err_t Rcp_interface::bsl_process_flash(const uint8_t *data, int length)
 
 esp_err_t Rcp_interface::bsl_reset_target(void)
 {
-    ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 0), TAG, "Error on RST low");
+    ESP_RETURN_ON_ERROR(gpio_set_level(Board::CC_RST_PIN, 0), TAG, "Error on RST low");
     vTaskDelay(pdMS_TO_TICKS(50));
-    ESP_RETURN_ON_ERROR(gpio_set_level(RST_PIN, 1), TAG, "Error on RST high");
+    ESP_RETURN_ON_ERROR(gpio_set_level(Board::CC_RST_PIN, 1), TAG, "Error on RST high");
     vTaskDelay(pdMS_TO_TICKS(500));
     bsl_mode = false;
 
