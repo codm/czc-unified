@@ -5,6 +5,7 @@ idf_component_register(SRCS "main.cpp"
                                 status_light
                                 update_manager
                                 firmware_manager
+                                app_controller
                                 nvs_flash
                                 esp_event
 
