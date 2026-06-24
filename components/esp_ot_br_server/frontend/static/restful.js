@@ -1,4 +1,275 @@
 var OT_SERVER_PACKAGE_VERSION = "v1.0.0";
+
+/* --------------------------------------------------------------------
+               App State — Device Mode & Network Status
+-------------------------------------------------------------------- */
+
+var MODE_NAMES  = ['Thread OTBR', 'Zigbee Coordinator USB', 'Zigbee Coordinator Net', 'Zigbee Router'];
+var MODE_ICONS  = ['icon-thread',  'icon-zigbee',            'icon-zigbee',             'icon-zigbee'];
+var MODE_GROUPS = ['thread',       'zigbee',                  'zigbee',                  'zigbee'];
+
+var NET_STATE = {
+  0: {label: 'Initializing', icon: 'icon-softap'},
+  1: {label: 'Ethernet',     icon: 'icon-ethernet'},
+  2: {label: 'WiFi',         icon: 'icon-wifi'},
+  3: {label: 'SoftAP',       icon: 'icon-softap'},
+  4: {label: 'ETH Retry',    icon: 'icon-ethernet'},
+  5: {label: 'WiFi Retry',   icon: 'icon-wifi'}
+};
+
+function initAppState() {
+  $.ajax({
+    url: '/device/mode', type: 'GET', dataType: 'json',
+    success: function(data) { applyDeviceMode(data.mode); },
+    error:   function()     { document.body.classList.add('mode-thread'); }
+  });
+  pollNetworkStatus();
+}
+
+function applyDeviceMode(mode) {
+  var group = MODE_GROUPS[mode] || 'thread';
+  document.body.classList.remove('mode-thread', 'mode-zigbee');
+  document.body.classList.add('mode-' + group);
+
+  var ovMode = document.getElementById('ov-mode');
+  if (ovMode) ovMode.innerText = MODE_NAMES[mode] || '—';
+
+  var badge = document.getElementById('hdr-mode');
+  if (badge) {
+    badge.querySelector('.hdr-badge-icon use').setAttribute('href', '#' + (MODE_ICONS[mode] || 'icon-thread'));
+    badge.querySelector('.hdr-badge-label').innerText = MODE_NAMES[mode] || '—';
+  }
+}
+
+function pollNetworkStatus() {
+  $.ajax({
+    url: '/network/status', type: 'GET', dataType: 'json',
+    success: function(status) {
+      var info  = NET_STATE[status.mode] || {label: 'Unknown', icon: 'icon-softap'};
+      var label = (status.connected && status.ip) ? info.label + ' · ' + status.ip : info.label;
+
+      var badge = document.getElementById('hdr-net');
+      if (badge) {
+        badge.querySelector('.hdr-badge-icon use').setAttribute('href', '#' + info.icon);
+        badge.querySelector('.hdr-badge-label').innerText = label;
+      }
+
+      var ovNet = document.getElementById('ov-net');
+      if (ovNet) ovNet.innerText = label;
+    },
+    error: function() {}
+  });
+  setTimeout(pollNetworkStatus, 10000);
+}
+
+/* --------------------------------------------------------------------
+                        Network Config
+-------------------------------------------------------------------- */
+
+function toggleStaticIpFields(prefix) {
+  var dhcp = document.getElementById(prefix + '-dhcp').checked;
+  document.getElementById(prefix + '-static-fields').querySelectorAll('input').forEach(function(inp) {
+    inp.disabled = dhcp;
+  });
+}
+
+function loadNetworkConfig(type) {
+  var url    = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
+  var prefix = type === 'wifi' ? 'wifi' : 'eth';
+  $.ajax({
+    url: url, type: 'GET', dataType: 'json',
+    success: function(cfg) {
+      var form = document.getElementById(prefix + '-config-form');
+      if (type === 'wifi') {
+        form.querySelector('[name=ssid]').value     = cfg.ssid || '';
+        form.querySelector('[name=password]').value = '';
+      }
+      form.querySelector('[name=static_ip]').value     = cfg.static_ip     || '';
+      form.querySelector('[name=gateway]').value        = cfg.gateway       || '';
+      form.querySelector('[name=dns_primary]').value    = cfg.dns_primary   || '';
+      form.querySelector('[name=dns_secondary]').value  = cfg.dns_secondary || '';
+      document.getElementById(prefix + '-dhcp').checked = cfg.dhcp !== false;
+      toggleStaticIpFields(prefix);
+    },
+    error: function() { console.log('Failed to load ' + type + ' config'); }
+  });
+}
+
+function saveNetworkConfig(type) {
+  var prefix   = type === 'wifi' ? 'wifi' : 'eth';
+  var url      = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
+  var form     = document.getElementById(prefix + '-config-form');
+  var statusEl = document.getElementById(prefix + '-save-status');
+
+  var payload = {
+    dhcp:          document.getElementById(prefix + '-dhcp').checked,
+    static_ip:     form.querySelector('[name=static_ip]').value,
+    gateway:       form.querySelector('[name=gateway]').value,
+    dns_primary:   form.querySelector('[name=dns_primary]').value,
+    dns_secondary: form.querySelector('[name=dns_secondary]').value
+  };
+  if (type === 'wifi') {
+    payload.ssid     = form.querySelector('[name=ssid]').value;
+    payload.password = form.querySelector('[name=password]').value;
+  }
+
+  statusEl.style.display = 'inline';
+  statusEl.style.color   = 'gray';
+  statusEl.innerText     = 'Saving…';
+
+  $.ajax({
+    url: url, type: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify(payload),
+    complete: function(jqXHR) {
+      /* status 0 = connection dropped (expected when AP shuts down to reconnect) */
+      var ok = jqXHR.status === 200 || jqXHR.status === 0;
+      if (!ok) {
+        statusEl.style.color = 'red';
+        statusEl.innerText   = 'Error saving config (HTTP ' + jqXHR.status + ').';
+        return;
+      }
+      if (type === 'wifi') {
+        statusEl.style.color = 'darkorange';
+        statusEl.innerText   = 'Connecting…';
+        pollForNewIp(statusEl);
+      } else {
+        statusEl.style.color = 'green';
+        statusEl.innerText   = 'Saved.';
+        setTimeout(function() { statusEl.style.display = 'none'; }, 4000);
+      }
+    }
+  });
+}
+
+function pollForNewIp(statusEl, attempts) {
+  attempts = attempts || 0;
+  if (attempts >= 20) {
+    statusEl.style.color = 'red';
+    statusEl.innerText   = 'Timeout — check WiFi credentials.';
+    return;
+  }
+  setTimeout(function() {
+    $.ajax({
+      url: '/network/status', type: 'GET', dataType: 'json',
+      success: function(status) {
+        if (status.connected && status.ip) {
+          statusEl.style.color = 'green';
+          statusEl.innerText   = 'Connected! Redirecting to ' + status.ip + '…';
+          setTimeout(function() { window.location.href = 'http://' + status.ip + '/'; }, 1500);
+        } else {
+          statusEl.innerText = 'Connecting… (' + (attempts + 1) + ')';
+          pollForNewIp(statusEl, attempts + 1);
+        }
+      },
+      error: function() {
+        statusEl.innerText = 'Waiting for device… (' + (attempts + 1) + ')';
+        pollForNewIp(statusEl, attempts + 1);
+      }
+    });
+  }, 2000);
+}
+
+/* Load both configs when Network section first becomes visible */
+$(document).ready(function() {
+  var networkSection = document.getElementById('Network');
+  if (!networkSection) return;
+  var loaded = false;
+  var observer = new IntersectionObserver(function(entries) {
+    if (entries[0].isIntersecting && !loaded) {
+      loaded = true;
+      loadNetworkConfig('ethernet');
+      loadNetworkConfig('wifi');
+    }
+  });
+  observer.observe(networkSection);
+});
+
+/* --------------------------------------------------------------------
+                   First Boot — Mode Selection
+-------------------------------------------------------------------- */
+var g_selected_mode = -1;
+var g_mode_names    = ['Thread OTBR', 'Zigbee Coordinator USB', 'Zigbee Coordinator Network', 'Zigbee Router'];
+
+function initFirstBootCheck() {
+  $.ajax({
+    url: '/device/mode', type: 'GET', dataType: 'json',
+    success: function(data) {
+      if (!data.device_setup) {
+        document.getElementById('internet-waiting-overlay').style.display = 'flex';
+        pollInternetForModePopup();
+      }
+    },
+    error: function() { /* device not yet reachable — ignore */ }
+  });
+}
+
+function pollInternetForModePopup() {
+  $.ajax({
+    url: '/network/status', type: 'GET', dataType: 'json',
+    success: function(status) {
+      if (status.connected) {
+        document.getElementById('internet-waiting-overlay').style.display = 'none';
+        document.getElementById('mode-selection-modal').style.display     = 'flex';
+      } else {
+        document.getElementById('waiting-status-text').innerText = 'Waiting for Ethernet or WiFi connection...';
+        setTimeout(pollInternetForModePopup, 2000);
+      }
+    },
+    error: function() {
+      document.getElementById('waiting-status-text').innerText = 'Waiting for device...';
+      setTimeout(pollInternetForModePopup, 3000);
+    }
+  });
+}
+
+function selectMode(mode) {
+  g_selected_mode = mode;
+  for (var i = 0; i < 4; i++) {
+    var card = document.getElementById('mode-card-' + i);
+    if (card) card.classList.remove('mode-card-selected');
+  }
+  document.getElementById('mode-card-' + mode).classList.add('mode-card-selected');
+  document.getElementById('mode-confirm-name').innerText          = g_mode_names[mode];
+  document.getElementById('mode-confirm-bar').style.display       = 'block';
+}
+
+function cancelModeSelection() {
+  g_selected_mode = -1;
+  for (var i = 0; i < 4; i++) {
+    var card = document.getElementById('mode-card-' + i);
+    if (card) card.classList.remove('mode-card-selected');
+  }
+  document.getElementById('mode-confirm-bar').style.display = 'none';
+}
+
+function confirmModeSelection() {
+  if (g_selected_mode < 0) return;
+  var btn = document.getElementById('mode-confirm-btn');
+  btn.disabled    = true;
+  btn.innerText   = 'Flashing RCP & rebooting...';
+
+  $.ajax({
+    url: '/device/mode', type: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({mode: g_selected_mode}),
+    complete: function() {
+      // Connection drop expected on reboot — always treat as success
+      document.getElementById('mode-selection-modal').innerHTML =
+        '<div class="dialog-content" style="text-align:center; padding:40px;">' +
+        '<h2 style="margin-bottom:16px;">Setup complete</h2>' +
+        '<p>The RCP is being flashed. The device will reboot automatically.</p>' +
+        '<p style="color:gray; font-size:13px; margin-top:12px;">Page reloads in 20 seconds...</p>' +
+        '</div>';
+      setTimeout(function() { location.reload(); }, 20000);
+    }
+  });
+}
+
+$(document).ready(function() {
+  initFirstBootCheck();
+  initAppState();
+});
 /* --------------------------------------------------------------------
                             action
 -------------------------------------------------------------------- */

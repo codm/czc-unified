@@ -7,7 +7,6 @@ idf_component_register(
         esp_eth
         esp_wifi
         esp_timer
-        esp_ot_br_server
 
     PRIV_REQUIRES
         nvs_flash

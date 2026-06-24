@@ -8,38 +8,94 @@
   <link href="/static/style.css" type="text/css" rel="stylesheet">
   <script src="/static/restful.js" defer="true"></script>
   <link href="/favicon.ico" rel="icon">
-  
-  <!-- <link href="/static/bootstrap.min.css" rel="stylesheet"> -->
-  <!--  <script src="/static/jquery.min.js"></script> -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
   <script src="https://d3js.org/d3.v3.min.js"></script>
   <style>
-    .container {
-      max-width: 1500px;
-      width: 100%;
+    .container { max-width: 1500px; width: 100%; }
+
+    /* Mode cards (first-boot) */
+    .mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 520px) { .mode-cards { grid-template-columns: 1fr; } }
+    .mode-card { border: 2px solid #e0e0e0; border-radius: 8px; padding: 20px; cursor: pointer; transition: border-color .15s, background .15s; }
+    .mode-card:hover { border-color: var(--color-primary); background: #fdf5f0; }
+    .mode-card-selected { border-color: var(--color-primary); background: #fdf5f0; }
+    .mode-card h4 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+    .mode-card p  { margin: 0; font-size: 13px; color: #555; }
+
+    /* Header status badges */
+    .header-status { display: flex; align-items: center; gap: 8px; margin-left: auto; margin-right: 10px; }
+    .hdr-badge {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 12px; padding: 3px 9px; border-radius: 12px;
+      background: rgba(255,255,255,0.18); color: #fff; white-space: nowrap; cursor: default;
     }
+    .hdr-badge-icon { width: 13px; height: 13px; stroke: #fff; fill: none; }
+    @media (max-width: 540px) { .header-status { display: none; } }
+
+    /* Mode-based section visibility */
+    .thread-section { display: none; }
+    .zigbee-section { display: none; }
+    body.mode-thread .thread-section { display: block; }
+    body.mode-zigbee .zigbee-section { display: block; }
+    .sidebar-nav .thread-only { display: none; }
+    .sidebar-nav .zigbee-only { display: none; }
+    body.mode-thread .sidebar-nav .thread-only { display: block; }
+    body.mode-zigbee .sidebar-nav .zigbee-only { display: block; }
+
+    /* Overview cards */
+    .overview-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; margin-top: 24px; }
+    .overview-card { background: #f7f7f7; border: 1px solid #e4e4e4; border-radius: 8px; padding: 14px 16px; }
+    .overview-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #999; margin-bottom: 6px; }
+    .overview-card-value { font-size: 15px; font-weight: 700; color: #222; }
+
+    /* Placeholder panels (MQTT, Security) */
+    .placeholder-panel { text-align: center; padding: 48px 20px; color: #bbb; border: 2px dashed #e0e0e0; border-radius: 8px; }
+    .placeholder-panel-icon { width: 40px; height: 40px; margin-bottom: 14px; stroke: #ccc; }
+    .placeholder-panel-text { font-size: 15px; margin: 0; }
+
+    /* Debug section */
+    .debug-btn-row { display: flex; flex-wrap: wrap; gap: 12px; }
+
+    /* Network config split layout */
+    .network-split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+    @media (max-width: 720px) { .network-split { grid-template-columns: 1fr; } }
+    .network-panel { border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; }
+    .network-panel-title { font-size: 16px; font-weight: 700; margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid #e0e0e0; }
+    .net-field-label { font-size: 15px; font-weight: 700; margin: 10px 0 4px; }
+    .net-dhcp-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+    input:disabled { opacity: 0.4; background: #f0f0f0 !important; cursor: not-allowed; }
   </style>
 </head>
 
 <body>
   <svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
     <defs>
-      <symbol id="icon-overview" viewBox="0 0 16 16"><path d="M1.5 7 8 1.5 14.5 7M3 7v7h10V7M6.5 14V9.5h3V14"/></symbol>
-      <symbol id="icon-scan" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></symbol>
-      <symbol id="icon-form" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></symbol>
-      <symbol id="icon-settings" viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="currentColor" stroke="none"/><circle cx="11" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="7" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
-      <symbol id="icon-status" viewBox="0 0 16 16"><path d="M1 8h2.5l1.5-4 3 8 1.5-4H15"/></symbol>
-      <symbol id="icon-topology" viewBox="0 0 16 16"><circle cx="8" cy="2.5" r="1.8" fill="currentColor" stroke="none"/><circle cx="3" cy="13" r="1.8" fill="currentColor" stroke="none"/><circle cx="13" cy="13" r="1.8" fill="currentColor" stroke="none"/><path d="M8 4.3 4 11.5M8 4.3l4 7.2"/></symbol>
-      <symbol id="icon-firmware" viewBox="0 0 16 16"><path d="M8 1v8M4.5 6.5 8 10l3.5-3.5M2 13h12"/></symbol>
-      <symbol id="icon-menu" viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/></symbol>
-      <symbol id="icon-book" viewBox="0 0 448 512"><path d="M96 0C43 0 0 43 0 96L0 416c0 53 43 96 96 96l288 0 32 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l0-64c17.7 0 32-14.3 32-32l0-320c0-17.7-14.3-32-32-32L384 0 96 0zm0 384l256 0 0 64L96 448c-17.7 0-32-14.3-32-32s14.3-32 32-32zm32-240c0-8.8 7.2-16 16-16l192 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-192 0c-8.8 0-16-7.2-16-16zm16 48l192 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-192 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></symbol>
-      <symbol id="icon-github" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></symbol>
-      <symbol id="icon-mastodon" viewBox="0 0 16 16"><path d="M11.19 12.195c2.016-.24 3.77-1.475 3.99-2.603.348-1.778.32-4.339.32-4.339 0-3.47-2.286-4.488-2.286-4.488C12.062.238 10.083.017 8.027 0h-.05C5.92.017 3.942.238 2.79.765c0 0-2.285 1.017-2.285 4.488l-.002.662c-.004.64-.007 1.35.011 2.091.083 3.394.626 6.74 3.78 7.57 1.454.383 2.703.463 3.709.408 1.823-.1 2.847-.647 2.847-.647l-.06-1.317s-1.303.41-2.767.36c-1.45-.05-2.98-.156-3.215-1.928a4 4 0 0 1-.033-.496s1.424.346 3.228.428c1.103.05 2.137-.064 3.188-.189zm1.613-2.47H11.13v-4.08c0-.859-.364-1.295-1.091-1.295-.804 0-1.207.517-1.207 1.541v2.233H7.168V5.89c0-1.024-.403-1.541-1.207-1.541-.727 0-1.091.436-1.091 1.296v4.079H3.197V5.522q0-1.288.66-2.046c.456-.505 1.052-.764 1.793-.764.856 0 1.504.328 1.933.983L8 4.39l.417-.695c.429-.655 1.077-.983 1.934-.983.74 0 1.336.259 1.791.764q.662.757.661 2.046z"/></symbol>
-      <symbol id="icon-bluesky" viewBox="0 0 16 16"><path d="M3.468 1.948C5.303 3.325 7.276 6.118 8 7.616c.725-1.498 2.698-4.29 4.532-5.668C13.855.955 16 .186 16 2.632c0 .489-.28 4.105-.444 4.692-.572 2.04-2.653 2.561-4.504 2.246 3.236.551 4.06 2.375 2.281 4.2-3.376 3.464-4.852-.87-5.23-1.98-.07-.204-.103-.3-.103-.218 0-.081-.033.014-.102.218-.379 1.11-1.855 5.444-5.231 1.98-1.778-1.825-.955-3.65 2.28-4.2-1.85.315-3.932-.205-4.503-2.246C.28 6.737 0 3.12 0 2.632 0 .186 2.145.955 3.468 1.948"/></symbol>
-      <symbol id="icon-contact" viewBox="0 0 512 512"><path d="M215.4 96L144 96l-36.2 0L96 96l0 8.8L96 144l0 40.4 0 89L.2 202.5c1.6-18.1 10.9-34.9 25.7-45.8L48 140.3 48 96c0-26.5 21.5-48 48-48l76.6 0 49.9-36.9C232.2 3.9 243.9 0 256 0s23.8 3.9 33.5 11L339.4 48 416 48c26.5 0 48 21.5 48 48l0 44.3 22.1 16.4c14.8 10.9 24.1 27.7 25.7 45.8L416 273.4l0-89 0-40.4 0-39.2 0-8.8-11.8 0L368 96l-71.4 0-81.3 0zM0 448L0 242.1 217.6 403.3c11.1 8.2 24.6 12.7 38.4 12.7s27.3-4.4 38.4-12.7L512 242.1 512 448s0 0 0 0c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64c0 0 0 0 0 0zM176 160l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></symbol>
+      <symbol id="icon-overview"  viewBox="0 0 16 16"><path d="M1.5 7 8 1.5 14.5 7M3 7v7h10V7M6.5 14V9.5h3V14"/></symbol>
+      <symbol id="icon-scan"      viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></symbol>
+      <symbol id="icon-form"      viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></symbol>
+      <symbol id="icon-settings"  viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="currentColor" stroke="none"/><circle cx="11" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="7" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="icon-status"    viewBox="0 0 16 16"><path d="M1 8h2.5l1.5-4 3 8 1.5-4H15"/></symbol>
+      <symbol id="icon-topology"  viewBox="0 0 16 16"><circle cx="8" cy="2.5" r="1.8" fill="currentColor" stroke="none"/><circle cx="3" cy="13" r="1.8" fill="currentColor" stroke="none"/><circle cx="13" cy="13" r="1.8" fill="currentColor" stroke="none"/><path d="M8 4.3 4 11.5M8 4.3l4 7.2"/></symbol>
+      <symbol id="icon-firmware"  viewBox="0 0 16 16"><path d="M8 1v8M4.5 6.5 8 10l3.5-3.5M2 13h12"/></symbol>
+      <symbol id="icon-menu"      viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/></symbol>
+      <symbol id="icon-book"      viewBox="0 0 448 512"><path d="M96 0C43 0 0 43 0 96L0 416c0 53 43 96 96 96l288 0 32 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l0-64c17.7 0 32-14.3 32-32l0-320c0-17.7-14.3-32-32-32L384 0 96 0zm0 384l256 0 0 64L96 448c-17.7 0-32-14.3-32-32s14.3-32 32-32zm32-240c0-8.8 7.2-16 16-16l192 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-192 0c-8.8 0-16-7.2-16-16zm16 48l192 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-192 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></symbol>
+      <symbol id="icon-github"    viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></symbol>
+      <symbol id="icon-mastodon"  viewBox="0 0 16 16"><path d="M11.19 12.195c2.016-.24 3.77-1.475 3.99-2.603.348-1.778.32-4.339.32-4.339 0-3.47-2.286-4.488-2.286-4.488C12.062.238 10.083.017 8.027 0h-.05C5.92.017 3.942.238 2.79.765c0 0-2.285 1.017-2.285 4.488l-.002.662c-.004.64-.007 1.35.011 2.091.083 3.394.626 6.74 3.78 7.57 1.454.383 2.703.463 3.709.408 1.823-.1 2.847-.647 2.847-.647l-.06-1.317s-1.303.41-2.767.36c-1.45-.05-2.98-.156-3.215-1.928a4 4 0 0 1-.033-.496s1.424.346 3.228.428c1.103.05 2.137-.064 3.188-.189zm1.613-2.47H11.13v-4.08c0-.859-.364-1.295-1.091-1.295-.804 0-1.207.517-1.207 1.541v2.233H7.168V5.89c0-1.024-.403-1.541-1.207-1.541-.727 0-1.091.436-1.091 1.296v4.079H3.197V5.522q0-1.288.66-2.046c.456-.505 1.052-.764 1.793-.764.856 0 1.504.328 1.933.983L8 4.39l.417-.695c.429-.655 1.077-.983 1.934-.983.74 0 1.336.259 1.791.764q.662.757.661 2.046z"/></symbol>
+      <symbol id="icon-bluesky"   viewBox="0 0 16 16"><path d="M3.468 1.948C5.303 3.325 7.276 6.118 8 7.616c.725-1.498 2.698-4.29 4.532-5.668C13.855.955 16 .186 16 2.632c0 .489-.28 4.105-.444 4.692-.572 2.04-2.653 2.561-4.504 2.246 3.236.551 4.06 2.375 2.281 4.2-3.376 3.464-4.852-.87-5.23-1.98-.07-.204-.103-.3-.103-.218 0-.081-.033.014-.102.218-.379 1.11-1.855 5.444-5.231 1.98-1.778-1.825-.955-3.65 2.28-4.2-1.85.315-3.932-.205-4.503-2.246C.28 6.737 0 3.12 0 2.632 0 .186 2.145.955 3.468 1.948"/></symbol>
+      <symbol id="icon-contact"   viewBox="0 0 512 512"><path d="M215.4 96L144 96l-36.2 0L96 96l0 8.8L96 144l0 40.4 0 89L.2 202.5c1.6-18.1 10.9-34.9 25.7-45.8L48 140.3 48 96c0-26.5 21.5-48 48-48l76.6 0 49.9-36.9C232.2 3.9 243.9 0 256 0s23.8 3.9 33.5 11L339.4 48 416 48c26.5 0 48 21.5 48 48l0 44.3 22.1 16.4c14.8 10.9 24.1 27.7 25.7 45.8L416 273.4l0-89 0-40.4 0-39.2 0-8.8-11.8 0L368 96l-71.4 0-81.3 0zM0 448L0 242.1 217.6 403.3c11.1 8.2 24.6 12.7 38.4 12.7s27.3-4.4 38.4-12.7L512 242.1 512 448s0 0 0 0c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64c0 0 0 0 0 0zM176 160l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></symbol>
+      <!-- New icons -->
+      <symbol id="icon-wifi"     viewBox="0 0 16 16"><circle cx="8" cy="14.5" r="1.2" fill="currentColor" stroke="none"/><path d="M5.2 11.5a4 4 0 0 1 5.6 0M2.5 8.8a7.5 7.5 0 0 1 11 0M0 6.2A11 11 0 0 1 16 6.2"/></symbol>
+      <symbol id="icon-softap"   viewBox="0 0 16 16"><circle cx="8" cy="8.5" r="1.3" fill="currentColor" stroke="none"/><path d="M5.2 5.8a4 4 0 0 1 5.6 0M2.5 3a7.5 7.5 0 0 1 11 0M8 9.8v4.5M5.5 14.3h5"/></symbol>
+      <symbol id="icon-ethernet" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="7" rx="1"/><path d="M5 3V1.5M8 3V1M11 3V1.5M5 6.5h2M9 6.5h2M8 10v4.5M5 14.5h6"/></symbol>
+      <symbol id="icon-thread"   viewBox="0 0 16 16"><circle cx="8" cy="2"  r="1.6" fill="currentColor" stroke="none"/><circle cx="14" cy="8"  r="1.6" fill="currentColor" stroke="none"/><circle cx="2"  cy="8"  r="1.6" fill="currentColor" stroke="none"/><circle cx="11" cy="13.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="5"  cy="13.5" r="1.6" fill="currentColor" stroke="none"/><path d="M8 3.6L13.1 6.7M8 3.6L2.9 6.7M14 9.6L11.5 12M2 9.6L4.5 12M6.5 14.5h3"/></symbol>
+      <symbol id="icon-zigbee"   viewBox="0 0 16 16"><polygon points="9.5,1.5 4,8 9,8 6.5,14.5 13,8 8,8" stroke-linejoin="round"/></symbol>
+      <symbol id="icon-debug"    viewBox="0 0 16 16"><rect x="4" y="5" width="8" height="7" rx="2"/><path d="M4 8.5H1.5M14.5 8.5H12M4 10.5H2M14 10.5H12M6 5L5 3M10 5l1-2M8 12v3"/></symbol>
+      <symbol id="icon-mqtt"     viewBox="0 0 16 16"><path d="M2 3h12v8H9.5L8 13.5 6.5 11H2z"/><path d="M5 7h6M5 9h4"/></symbol>
+      <symbol id="icon-lock"     viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="8" rx="1"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/><circle cx="8" cy="11.5" r="1.2" fill="currentColor" stroke="none"/></symbol>
     </defs>
   </svg>
+
   <header class="app-header">
     <a href="#top" class="app-brand">
       <svg class="app-logo" viewBox="0 0 3999 924" xmlns="http://www.w3.org/2000/svg">
@@ -63,21 +119,39 @@
       </svg>
       <span class="app-title">CZC Thread Border Router</span>
     </a>
+
+    <!-- Header status badges -->
+    <div class="header-status">
+      <span class="hdr-badge" id="hdr-mode">
+        <svg class="hdr-badge-icon icon-stroke"><use href="#icon-thread"/></svg>
+        <span class="hdr-badge-label">—</span>
+      </span>
+      <span class="hdr-badge" id="hdr-net">
+        <svg class="hdr-badge-icon icon-stroke"><use href="#icon-softap"/></svg>
+        <span class="hdr-badge-label">—</span>
+      </span>
+    </div>
+
     <button type="button" class="sidebar-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.app-body').classList.toggle('sidebar-open')">
       <svg class="icon-stroke"><use href="#icon-menu"/></svg>
     </button>
   </header>
+
   <div class="app-body">
     <div class="sidebar-backdrop" onclick="document.querySelector('.app-body').classList.remove('sidebar-open')"></div>
     <nav class="app-sidebar">
       <ul class="sidebar-nav">
         <li><a href="#top"><svg class="icon-stroke"><use href="#icon-overview"/></svg> Overview</a></li>
-        <li><a href="#Scan"><svg class="icon-stroke"><use href="#icon-scan"/></svg> Discover</a></li>
-        <li><a href="#Form"><svg class="icon-stroke"><use href="#icon-form"/></svg> Form Network</a></li>
-        <li><a href="#Settings"><svg class="icon-stroke"><use href="#icon-settings"/></svg> Thread Settings</a></li>
+        <li class="thread-only"><a href="#Scan"><svg class="icon-stroke"><use href="#icon-scan"/></svg> Discover</a></li>
+        <li class="thread-only"><a href="#Form"><svg class="icon-stroke"><use href="#icon-form"/></svg> Form Network</a></li>
+        <li class="thread-only"><a href="#Settings"><svg class="icon-stroke"><use href="#icon-settings"/></svg> Thread Settings</a></li>
+        <li class="thread-only"><a href="#Status"><svg class="icon-stroke"><use href="#icon-status"/></svg> Status</a></li>
+        <li class="thread-only"><a href="#Topology"><svg class="icon-stroke"><use href="#icon-topology"/></svg> Topology</a></li>
+        <li class="zigbee-only"><a href="#MQTT"><svg class="icon-stroke"><use href="#icon-mqtt"/></svg> MQTT</a></li>
+        <li class="zigbee-only"><a href="#Security"><svg class="icon-stroke"><use href="#icon-lock"/></svg> Security</a></li>
+        <li><a href="#Network"><svg class="icon-stroke"><use href="#icon-settings"/></svg> Network</a></li>
         <li><a href="#Firmware"><svg class="icon-stroke"><use href="#icon-firmware"/></svg> Firmware</a></li>
-        <li><a href="#Status"><svg class="icon-stroke"><use href="#icon-status"/></svg> Status</a></li>
-        <li><a href="#Topology"><svg class="icon-stroke"><use href="#icon-topology"/></svg> Topology</a></li>
+        <li><a href="#Debug"><svg class="icon-stroke"><use href="#icon-debug"/></svg> Debug</a></li>
       </ul>
       <div class="sidebar-footer">
         <div class="sidebar-links">
@@ -90,65 +164,83 @@
         <div class="sidebar-copyright">&copy; 2026 cod.m GmbH</div>
       </div>
     </nav>
+
     <main id="top" class="app-main">
-  <section id="overview">
-    <div class="container">
-      <div class="section-header">
-        <h2>CZC Thread Border Router <span style="color: var(--color-primary)">Alpha</span></h2>
-        <p>
-          This web interface is part of an early alpha build of the CZC OpenThread
-          Border Router firmware. Features and APIs are still under active
-          development and may change without notice.
-        </p>
-        <p>
-          Found a bug or unexpected behavior? Please check the
-          <a href="https://github.com/codm/czc-ot-fw#known-issues">Known Issues</a>
-          section in the README, and report new findings on
-          <a href="https://github.com/codm/czc-ot-fw/issues">GitHub Issues</a>.
-        </p>
-      </div>
-    </div>
-  </section>
-    <section id="Scan" class="sub-section">
-      <div class="container">
-        <div class="section-header default-margin">
-          <h2><span style="color: var(--color-primary)">Discover</span> Thread Network</h2>
-          <p>Here, you can scan for available Thread networks, and choose to join one of them.</p>
+
+      <!-- ===================== OVERVIEW (always) ===================== -->
+      <section id="overview">
+        <div class="container">
+          <div class="section-header">
+            <h2>CZC Thread Border Router <span style="color: var(--color-primary)">Alpha</span></h2>
+            <p>
+              This web interface is part of an early alpha build of the CZC OpenThread
+              Border Router firmware. Features and APIs are still under active development
+              and may change without notice.
+            </p>
+          </div>
+          <div class="overview-cards">
+            <div class="overview-card">
+              <div class="overview-card-label">Mode</div>
+              <div class="overview-card-value" id="ov-mode">—</div>
+            </div>
+            <div class="overview-card">
+              <div class="overview-card-label">Network</div>
+              <div class="overview-card-value" id="ov-net">—</div>
+            </div>
+            <div class="overview-card">
+              <div class="overview-card-label">Product</div>
+              <div class="overview-card-value">CZC</div>
+            </div>
+            <div class="overview-card">
+              <div class="overview-card-label">Hardware Rev.</div>
+              <div class="overview-card-value">—</div>
+            </div>
+            <div class="overview-card">
+              <div class="overview-card-label">Firmware</div>
+              <div class="overview-card-value">—</div>
+            </div>
+          </div>
+          <p style="margin-top:16px; font-size:13px; color:#888;">
+            Found a bug? Check <a href="https://github.com/codm/czc-ot-fw#known-issues">Known Issues</a>
+            and report findings on <a href="https://github.com/codm/czc-ot-fw/issues">GitHub Issues</a>.
+          </p>
         </div>
-        <div class="row">
-          <table id="available_networks_table" class="pure-table pure-table-horizontal">
-            <caption>Available Thread Networks</caption>
-            <thead>
-              <tr>
-                <th style="width: 100px;">No.</th>
-                <th>Network Name</th>
-                <th>Extended PAN ID</th>
-                <th>PAN ID</th>
-                <th>Mac Address</th>
-                <th style="width: 120px;">Channel</th>
-                <th style="width: 120px;">dBm</th>
-                <th style="width: 120px;">LQI</th>
-                <th style="width: 150px;">Action</th>
-              </tr>
-            </thead>
-            <tbody id="available_networks_body">
-              <tr>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td><button class="btn-submit" onclick="frontend_show_join_network_window(this)">Join</button></td>
-              </tr>
-            </tbody>
-          </table>
-          <div id="join_window" class="dialog">
-            <div class="dialog-content">
-              <h2>Join Information</h2>
-                <form id = "join_network_table" onsubmit="return false">
+      </section>
+
+      <!-- ===================== THREAD SECTIONS ===================== -->
+      <section id="Scan" class="sub-section thread-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2><span style="color: var(--color-primary)">Discover</span> Thread Network</h2>
+            <p>Here, you can scan for available Thread networks, and choose to join one of them.</p>
+          </div>
+          <div class="row">
+            <table id="available_networks_table" class="pure-table pure-table-horizontal">
+              <caption>Available Thread Networks</caption>
+              <thead>
+                <tr>
+                  <th style="width: 100px;">No.</th>
+                  <th>Network Name</th>
+                  <th>Extended PAN ID</th>
+                  <th>PAN ID</th>
+                  <th>Mac Address</th>
+                  <th style="width: 120px;">Channel</th>
+                  <th style="width: 120px;">dBm</th>
+                  <th style="width: 120px;">LQI</th>
+                  <th style="width: 150px;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="available_networks_body">
+                <tr>
+                  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                  <td><button class="btn-submit" onclick="frontend_show_join_network_window(this)">Join</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div id="join_window" class="dialog">
+              <div class="dialog-content">
+                <h2>Join Information</h2>
+                <form id="join_network_table" onsubmit="return false">
                   <div>
                     <label for="credentialType">Credential Type:</label>
                     <select id="credentialType" name="credentialType" onclick="frontend_join_type_select(this)">
@@ -158,101 +250,125 @@
                   </div>
                   <div id="join_networkKey" style="margin-top: 40px;">
                     <label for="networkKey">Network Key:</label>
-					          <input type="text" name="networkKey" value="00112233445566778899aabbccddeeff">
+                    <input type="text" name="networkKey" value="00112233445566778899aabbccddeeff">
                   </div>
                   <div id="join_pskd" style="margin-top: 40px; display: none;">
-                      <label for="pskd">Pskd:</label>
-					            <input type="text"  name="pskd" placeholder="Pskd">
+                    <label for="pskd">Pskd:</label>
+                    <input type="text" name="pskd" placeholder="Pskd">
                   </div>
-                  <div id = "join_prefix">
-                      <label for="prefix">Prefix:</label>
-                      <input type="text" name="prefix" value="fd11:22::">
+                  <div id="join_prefix">
+                    <label for="prefix">Prefix:</label>
+                    <input type="text" name="prefix" value="fd11:22::">
                   </div>
-
-                  <div id = "join_defaultRoute">
+                  <div id="join_defaultRoute">
                     <label for="defaultRoute">Default Route: </label>
                     <input type="checkbox" name="defaultRoute" checked>
                   </div>
-                                  
-                  <button type = "submit" class="dialog-button" onclick="frontend_submit_join_network(this)">Submit</button>
-                  <button type = "submit" class="dialog-button" onclick="frontend_cancel_join_network(this)">Cancel</button>
-                  <br/>
-                  <br/>
+                  <button type="submit" class="dialog-button" onclick="frontend_submit_join_network(this)">Submit</button>
+                  <button type="submit" class="dialog-button" onclick="frontend_cancel_join_network(this)">Cancel</button>
+                  <br/><br/>
                 </form>
+              </div>
             </div>
           </div>
-        </div>
           <div class="row">
             <button class="btn-submit" style="margin-top: 1%; margin-left: 1275px;"
               onclick="http_server_scan_thread_network()">SCAN</button>
           </div>
         </div>
-    </section>
-    <section id="Form" class="sub-section">
-      <div class="container">
-        <div class="section-header default-margin">
-          <h2><span style="color: var(--color-primary)">Form</span> Thread Network</h2>
-          <p>Here, the ESP-OpenThread network would be form using the parameter provided by you.</p>
-        </div>
-        <div class="part">
-          <div class="submit-form">
-            <div class="row">
-              <div class="col-md-8">
-                <h4>Inputing the parameter of ESP-OpenThread in Form.</h4>
-              </div>
-              <div class="col-md-4">
-                <h4 id="form_tip"
-                  style="color: green; font-weight: 200; font-family: 'Times New Roman', Times, serif; display: none;">
-                  upload...</h4>
-              </div>
-            </div>
-            <p>note: the table which marks * must be filled.</p>
-            <hr/>
-            <form action="" enctype='application/json' method="post" id="network_form">
-              <div class="row">
-                <div class="col-md-6 form-group">
-                  <span>
-                    <p style="font-size: 16px; font-weight:700;">Network Name <span style="color: red;">*</span></p>
-                  </span>
-                  <input name="networkName" type="text" class="form-control" value="OpenThread-0x99">
-                </div>
-                <div class="col-md-6 form-group">
-                  <span>
-                    <p style="font-size: 16px; font-weight:700;">Network Key <span style="color: red;">*</span></p>
-                  </span>
-                  <input name="networkKey" type="text" class="form-control" value="00112233445566778899aabbccddeeff">
-                </div>
-              </div>
-              <div class="row">
-                <div class="col-md-6 form-group">
-                  <span>
-                    <p style="font-size: 16px; font-weight:700;">PANID <span style="color: red;">*</span></p>
-                  </span>
-                  <input name="panId" type="text" class="form-control" value="0x1234">
-                </div>
-                <div class="col-md-6 form-group">
-                  <span>
-                    <p style="font-size: 16px; font-weight:700;">Network Channel <span style="color: red;">*</span></p>
-                  </span>
-                  <input name="channel" type="number" class="form-control" value="15">
-                </div>
-              </div>
+      </section>
 
-              <div id="form-more-param" style="display:none">
+      <section id="Form" class="sub-section thread-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2><span style="color: var(--color-primary)">Form</span> Thread Network</h2>
+            <p>Here, the ESP-OpenThread network would be formed using the parameters provided by you.</p>
+          </div>
+          <div class="part">
+            <div class="submit-form">
+              <div class="row">
+                <div class="col-md-8"><h4>Inputing the parameter of ESP-OpenThread in Form.</h4></div>
+                <div class="col-md-4">
+                  <h4 id="form_tip" style="color: green; font-weight: 200; font-family: 'Times New Roman', Times, serif; display: none;">upload...</h4>
+                </div>
+              </div>
+              <p>note: the table which marks * must be filled.</p>
+              <hr/>
+              <form action="" enctype='application/json' method="post" id="network_form">
                 <div class="row">
                   <div class="col-md-6 form-group">
-                    <span>
-                      <p style="font-size: 16px; font-weight:700;">Network Extended PANID </p>
-                    </span>
-                    <input name="extPanId" type="text" class="form-control" value="1111111122222222">
+                    <span><p style="font-size: 16px; font-weight:700;">Network Name <span style="color: red;">*</span></p></span>
+                    <input name="networkName" type="text" class="form-control" value="OpenThread-0x99">
                   </div>
                   <div class="col-md-6 form-group">
-                    <span>
-                      <p style="font-size: 16px; font-weight:700;">Passphrase/Commissioner Credential</p>
-                    </span>
-                    <input name="passphrase" type="text" class="form-control" value="j01Nme">
+                    <span><p style="font-size: 16px; font-weight:700;">Network Key <span style="color: red;">*</span></p></span>
+                    <input name="networkKey" type="text" class="form-control" value="00112233445566778899aabbccddeeff">
                   </div>
                 </div>
+                <div class="row">
+                  <div class="col-md-6 form-group">
+                    <span><p style="font-size: 16px; font-weight:700;">PANID <span style="color: red;">*</span></p></span>
+                    <input name="panId" type="text" class="form-control" value="0x1234">
+                  </div>
+                  <div class="col-md-6 form-group">
+                    <span><p style="font-size: 16px; font-weight:700;">Network Channel <span style="color: red;">*</span></p></span>
+                    <input name="channel" type="number" class="form-control" value="15">
+                  </div>
+                </div>
+                <div id="form-more-param" style="display:none">
+                  <div class="row">
+                    <div class="col-md-6 form-group">
+                      <span><p style="font-size: 16px; font-weight:700;">Network Extended PANID</p></span>
+                      <input name="extPanId" type="text" class="form-control" value="1111111122222222">
+                    </div>
+                    <div class="col-md-6 form-group">
+                      <span><p style="font-size: 16px; font-weight:700;">Passphrase/Commissioner Credential</p></span>
+                      <input name="passphrase" type="text" class="form-control" value="j01Nme">
+                    </div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-12 form-group">
+                      <p style="font-size: 16px; font-weight:700;">On-Mesh Prefix</p>
+                      <input name="prefix" type="text" class="form-control" value="fd11:22::">
+                    </div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-3 form-checkbox">
+                      <input type="checkbox" checked="check" name="defaultRoute"/>
+                      <span style="font-size: 16px;">Default Route</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="row" style="float: right;">
+                  <a id="form-more-tip" style="font-size:16px" onclick="frontend_click_for_more_form_param()">for more &#x21B5;</a>
+                </div>
+                <div class="row">
+                  <div class="col-md-2">
+                    <button type="button" class="btn btn-primary" onclick="http_server_upload_form_network_table()">Form Network</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="Settings" class="sub-section thread-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2>Thread Network <span style="color: var(--color-primary)">Settings</span></h2>
+            <p>Here, setting the default options for the ESP-OpenThread network can make your Thread device more flexible.</p>
+          </div>
+          <div class="part">
+            <div class="submit-form">
+              <div class="row">
+                <div class="col-md-8"><h4>ESP-OpenThread Settings.</h4></div>
+                <div class="col-md-4">
+                  <h4 id="setting_tip" style="color: green; font-weight: 200; font-family: 'Times New Roman', Times, serif; display: none;">completed...</h4>
+                </div>
+              </div>
+              <hr/>
+              <form action="" enctype='application/json' method="post" id="network_setting">
                 <div class="row">
                   <div class="col-md-12 form-group">
                     <p style="font-size: 16px; font-weight:700;">On-Mesh Prefix</p>
@@ -261,371 +377,419 @@
                 </div>
                 <div class="row">
                   <div class="col-md-3 form-checkbox">
-                    <input type="checkbox" checked="check" name="defaultRoute" />
+                    <input type="checkbox" checked="check" name="defaultRoute"/>
                     <span style="font-size: 16px;">Default Route</span>
                   </div>
                 </div>
-              </div>
-              <div class="row" style="float: right;">
-                <a id="form-more-tip" style="font-size:16px" onclick="frontend_click_for_more_form_param()">for more &#x21B5;</a>
-              </div>
-              <div class="row">
-                <div class="col-md-2">
-                    <button type="button" class="btn btn-primary" onclick="http_server_upload_form_network_table()">Form Network</button>
+                <div class="row">
+                  <div class="col-md-1">
+                    <button type="button" class="btn btn-primary" onclick="http_server_add_prefix_to_thread_network()">Add</button>
+                  </div>
+                  <div class="col-md-1">
+                    <button type="button" class="btn btn-primary" onclick="http_server_delete_prefix_from_thread_network()">Delete</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="Status" class="sub-section thread-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2>Thread Network <span style="color: var(--color-primary)" onclick="http_server_get_thread_network_properties()">Status</span></h2>
+            <p>The status of the ESP-OpenThread network, including IPv6, network, OpenThread, RCP, WPAN, and other components.</p>
+          </div>
+          <div class="row g-4 g-lg-5">
+            <ul class="nav nav-pills mb-3">
+              <li><a class="nav-link active" data-bs-toggle="pill" id="link_0" onclick="http_server_get_thread_network_properties()">OverView</a></li>
+              <li><a class="nav-link" data-bs-toggle="pill" id="link_1">IPv6</a></li>
+              <li><a class="nav-link" data-bs-toggle="pill" id="link_2">Network</a></li>
+              <li><a class="nav-link" data-bs-toggle="pill" id="link_3">OpenThread</a></li>
+              <li><a class="nav-link" data-bs-toggle="pill" id="link_4">RCP</a></li>
+              <li><a class="nav-link" data-bs-toggle="pill" id="link_5">WPAN</a></li>
+            </ul>
+            <div class="tab-content" id="status-content">
+              <div class="tab-pane active" id="tab0">
+                <div class="row">
+                  <div class="col-lg-3">
+                    <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ IP Address ]</h4>
+                    <div class="d-flex align-items-center mt-4"><h4>Link Local Address</h4></div>
+                    <p id="ipv6-link_local_address" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>Routing Local Address</h4></div>
+                    <p id="ipv6-routing_local_address" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>Mesh Local Address</h4></div>
+                    <p id="ipv6-mesh_local_address" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>Mesh Local Prefix</h4></div>
+                    <p id="ipv6-mesh_local_prefix" class="tab-elem-value">unknown</p>
+                  </div>
+                  <div class="col-lg-3">
+                    <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ Network Information ]</h4>
+                    <div class="d-flex align-items-center mt-4"><h4>Name</h4></div>
+                    <p id="network-name" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>PANID</h4></div>
+                    <p id="network-panid" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>Partition ID</h4></div>
+                    <p id="network-partition_id" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>Extended PANID</h4></div>
+                    <p id="network-xpanid" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>Border Agent ID</h4></div>
+                    <p id="network-baid" class="tab-elem-value">unknown</p>
+                  </div>
+                  <div class="col-lg-3">
+                    <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ OpenThread Parameter ]</h4>
+                    <div class="d-flex align-items-center mt-4"><h4>Version</h4></div>
+                    <p id="openthread-version" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>Version API</h4></div>
+                    <p id="openthread-version_api" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>Role</h4></div>
+                    <p id="openthread-role" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>PSKc</h4></div>
+                    <p id="openthread-PSKc" class="tab-elem-value">unknown</p>
+                  </div>
+                  <div class="col-lg-2">
+                    <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ RCP Information ]</h4>
+                    <div class="d-flex align-items-center mt-4"><h4>Channel</h4></div>
+                    <p id="rcp-channel" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>IEEE EUI-64</h4></div>
+                    <p id="rcp-EUI64" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>TxPower</h4></div>
+                    <p id="rcp-txpower" class="tab-elem-value">unknown</p>
+                    <div class="d-flex align-items-center mt-4"><h4>Version</h4></div>
+                    <p id="rcp-version" class="tab-elem-value">unknown</p>
+                  </div>
+                  <div class="col-lg-1">
+                    <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ WPAN Status ]</h4>
+                    <div class="d-flex align-items-center mt-4"><h4>Service</h4></div>
+                    <p id="WPAN-service" class="tab-elem-value">unknown</p>
+                  </div>
                 </div>
               </div>
-            </form>
-          </div><!-- End blog comments -->
-        </div>
-      </div>
-    </section>
-    <section id="Settings" class="sub-section">
-      <div class="container">
-        <div class="section-header default-margin">
-          <h2>Thread Network <span style="color: var(--color-primary)">Settings</span></h2>
-          <p>Here, setting the default options for the ESP-OpenThread network can make your Thread device more flexible.</p>
-        </div>
-        <div class="part">
-          <div class="submit-form">
-            <div class="row">
-              <div class="col-md-8">
-                <h4>ESP-OpenThread Settings.</h4>
+              <div class="tab-pane" id="tab1">
+                <div class="row">
+                  <div class="d-flex align-items-center mt-4"><h4>Link Local Address</h4></div>
+                  <p id="t-ipv6-link_local_address" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>Routing Local Address</h4></div>
+                  <p id="t-ipv6-routing_local_address" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>Mesh Local Address</h4></div>
+                  <p id="t-ipv6-mesh_local_address" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>Mesh Local Prefix</h4></div>
+                  <p id="t-ipv6-mesh_local_prefix" class="tab-elem-value">unknown</p>
+                </div>
               </div>
-              <div class="col-md-4">
-                <h4 id="setting_tip"
-                  style="color: green; font-weight: 200; font-family: 'Times New Roman', Times, serif; display: none;">
-                  completed...</h4>
+              <div class="tab-pane" id="tab2">
+                <div class="row">
+                  <div class="d-flex align-items-center mt-4"><h4>Name</h4></div>
+                  <p id="t-network-name" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>PANID</h4></div>
+                  <p id="t-network-panid" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>Partition ID</h4></div>
+                  <p id="t-network-partition_id" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>XPANID</h4></div>
+                  <p id="t-network-xpanid" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>Border Agent ID</h4></div>
+                  <p id="t-network-baid" class="tab-elem-value">unknown</p>
+                </div>
+              </div>
+              <div class="tab-pane" id="tab3">
+                <div class="row">
+                  <div class="d-flex align-items-center mt-4"><h4>Version</h4></div>
+                  <p id="t-openthread-version" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>Version API</h4></div>
+                  <p id="t-openthread-version_api" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>Role</h4></div>
+                  <p id="t-openthread-role" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>PSKc</h4></div>
+                  <p id="t-openthread-PSKc" class="tab-elem-value">unknown</p>
+                </div>
+              </div>
+              <div class="tab-pane" id="tab4">
+                <div class="row">
+                  <div class="d-flex align-items-center mt-4"><h4>Channel</h4></div>
+                  <p id="t-rcp-channel" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>EUI64</h4></div>
+                  <p id="t-rcp-EUI64" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>Tx Power</h4></div>
+                  <p id="t-rcp-txpower" class="tab-elem-value">unknown</p>
+                  <div class="d-flex align-items-center mt-4"><h4>Version</h4></div>
+                  <p id="t-rcp-version" class="tab-elem-value">unknown</p>
+                </div>
+              </div>
+              <div class="tab-pane" id="tab5">
+                <div class="row">
+                  <div class="d-flex align-items-center mt-4"><h4>Service</h4></div>
+                  <p id="t-WPAN-service" class="tab-elem-value">unknown</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="Topology" class="sub-section thread-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2>Thread Network <span style="color: var(--color-primary)">Topology</span></h2>
+            <p>The network topology structure of Thread will be shown in a more intuitive and detailed manner here.</p>
+          </div>
+          <div class="part">
+            <hr/>
+            <div class="row">
+              <div class="col-md-3 col-md-offset-1">
+                <h4 style="font-weight:800">Network Name: &nbsp;<span id="topology_netwotkname" style="color: gray;">unknown</span></h4>
+              </div>
+              <div class="col-md-2">
+                <h4 style="font-weight:800">Leader: &nbsp;<span id="topology_leader" style="color: gray;">unknown</span></h4>
+              </div>
+              <div class="col-md-3">
+                <h4 style="font-weight:800">Router Number: &nbsp;<span id="topology_router_number" style="color: gray;">unknown</span></h4>
+              </div>
+              <div class="col-md-3">
+                <button id="btn_topology" type="submit" value="Running" style="font-weight: bold;"
+                  onclick="http_server_build_thread_network_topology(this)">Start Topology</button>
               </div>
             </div>
             <hr/>
-            <form action="" enctype='application/json' method="post" id="network_setting">
-              <div class="row">
-                <div class="col-md-12 form-group">
-                  <p style="font-size: 16px; font-weight:700;">On-Mesh Prefix</p>
-                  <input name="prefix" type="text" class="form-control" value="fd11:22::">
-                </div>
-              </div>
-              <div class="row">
-                <div class="col-md-3 form-checkbox">
-                  <input type="checkbox" checked="check" name="defaultRoute" />
-                  <span style="font-size: 16px;">Default Route</span>
-                </div>
-              </div>
-              <div class="row">
-                <div class="col-md-1">
-                    <button type="button" class="btn btn-primary" onclick="http_server_add_prefix_to_thread_network()">Add</button>
-                </div>
-                <div class="col-md-1">
-                    <button type="button" class="btn btn-primary" onclick="http_server_delete_prefix_from_thread_network()">Delete</button>
-                </div>
-              </div>
-            </form>
-          </div><!-- End blog comments -->
-        </div>
-      </div>
-    </section>
-    <section id="Firmware" class="sub-section">
-      <div class="container">
-        <div class="section-header default-margin">
-          <h2>Firmware <span style="color: var(--color-primary)">Updates</span></h2>
-          <p>Check for and install the latest firmware for the two chips on your CZC.</p>
-        </div>
-        <div class="part">
-          <div class="submit-form">
-            <div class="firmware-boxes">
-              <div class="firmware-box">
-                <h5>ESP</h5>
-                <p>
-                  The ESP32 is the main chip on the CZC. It runs this firmware,
-                  provides Wi-Fi/Ethernet connectivity and the web interface,
-                  and hosts the Thread Border Router application.
-                </p>
-                <button type="button" class="btn btn-primary" onclick="frontend_flash_esp_button()">Show Available</button>
-              </div>
-              <div class="firmware-box">
-                <h5>RCP</h5>
-                <p>
-                  The Radio Co-Processor (RCP) is a separate CC2652P7 chip
-                  dedicated to the IEEE 802.15.4/Thread radio. It is connected
-                  to the ESP32 via UART and controlled using the Spinel protocol.
-                </p>
-                <button type="button" class="btn btn-primary" onclick="frontend_flash_rcp_button()">Show Available</button>
-              </div>
-            </div>
+            <div class="d3graph" id="tolology_canvas"></div>
           </div>
         </div>
-      </div>
-    </section>
-    <section id="Status" class="sub-section">
-      <div class="container">
-        <div class="section-header default-margin">
-          <h2>Thread Network <span style="color: var(--color-primary)" onclick="http_server_get_thread_network_properties()">Status</span> </h2>
-          <p>The status of the ESP-OpenThread network, including its IPv6, network, OpenThread, RCP, WPAN, and other components, would be displayed here.</p>
-        </div>
-        <div class="row g-4 g-lg-5">
-          <ul class="nav nav-pills mb-3">
-            <li><a class="nav-link active" data-bs-toggle="pill" id="link_0"
-                onclick="http_server_get_thread_network_properties()">OverView</a></li>
-            <li><a class="nav-link" data-bs-toggle="pill" id="link_1">IPv6</a></li>
-            <li><a class="nav-link" data-bs-toggle="pill" id="link_2">Network</a></li>
-            <li><a class="nav-link" data-bs-toggle="pill" id="link_3">OpenThread</a></li>
-            <li><a class="nav-link" data-bs-toggle="pill" id="link_4">RCP</a></li>
-            <li><a class="nav-link" data-bs-toggle="pill" id="link_5">WPAN</a></li>
-          </ul>
-          <div class="tab-content" id="status-content">
-            <div class="tab-pane active" id="tab0">
-              <div class="row">
-                <div class="col-lg-3">
-                  <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ IP Address ]</h4>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Link Local Address</h4>
-                  </div>
-                  <p id="ipv6-link_local_address" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Routing Local Address</h4>
-                  </div>
-                  <p id="ipv6-routing_local_address" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Mesh Local Address</h4>
-                  </div>
-                  <p id="ipv6-mesh_local_address" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Mesh Local Prefix</h4>
-                  </div>
-                  <p id="ipv6-mesh_local_prefix" class="tab-elem-value">unknown</p>
-                </div>
-                <div class="col-lg-3">
-                  <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ Network Information ]</h4>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Name</h4>
-                  </div>
-                  <p id="network-name" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>PANID</h4>
-                  </div>
-                  <p id="network-panid" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Partition ID</h4>
-                  </div>
-                  <p id="network-partition_id" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Extended PANID</h4>
-                  </div>
-                  <p id="network-xpanid" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Border Agent ID</h4>
-                  </div>
-                  <p id="network-baid" class="tab-elem-value">unknown</p>
-                </div>
-                <div class="col-lg-3">
-                  <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ OpenThread Parameter ]</h4>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Version</h4>
-                  </div>
-                  <p id="openthread-version" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Version API</h4>
-                  </div>
-                  <p id="openthread-version_api" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Role</h4>
-                  </div>
-                  <p id="openthread-role" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>PSKc</h4>
-                  </div>
-                  <p id="openthread-PSKc" class="tab-elem-value">unknown</p>
-                </div>
-                <div class="col-lg-2">
-                  <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ RCP Information ]</h4>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Channel</h4>
-                  </div>
-                  <p id="rcp-channel" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>IEEE EUI-64</h4>
-                  </div>
-                  <p id="rcp-EUI64" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>TxPower</h4>
-                  </div>
-                  <p id="rcp-txpower" class="tab-elem-value">unknown</p>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Version</h4>
-                  </div>
-                  <p id="rcp-version" class="tab-elem-value">unknown</p>
-                </div>
-                <div class="col-lg-1">
-                  <h4 class="tab-pane-elem" style="font-weight: bold; font-style:normal; color: black"> [ WPAN Status ]</h4>
-                  <div class="d-flex align-items-center mt-4">
-                    <h4>Service</h4>
-                  </div>
-                  <p id="WPAN-service" class="tab-elem-value">unknown</p>
-                </div>
-              </div>
-            </div>
+      </section>
 
-            <div class="tab-pane" id="tab1">
-              <div class="row">
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Link Local Address</h4>
-                </div>
-                <p id="t-ipv6-link_local_address" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Routing Local Address</h4>
-                </div>
-                <p id="t-ipv6-routing_local_address" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Mesh Local Address</h4>
-                </div>
-                <p id="t-ipv6-mesh_local_address" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Mesh Local Prefix</h4>
-                </div>
-                <p id="t-ipv6-mesh_local_prefix" class="tab-elem-value">unknown</p>
-              </div>
+      <!-- ===================== ZIGBEE SECTIONS ===================== -->
+      <section id="MQTT" class="sub-section zigbee-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2>MQTT <span style="color: var(--color-primary)">Broker</span></h2>
+            <p>Configure the MQTT broker connection for your Zigbee gateway.</p>
+          </div>
+          <div class="part">
+            <div class="placeholder-panel">
+              <svg class="placeholder-panel-icon icon-stroke"><use href="#icon-mqtt"/></svg>
+              <p class="placeholder-panel-text">MQTT configuration &mdash; coming soon.</p>
             </div>
-            <div class="tab-pane" id="tab2">
-              <div class="row">
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Name</h4>
-                </div>
-                <p id="t-network-name" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>PANID</h4>
-                </div>
-                <p id="t-network-panid" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Partition ID</h4>
-                </div>
-                <p id="t-network-partition_id" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>XPANID</h4>
-                </div>
-                <p id="t-network-xpanid" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Border Agent ID</h4>
-                </div>
-                <p id="t-network-baid" class="tab-elem-value">unknown</p>
-              </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="Security" class="sub-section zigbee-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2>Security <span style="color: var(--color-primary)">Settings</span></h2>
+            <p>Manage security keys, certificates and access control for your Zigbee network.</p>
+          </div>
+          <div class="part">
+            <div class="placeholder-panel">
+              <svg class="placeholder-panel-icon icon-stroke"><use href="#icon-lock"/></svg>
+              <p class="placeholder-panel-text">Security settings &mdash; coming soon.</p>
             </div>
-            <div class="tab-pane" id="tab3">
-              <div class="row">
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Version</h4>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== NETWORK (always) ===================== -->
+      <section id="Network" class="sub-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2>Network <span style="color: var(--color-primary)">Configuration</span></h2>
+            <p>Configure the network interfaces of your CZC device. Changes take effect immediately and trigger a reconnect.</p>
+          </div>
+          <div class="part">
+            <div class="submit-form">
+              <div class="network-split">
+
+                <!-- Ethernet (left) -->
+                <div class="network-panel">
+                  <p class="network-panel-title">Ethernet</p>
+                  <form id="eth-config-form">
+                    <div class="net-dhcp-row">
+                      <input type="checkbox" id="eth-dhcp" name="dhcp" checked onchange="toggleStaticIpFields('eth')">
+                      <label for="eth-dhcp" style="font-size:15px; font-weight:700; margin:0; cursor:pointer;">Use DHCP</label>
+                    </div>
+                    <div id="eth-static-fields">
+                      <p class="net-field-label">Static IP</p>
+                      <input name="static_ip" type="text" class="form-control" placeholder="192.168.1.100" disabled>
+                      <p class="net-field-label">Gateway</p>
+                      <input name="gateway" type="text" class="form-control" placeholder="192.168.1.1" disabled>
+                      <p class="net-field-label">DNS Primary</p>
+                      <input name="dns_primary" type="text" class="form-control" placeholder="8.8.8.8" disabled>
+                      <p class="net-field-label">DNS Secondary</p>
+                      <input name="dns_secondary" type="text" class="form-control" placeholder="8.8.4.4" disabled>
+                    </div>
+                    <div style="margin-top:16px;">
+                      <button type="button" class="btn btn-primary" onclick="saveNetworkConfig('ethernet')">Save</button>
+                      <span id="eth-save-status" style="margin-left:10px; display:none;"></span>
+                    </div>
+                  </form>
                 </div>
-                <p id="t-openthread-version" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Version API</h4>
+
+                <!-- WiFi (right) -->
+                <div class="network-panel">
+                  <p class="network-panel-title">WiFi</p>
+                  <form id="wifi-config-form">
+                    <p class="net-field-label">SSID</p>
+                    <input name="ssid" type="text" class="form-control" placeholder="Network name">
+                    <p class="net-field-label">Password</p>
+                    <input name="password" type="password" class="form-control" placeholder="Password">
+                    <div class="net-dhcp-row" style="margin-top:12px;">
+                      <input type="checkbox" id="wifi-dhcp" name="dhcp" checked onchange="toggleStaticIpFields('wifi')">
+                      <label for="wifi-dhcp" style="font-size:15px; font-weight:700; margin:0; cursor:pointer;">Use DHCP</label>
+                    </div>
+                    <div id="wifi-static-fields">
+                      <p class="net-field-label">Static IP</p>
+                      <input name="static_ip" type="text" class="form-control" placeholder="192.168.1.100" disabled>
+                      <p class="net-field-label">Gateway</p>
+                      <input name="gateway" type="text" class="form-control" placeholder="192.168.1.1" disabled>
+                      <p class="net-field-label">DNS Primary</p>
+                      <input name="dns_primary" type="text" class="form-control" placeholder="8.8.8.8" disabled>
+                      <p class="net-field-label">DNS Secondary</p>
+                      <input name="dns_secondary" type="text" class="form-control" placeholder="8.8.4.4" disabled>
+                    </div>
+                    <div style="margin-top:16px;">
+                      <button type="button" class="btn btn-primary" onclick="saveNetworkConfig('wifi')">Save</button>
+                      <span id="wifi-save-status" style="margin-left:10px; display:none;"></span>
+                    </div>
+                  </form>
                 </div>
-                <p id="t-openthread-version_api" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Role</h4>
-                </div>
-                <p id="t-openthread-role" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>PSKc</h4>
-                </div>PSKc
-                <p id="t-openthread-PSKc" class="tab-elem-value">unknown</p>
-              </div>
-            </div>
-            <div class="tab-pane" id="tab4">
-              <div class="row">
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Channel</h4>
-                </div>
-                <p id="t-rcp-channel" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>EUI64</h4>
-                </div>
-                <p id="t-rcp-EUI64" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Tx Power</h4>
-                </div>
-                <p id="t-rcp-txpower" class="tab-elem-value">unknown</p>
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Version</h4>
-                </div>
-                <p id="t-rcp-version" class="tab-elem-value">unknown</p>
-              </div>
-            </div>
-            <div class="tab-pane" id="tab5">
-              <div class="row">
-                <div class="d-flex align-items-center mt-4">
-                  <h4>Service</h4>
-                </div>
-                <p id="t-WPAN-service" class="tab-elem-value">unknown</p>
+
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </section>
-    <section id="Topology" class="sub-section">
-      <div class="container">
-        <div class="section-header default-margin">
-          <h2>Thread Network <span style="color: var(--color-primary)">Topology</span></h2>
-          <p>The network topology structure of Thread will be shown in a more intuitive and detailed manner here.</p>
-        </div>
-        <div class="part">
-          <hr />
-          <div class="row">
-            <div class="col-md-3 col-md-offset-1">
-              <h4 style="font-weight:800">Network Name: &nbsp;<span id="topology_netwotkname" style="color: gray;">
-                  unknown</span></h4>
-            </div>
-            <div class="col-md-2">
-              <h4 style="font-weight:800">Leader: &nbsp;<span id="topology_leader" style="color: gray;"> unknown</span>
-              </h4>
-            </div>
-            <div class="col-md-3">
-              <h4 style="font-weight:800">Router Number: &nbsp;<span id="topology_router_number" style="color: gray;">
-                  unknown</span>
-              </h4>
-            </div>
-            <div class="col-md-3">
-              <button id="btn_topology" type="submit" value="Running" style="font-weight: bold;"
-                onclick="http_server_build_thread_network_topology(this)">Start Topology</button>
+      </section>
+
+      <!-- ===================== FIRMWARE (always) ===================== -->
+      <section id="Firmware" class="sub-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2>Firmware <span style="color: var(--color-primary)">Updates</span></h2>
+            <p>Check for and install the latest firmware for the two chips on your CZC.</p>
+          </div>
+          <div class="part">
+            <div class="submit-form">
+              <div class="firmware-boxes">
+                <div class="firmware-box">
+                  <h5>ESP</h5>
+                  <p>
+                    The ESP32 is the main chip on the CZC. It runs this firmware,
+                    provides Wi-Fi/Ethernet connectivity and the web interface,
+                    and hosts the Thread Border Router application.
+                  </p>
+                  <button type="button" class="btn btn-primary" onclick="frontend_flash_esp_button()">Show Available</button>
+                </div>
+                <div class="firmware-box">
+                  <h5>RCP</h5>
+                  <p>
+                    The Radio Co-Processor (RCP) is a separate CC2652P7 chip
+                    dedicated to the IEEE 802.15.4/Thread radio. It is connected
+                    to the ESP32 via UART and controlled using the Spinel protocol.
+                  </p>
+                  <button type="button" class="btn btn-primary" onclick="frontend_flash_rcp_button()">Show Available</button>
+                </div>
+              </div>
             </div>
           </div>
-          <hr />
-          <!-- <div class="topology-graph"> -->
-          <div class="d3graph" id="tolology_canvas"></div>
-          <!-- </div> -->
+        </div>
+      </section>
+
+      <!-- ===================== DEBUG (always) ===================== -->
+      <section id="Debug" class="sub-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2>Debug <span style="color: var(--color-primary)">Tools</span></h2>
+            <p>Device maintenance and diagnostics. Use with caution.</p>
+          </div>
+          <div class="part">
+            <div class="submit-form">
+              <div class="debug-btn-row">
+                <button type="button" class="btn btn-default" disabled>Clear NVRAM</button>
+                <button type="button" class="btn btn-default" disabled>Factory Reset</button>
+                <button type="button" class="btn btn-default" disabled>Export Logs</button>
+                <button type="button" class="btn btn-default" disabled>Restart Device</button>
+              </div>
+              <p style="color:#aaa; font-size:13px; margin-top:12px;">Debug actions will be enabled in a future release.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== DIALOGS ===================== -->
+      <div id="flash_window" class="dialog">
+        <div class="dialog-content" style="width: 620px; max-width: 90vw;">
+          <h2 id="flash_window_title">Select Firmware</h2>
+          <div style="width:100%; height:2px; border-top:1px solid #cecaca; clear:both; margin-bottom:15px;"></div>
+          <div id="flash_firmware_list" style="max-height:350px; overflow-y:auto;"><p>Loading...</p></div>
+          <div id="flash_status" style="color:gray; margin-top:10px; font-size:14px;"></div>
+          <button type="button" class="dialog-button" style="margin-top:15px;" onclick="frontend_cancel_flash()">Cancel</button>
         </div>
       </div>
-    </section>
-    <div id="flash_window" class="dialog">
-      <div class="dialog-content" style="width: 620px; max-width: 90vw;">
-        <h2 id="flash_window_title">Select Firmware</h2>
-        <div style="width:100%; height:2px; border-top:1px solid #cecaca; clear:both; margin-bottom:15px;"></div>
-        <div id="flash_firmware_list" style="max-height:350px; overflow-y:auto;">
-          <p>Loading...</p>
+
+      <div id="log_window" class="dialog" style="padding-top: 10px;">
+        <div class="dialog-content" style="width: 400px; padding-top: 10px;">
+          <div id="log_window_title"><span style="font-size: 30px;">Tip:</span></div>
+          <div style="width:100%; height:2px; border-top:1px solid #cecaca; clear:both;"></div>
+          <div class="row" style="text-align: center; padding-top: 20px; font-size: 18px;">
+            <p id="log_window_content" style="display: inline-block;">Known</p>
+          </div>
+          <button type="button" class="dialog-button" style="width: 60px; height: 30px;" onclick="frontend_log_close(this)">Okay</button>
         </div>
-        <div id="flash_status" style="color:gray; margin-top:10px; font-size:14px;"></div>
-        <button type="button" class="dialog-button" style="margin-top:15px;" onclick="frontend_cancel_flash()">Cancel</button>
       </div>
-    </div>
-    <div id="log_window" class="dialog" style="padding-top: 10px;">
-      <div class="dialog-content" style="width: 400px; padding-top: 10px;">
-        <div id = "log_window_title"><span style="font-size: 30px;">Tip:</span></div>
-        <div style="width:100%; height:2px; border-top:1px solid #cecaca; clear:both;"></div>
-        <div class="row" style="text-align: center; padding-top: 20px; font-size: 18px;">
-          <p id = "log_window_content" style="display: inline-block;">Known</p>
+
+      <!-- Internet-waiting overlay (first boot) -->
+      <div id="internet-waiting-overlay" class="dialog" style="display:none; background:rgba(0,0,0,0.75); z-index:9000;">
+        <div class="dialog-content" style="text-align:center; padding:48px 40px; max-width:480px;">
+          <h2 style="margin-bottom:16px;">Setting up your CZC</h2>
+          <p>Waiting for an internet connection before device mode can be selected...</p>
+          <p style="margin-top:8px; font-size:13px; color:gray;">Connect via Ethernet or configure WiFi below, then return here.</p>
+          <p id="waiting-status-text" style="margin-top:16px; font-size:13px; color:#aaa;"></p>
+          <div style="margin-top:24px;">
+            <a href="#Network" onclick="document.getElementById('internet-waiting-overlay').style.display='none';"
+               class="btn btn-default">Configure Network</a>
+          </div>
         </div>
-        <button type = "button" class="dialog-button" style ="width: 60px; height: 30px; " onclick="frontend_log_close(this)">Okay</button>
       </div>
-    </div>
+
+      <!-- Mode selection popup (first boot) -->
+      <div id="mode-selection-modal" class="dialog" style="display:none;">
+        <div class="dialog-content" style="max-width:640px; width:92vw; padding:32px;">
+          <h2 style="margin-bottom:8px;">Welcome to CZC</h2>
+          <p style="color:gray; margin-bottom:24px;">
+            Select the operating mode. The matching RCP firmware will be flashed automatically.
+          </p>
+          <div class="mode-cards">
+            <div class="mode-card" id="mode-card-0" onclick="selectMode(0)">
+              <h4>Thread OTBR</h4>
+              <p>OpenThread Border Router &mdash; connects your Thread mesh to IP.</p>
+            </div>
+            <div class="mode-card" id="mode-card-1" onclick="selectMode(1)">
+              <h4>Zigbee Coordinator USB</h4>
+              <p>Zigbee coordinator with USB serial proxy to a host application.</p>
+            </div>
+            <div class="mode-card" id="mode-card-2" onclick="selectMode(2)">
+              <h4>Zigbee Coordinator Network</h4>
+              <p>Zigbee coordinator with TCP network proxy to a host application.</p>
+            </div>
+            <div class="mode-card" id="mode-card-3" onclick="selectMode(3)">
+              <h4>Zigbee Router</h4>
+              <p>Standalone Zigbee router &mdash; RCP operates independently, ESP idles.</p>
+            </div>
+          </div>
+          <div id="mode-confirm-bar" style="display:none; margin-top:20px; padding-top:16px; border-top:1px solid #e0e0e0;">
+            <p style="margin-bottom:12px;">Selected: <strong id="mode-confirm-name"></strong></p>
+            <button id="mode-confirm-btn" class="btn btn-primary" onclick="confirmModeSelection()">Confirm &amp; Flash RCP</button>
+            <button class="btn btn-default" onclick="cancelModeSelection()" style="margin-left:8px;">Back</button>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
   <script>
-    document.querySelectorAll('.sidebar-nav a').forEach(function (link) {
-      link.addEventListener('click', function () {
+    document.querySelectorAll('.sidebar-nav a').forEach(function(link) {
+      link.addEventListener('click', function() {
         document.querySelector('.app-body').classList.remove('sidebar-open');
       });
     });
   </script>
 </body>
-
 </html>
-

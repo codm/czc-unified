@@ -64,7 +64,8 @@ typedef struct http_server {
 } http_server_t;
 
 static http_server_t s_server = {NULL, {"", ""}, "", 80}; /* the instance of server */
-static system_flash_callbacks_t s_flash_cbs = {NULL, NULL, NULL};
+static web_firmware_callbacks_t s_fw_cbs  = {0};
+static web_network_callbacks_t  s_net_cbs = {0};
 
 /**
  * @brief The basic parameter definition for parsing url
@@ -872,8 +873,8 @@ static esp_err_t esp_otbr_flash_esp_post_handler(httpd_req_t *req)
     cJSON *url_item = cJSON_GetObjectItem(request, "url");
     ESP_GOTO_ON_FALSE(cJSON_IsString(url_item), ESP_FAIL, flash_esp_exit, WEB_TAG, "Missing url in flash/esp request");
 
-    if (s_flash_cbs.flash_esp) {
-        ret = s_flash_cbs.flash_esp(s_flash_cbs.ctx, url_item->valuestring);
+    if (s_fw_cbs.flash_esp) {
+        ret = s_fw_cbs.flash_esp(s_fw_cbs.ctx, url_item->valuestring);
     }
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, ret == ESP_OK
@@ -905,8 +906,8 @@ static esp_err_t esp_otbr_flash_rcp_post_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"scheduled\",\"reboot\":true}");
 
-    if (s_flash_cbs.flash_rcp) {
-        s_flash_cbs.flash_rcp(s_flash_cbs.ctx, url);
+    if (s_fw_cbs.flash_rcp) {
+        s_fw_cbs.flash_rcp(s_fw_cbs.ctx, url);
     }
 
     return ESP_OK;
@@ -1119,14 +1120,6 @@ static reqeust_url_t parse_request_url_information(const char *uri, const struct
  */
 static esp_err_t default_urls_get_handler(httpd_req_t *req)
 {
-#if CONFIG_OPENTHREAD_BR_SOFTAP_SETUP
-    // Check if this is a WiFi config request (when WiFi config mode is active)
-    if (esp_br_wifi_config_is_active()) {
-        // Let WiFi config server handle it
-        return ESP_OK;
-    }
-#endif
-
     struct http_parser_url url;
     ESP_RETURN_ON_ERROR(http_parser_parse_url(req->uri, strlen(req->uri), 0, &url), WEB_TAG, "Failed to parse url");
     reqeust_url_t info =
@@ -1178,6 +1171,169 @@ static void ot_web_json_free(void *ptr)
 #endif
 
 /*-----------------------------------------------------
+ Note: Device mode + network config API handlers
+-----------------------------------------------------*/
+static esp_err_t device_mode_get_handler(httpd_req_t *req)
+{
+    int mode = 0;
+    if (s_fw_cbs.get_mode) {
+        s_fw_cbs.get_mode(s_fw_cbs.ctx, &mode);
+    }
+    int device_setup = 1;
+    if (s_fw_cbs.get_device_setup) {
+        s_fw_cbs.get_device_setup(s_fw_cbs.ctx, &device_setup);
+    }
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "mode",         mode);
+    cJSON_AddBoolToObject  (root, "device_setup", device_setup != 0);
+    esp_err_t ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return ret;
+}
+
+static esp_err_t device_mode_post_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/mode body");
+
+    cJSON *mode_item = cJSON_GetObjectItem(body, "mode");
+    if (!cJSON_IsNumber(mode_item)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'mode' field");
+        return ESP_FAIL;
+    }
+
+    int mode = (int)cJSON_GetNumberValue(mode_item);
+    cJSON_Delete(body);
+
+    // Send response before callback — callback triggers reboot
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"scheduled\",\"reboot\":true}");
+
+    if (s_fw_cbs.set_mode) {
+        s_fw_cbs.set_mode(s_fw_cbs.ctx, mode);
+    }
+    return ESP_OK;
+}
+
+static esp_err_t network_wifi_get_handler(httpd_req_t *req)
+{
+    wifi_config_data_t cfg = {0};
+    if (s_net_cbs.get_wifi_config) {
+        s_net_cbs.get_wifi_config(s_net_cbs.ctx, &cfg);
+    }
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "ssid",          cfg.ssid);
+    cJSON_AddBoolToObject  (root, "dhcp",          cfg.dhcp);
+    cJSON_AddStringToObject(root, "static_ip",     cfg.static_ip);
+    cJSON_AddStringToObject(root, "gateway",       cfg.gateway);
+    cJSON_AddStringToObject(root, "dns_primary",   cfg.dns_primary);
+    cJSON_AddStringToObject(root, "dns_secondary", cfg.dns_secondary);
+    // password intentionally omitted from GET response
+    esp_err_t ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return ret;
+}
+
+static esp_err_t network_wifi_post_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /network/wifi body");
+
+    wifi_config_data_t cfg = {0};
+    cfg.dhcp = true;
+
+    cJSON *item;
+    if ((item = cJSON_GetObjectItem(body, "ssid"))          && cJSON_IsString(item)) strlcpy(cfg.ssid,          item->valuestring, sizeof(cfg.ssid));
+    if ((item = cJSON_GetObjectItem(body, "password"))      && cJSON_IsString(item)) strlcpy(cfg.password,      item->valuestring, sizeof(cfg.password));
+    if ((item = cJSON_GetObjectItem(body, "dhcp"))          && cJSON_IsBool(item))   cfg.dhcp = cJSON_IsTrue(item);
+    if ((item = cJSON_GetObjectItem(body, "static_ip"))     && cJSON_IsString(item)) strlcpy(cfg.static_ip,     item->valuestring, sizeof(cfg.static_ip));
+    if ((item = cJSON_GetObjectItem(body, "gateway"))       && cJSON_IsString(item)) strlcpy(cfg.gateway,       item->valuestring, sizeof(cfg.gateway));
+    if ((item = cJSON_GetObjectItem(body, "dns_primary"))   && cJSON_IsString(item)) strlcpy(cfg.dns_primary,   item->valuestring, sizeof(cfg.dns_primary));
+    if ((item = cJSON_GetObjectItem(body, "dns_secondary")) && cJSON_IsString(item)) strlcpy(cfg.dns_secondary, item->valuestring, sizeof(cfg.dns_secondary));
+    cJSON_Delete(body);
+
+    esp_err_t ret = ESP_OK;
+    if (s_net_cbs.set_wifi_config) {
+        ret = s_net_cbs.set_wifi_config(s_net_cbs.ctx, &cfg);
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, ret == ESP_OK
+        ? "{\"status\":\"ok\"}"
+        : "{\"status\":\"error\"}");
+    return ret;
+}
+
+static esp_err_t network_eth_get_handler(httpd_req_t *req)
+{
+    ethernet_config_data_t cfg = {0};
+    if (s_net_cbs.get_ethernet_config) {
+        s_net_cbs.get_ethernet_config(s_net_cbs.ctx, &cfg);
+    }
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject  (root, "dhcp",          cfg.dhcp);
+    cJSON_AddStringToObject(root, "static_ip",     cfg.static_ip);
+    cJSON_AddStringToObject(root, "gateway",       cfg.gateway);
+    cJSON_AddStringToObject(root, "dns_primary",   cfg.dns_primary);
+    cJSON_AddStringToObject(root, "dns_secondary", cfg.dns_secondary);
+    esp_err_t ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return ret;
+}
+
+static esp_err_t network_eth_post_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /network/ethernet body");
+
+    ethernet_config_data_t cfg = {0};
+    cfg.dhcp = true;
+
+    cJSON *item;
+    if ((item = cJSON_GetObjectItem(body, "dhcp"))          && cJSON_IsBool(item))   cfg.dhcp = cJSON_IsTrue(item);
+    if ((item = cJSON_GetObjectItem(body, "static_ip"))     && cJSON_IsString(item)) strlcpy(cfg.static_ip,     item->valuestring, sizeof(cfg.static_ip));
+    if ((item = cJSON_GetObjectItem(body, "gateway"))       && cJSON_IsString(item)) strlcpy(cfg.gateway,       item->valuestring, sizeof(cfg.gateway));
+    if ((item = cJSON_GetObjectItem(body, "dns_primary"))   && cJSON_IsString(item)) strlcpy(cfg.dns_primary,   item->valuestring, sizeof(cfg.dns_primary));
+    if ((item = cJSON_GetObjectItem(body, "dns_secondary")) && cJSON_IsString(item)) strlcpy(cfg.dns_secondary, item->valuestring, sizeof(cfg.dns_secondary));
+    cJSON_Delete(body);
+
+    esp_err_t ret = ESP_OK;
+    if (s_net_cbs.set_ethernet_config) {
+        ret = s_net_cbs.set_ethernet_config(s_net_cbs.ctx, &cfg);
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, ret == ESP_OK
+        ? "{\"status\":\"ok\"}"
+        : "{\"status\":\"error\"}");
+    return ret;
+}
+
+static esp_err_t network_status_get_handler(httpd_req_t *req)
+{
+    network_status_t status = {0};
+    if (s_net_cbs.get_network_status) {
+        s_net_cbs.get_network_status(s_net_cbs.ctx, &status);
+    }
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "mode",      status.mode);
+    cJSON_AddStringToObject(root, "ip",        status.ip);
+    cJSON_AddBoolToObject  (root, "connected", status.connected);
+    esp_err_t ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return ret;
+}
+
+static httpd_uri_t s_device_handlers[] = {
+    { .uri = "/device/mode",      .method = HTTP_GET,  .handler = device_mode_get_handler,   .user_ctx = &s_server.data },
+    { .uri = "/device/mode",      .method = HTTP_POST, .handler = device_mode_post_handler,  .user_ctx = &s_server.data },
+    { .uri = "/network/wifi",     .method = HTTP_GET,  .handler = network_wifi_get_handler,  .user_ctx = &s_server.data },
+    { .uri = "/network/wifi",     .method = HTTP_POST, .handler = network_wifi_post_handler, .user_ctx = &s_server.data },
+    { .uri = "/network/ethernet", .method = HTTP_GET,  .handler = network_eth_get_handler,   .user_ctx = &s_server.data },
+    { .uri = "/network/ethernet", .method = HTTP_POST, .handler = network_eth_post_handler,  .user_ctx = &s_server.data },
+    { .uri = "/network/status",   .method = HTTP_GET,  .handler = network_status_get_handler,.user_ctx = &s_server.data },
+};
+
+/*-----------------------------------------------------
  Note：Server Start
 -----------------------------------------------------*/
 /**
@@ -1189,7 +1345,7 @@ static void ot_web_json_free(void *ptr)
  *      -   ESP_OK: on success
  *      -   ESP_FAIL: on failure
  */
-static httpd_handle_t *start_esp_br_http_server(const char *base_path, const char *host_ip)
+static httpd_handle_t *start_esp_br_http_server(const char *base_path)
 {
     ESP_RETURN_ON_FALSE(base_path, NULL, WEB_TAG, "Invalid http server path");
 
@@ -1200,33 +1356,28 @@ static httpd_handle_t *start_esp_br_http_server(const char *base_path, const cha
     cJSON_InitHooks(&hooks);
 #endif
 
-    strcpy(s_server.ip, host_ip);
     strlcpy(s_server.data.base_path, base_path, ESP_VFS_PATH_MAX + 1);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers)) / sizeof(httpd_uri_t) + 2;
-    config.max_resp_headers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers)) / sizeof(httpd_uri_t) + 2;
+    config.max_uri_handlers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 2;
+    config.max_resp_headers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 2;
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.stack_size = 8 * 1024;
     s_server.port = config.server_port;
 
-    // start http_server
     ESP_RETURN_ON_FALSE(!httpd_start(&s_server.handle, &config), NULL, WEB_TAG, "Failed to start web server");
 
-    httpd_uri_t default_uris_get = {.uri = "/*", // Match all URIs of type /path/to/file
+    httpd_uri_t default_uris_get = {.uri = "/*",
                                     .method = HTTP_GET,
                                     .handler = default_urls_get_handler,
                                     .user_ctx = &s_server.data};
 
     httpd_server_register_http_uri(&s_server, s_resource_handlers, sizeof(s_resource_handlers) / sizeof(httpd_uri_t));
     httpd_server_register_http_uri(&s_server, s_web_gui_handlers, sizeof(s_web_gui_handlers) / sizeof(httpd_uri_t));
+    httpd_server_register_http_uri(&s_server, s_device_handlers, sizeof(s_device_handlers) / sizeof(httpd_uri_t));
     httpd_register_uri_handler(s_server.handle, &default_uris_get);
 
-    // Show the login address in the console
-    ESP_LOGI(WEB_TAG, "%s\r\n", "<========server start========>");
-    ESP_LOGI(WEB_TAG, "http://%s\r\n", s_server.ip);
-    ESP_LOGI(WEB_TAG, "%s\r\n", "<============================>");
-
+    ESP_LOGI(WEB_TAG, "Web server started on port %d (all interfaces)", s_server.port);
     return s_server.handle;
 }
 
@@ -1235,7 +1386,7 @@ void connect_handler(void *arg, esp_event_base_t event_base, int32_t event_id, v
     httpd_handle_t *server = (httpd_handle_t *)arg;
     ESP_RETURN_ON_FALSE(server, , WEB_TAG, "Http server is invalid, failed to start it");
     ESP_LOGI(WEB_TAG, "Start the web server for Openthread Border Router");
-    *server = (httpd_handle_t *)start_esp_br_http_server(base_path, s_server.ip);
+    *server = (httpd_handle_t *)start_esp_br_http_server(base_path);
 }
 
 /*-----------------------------------------------------
@@ -1260,36 +1411,13 @@ void disconnect_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     *server = NULL;
 }
 
-static bool is_br_web_server_started = false;
-static void handler_got_ip_event(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+void esp_br_web_start(const char *base_path,
+                      const web_firmware_callbacks_t *fw_cbs,
+                      const web_network_callbacks_t  *net_cbs)
 {
-#if CONFIG_OPENTHREAD_BR_SOFTAP_SETUP
-    // Don't start Thread BR web server if WiFi config mode is active
-    if (esp_br_wifi_config_is_active()) {
-        ESP_LOGI(WEB_TAG, "WiFi config mode is active, skipping Thread BR web server");
-        return;
+    if (fw_cbs)  s_fw_cbs  = *fw_cbs;
+    if (net_cbs) s_net_cbs = *net_cbs;
+    if (start_esp_br_http_server(base_path) == NULL) {
+        ESP_LOGE(WEB_TAG, "Failed to start web server");
     }
-#endif
-
-    if (!is_br_web_server_started) {
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-        char ipv4_address[SERVER_IPV4_LEN];
-        sprintf((char *)ipv4_address, IPSTR, IP2STR(&event->ip_info.ip));
-        if (start_esp_br_http_server((const char *)arg, (char *)ipv4_address) != NULL) {
-            is_br_web_server_started = true;
-        } else {
-            ESP_LOGE(WEB_TAG, "Fail to start web server");
-        }
-    } else {
-        ESP_LOGW(WEB_TAG, "Web server had already been started");
-    }
-}
-
-void esp_br_web_start(char *base_path, const system_flash_callbacks_t *flash_cbs)
-{
-    if (flash_cbs) {
-        s_flash_cbs = *flash_cbs;
-    }
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &handler_got_ip_event, base_path));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &handler_got_ip_event, base_path));
 }
