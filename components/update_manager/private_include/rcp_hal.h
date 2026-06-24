@@ -84,6 +84,17 @@ private:
     bool        bslMode;
 
     /**
+     * @brief Delete any existing UART driver and reinstall it fresh at BSL baud.
+     *
+     * @warning Must be called immediately before BSL communication, not during
+     *          init(). The CC2652 transmits while not in BSL filling up the 
+     *          Rx Buffer making a waitForAck() unreliable.
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t acquireUart();
+
+    /**
      * @brief Frame and transmit a BSL packet: [SIZE][CHECKSUM][CMD][DATA…]
      *
      * @param[in] cmdAndData  Byte 0 = CMD, bytes 1…n = payload

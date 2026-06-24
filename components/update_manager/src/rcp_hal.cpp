@@ -63,12 +63,43 @@ esp_err_t RcpHal::init(uart_port_t uartNum)
     return ESP_OK;
 }
 
+esp_err_t RcpHal::acquireUart()
+{
+    if (uart_is_driver_installed(uartPort)) {
+        uart_driver_delete(uartPort);
+        ESP_LOGD(TAG, "UART driver deleted for fresh BSL acquire");
+    }
+
+    uart_config_t uartCfg{};
+    uartCfg.baud_rate  = Board::BSL_BAUD;
+    uartCfg.data_bits  = UART_DATA_8_BITS;
+    uartCfg.parity     = UART_PARITY_DISABLE;
+    uartCfg.stop_bits  = UART_STOP_BITS_1;
+    uartCfg.flow_ctrl  = UART_HW_FLOWCTRL_DISABLE;
+    uartCfg.source_clk = UART_SCLK_DEFAULT;
+
+    ESP_RETURN_ON_ERROR(uart_param_config(uartPort, &uartCfg), TAG, "uart_param_config failed");
+    ESP_RETURN_ON_ERROR(uart_set_pin(uartPort, Board::RCP_UART_TX, Board::RCP_UART_RX,
+                                     UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
+                        TAG, "uart_set_pin failed");
+    ESP_RETURN_ON_ERROR(uart_driver_install(uartPort, 1024, 0, 0, nullptr, 0),
+                        TAG, "uart_driver_install failed");
+    uart_flush_input(uartPort);
+
+    ESP_LOGI(TAG, "UART%d acquired at %lu baud", uartPort, Board::BSL_BAUD);
+    return ESP_OK;
+}
+
 esp_err_t RcpHal::enterBootloader()
 {
+    ESP_RETURN_ON_ERROR(acquireUart(), TAG, "UART acquire failed");
+
     if (!bslMode) {
         ESP_LOGD(TAG, "RST=0, BSL=0");
         gpio_set_level(Board::CC_RST_PIN, 0);
         gpio_set_level(Board::CC_BSL_PIN, 0);
+        ESP_LOGI(TAG, "BSL pin readback: RST=%d BSL=%d",
+                 gpio_get_level(Board::CC_RST_PIN), gpio_get_level(Board::CC_BSL_PIN));
         vTaskDelay(pdMS_TO_TICKS(50));
 
         ESP_LOGD(TAG, "RST=1 — CC2652 samples BSL pin now");
@@ -80,7 +111,6 @@ esp_err_t RcpHal::enterBootloader()
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 
-    uart_flush_input(uartPort);
     ESP_RETURN_ON_ERROR(uartSync(), TAG, "UART sync failed");
 
     bslMode = true;
@@ -218,7 +248,6 @@ bool RcpHal::waitAck(uint32_t timeoutMs)
                 }
             }
         }
-        ESP_LOGI(TAG, "waiting...");
         vTaskDelay(1);
     }
 

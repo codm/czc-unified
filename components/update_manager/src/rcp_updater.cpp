@@ -155,15 +155,18 @@ esp_err_t RcpUpdater::flashFromStaging()
     ESP_LOGI(TAG, "Flashing %lu B (aligned: %lu B) to CC2652...", totalSize, alignedSize);
 
     ESP_RETURN_ON_ERROR(hal.eraseFlash(),                       TAG, "Erase failed");
+    ESP_LOGI(TAG, "BEGIN_FLASH...");
     ESP_RETURN_ON_ERROR(hal.beginFlash(FLASH_START_ADDR, alignedSize), TAG, "beginFlash failed");
 
     uint8_t blockBuf[BSL_BLOCK_SIZE]{};
     size_t offset{0};
+    float lastLoggedPercent {0};
 
     while (offset < static_cast<size_t>(totalSize)) {
         size_t toRead{BSL_BLOCK_SIZE};
         size_t remaining{static_cast<size_t>(totalSize) - offset};
-        if (remaining < toRead) toRead = remaining;
+        if (remaining < toRead) 
+            toRead = remaining;
 
         // Pad last block to 4-byte boundary with 0xFF
         size_t paddedRead{(toRead + 3) & ~size_t{3}};
@@ -182,6 +185,14 @@ esp_err_t RcpUpdater::flashFromStaging()
 
         offset += toRead;
         vTaskDelay(1);
+        
+        constexpr float percentPrintDelta {0.5};
+        float progressPercent {(static_cast<float>(offset) / totalSize) * 100};
+        if ((progressPercent - lastLoggedPercent) > percentPrintDelta) 
+        {
+            ESP_LOGD(TAG, "RCP Flash in progress: %.2f%% Done!", progressPercent);
+            lastLoggedPercent = progressPercent;
+        }
     }
 
     ESP_LOGI(TAG, "Flash complete — resetting CC2652");

@@ -15,7 +15,7 @@
  *
  *        Boot-Decision-Tree:
  *          1. rcp_flash_pending → flashRcp → store chip info → clear flag → reboot
- *          2. !device_setup    → schedule first RCP flash → reboot
+ *          2. !device_setup    → wait until web interface schedules reboot via device setup pop up
  *          3. otherwise        → firmware_manager.start(stored mode)
  *
  * @note  UpdateManager and FirmwareManager are injected by reference from main
