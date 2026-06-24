@@ -3,6 +3,7 @@ idf_component_register(SRCS "main.cpp"
                                 system_manager
                                 network
                                 status_light
+                                update_manager
                                 nvs_flash
                                 esp_event
 
