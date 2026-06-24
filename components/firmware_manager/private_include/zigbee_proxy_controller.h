@@ -2,8 +2,13 @@
 #define CZC_ZIGBEE_PROXY_CONTROLLER_H_
 
 #include "protocol_controller.h"
-#include "proxy_transport.h"
 #include "firmware_manager.h"
+#include "proxy_transport.h"
+
+#include "esp_log_write.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <memory>
 
 /**
  * @brief ProtocolController implementation for Zigbee coordinator proxy mode.
@@ -48,8 +53,15 @@ public:
     bool isRunning() override;
 
 private:
-    DeviceMode  mode;
-    bool        proxyActive;
+    static void rcpToHostFunc(void* ctx);
+    static void hostToRcpFunc(void* ctx);
+
+    DeviceMode                       mode;
+    bool                             proxyActive;
+    vprintf_like_t                   savedVprintf{nullptr};
+    std::unique_ptr<IProxyTransport> transport;
+    TaskHandle_t                     rcpToHostTask{nullptr};
+    TaskHandle_t                     hostToRcpTask{nullptr};
 };
 
 #endif // CZC_ZIGBEE_PROXY_CONTROLLER_H_
