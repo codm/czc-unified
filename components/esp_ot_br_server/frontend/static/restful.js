@@ -1,6 +1,68 @@
 var OT_SERVER_PACKAGE_VERSION = "v1.0.0";
 
 /* --------------------------------------------------------------------
+               App State — Device Mode & Network Status
+-------------------------------------------------------------------- */
+
+var MODE_NAMES  = ['Thread OTBR', 'Zigbee Coordinator USB', 'Zigbee Coordinator Net', 'Zigbee Router'];
+var MODE_ICONS  = ['icon-thread',  'icon-zigbee',            'icon-zigbee',             'icon-zigbee'];
+var MODE_GROUPS = ['thread',       'zigbee',                  'zigbee',                  'zigbee'];
+
+var NET_STATE = {
+  0: {label: 'Initializing', icon: 'icon-softap'},
+  1: {label: 'Ethernet',     icon: 'icon-ethernet'},
+  2: {label: 'WiFi',         icon: 'icon-wifi'},
+  3: {label: 'SoftAP',       icon: 'icon-softap'},
+  4: {label: 'ETH Retry',    icon: 'icon-ethernet'},
+  5: {label: 'WiFi Retry',   icon: 'icon-wifi'}
+};
+
+function initAppState() {
+  $.ajax({
+    url: '/device/mode', type: 'GET', dataType: 'json',
+    success: function(data) { applyDeviceMode(data.mode); },
+    error:   function()     { document.body.classList.add('mode-thread'); }
+  });
+  pollNetworkStatus();
+}
+
+function applyDeviceMode(mode) {
+  var group = MODE_GROUPS[mode] || 'thread';
+  document.body.classList.remove('mode-thread', 'mode-zigbee');
+  document.body.classList.add('mode-' + group);
+
+  var ovMode = document.getElementById('ov-mode');
+  if (ovMode) ovMode.innerText = MODE_NAMES[mode] || '—';
+
+  var badge = document.getElementById('hdr-mode');
+  if (badge) {
+    badge.querySelector('.hdr-badge-icon use').setAttribute('href', '#' + (MODE_ICONS[mode] || 'icon-thread'));
+    badge.querySelector('.hdr-badge-label').innerText = MODE_NAMES[mode] || '—';
+  }
+}
+
+function pollNetworkStatus() {
+  $.ajax({
+    url: '/network/status', type: 'GET', dataType: 'json',
+    success: function(status) {
+      var info  = NET_STATE[status.mode] || {label: 'Unknown', icon: 'icon-softap'};
+      var label = (status.connected && status.ip) ? info.label + ' · ' + status.ip : info.label;
+
+      var badge = document.getElementById('hdr-net');
+      if (badge) {
+        badge.querySelector('.hdr-badge-icon use').setAttribute('href', '#' + info.icon);
+        badge.querySelector('.hdr-badge-label').innerText = label;
+      }
+
+      var ovNet = document.getElementById('ov-net');
+      if (ovNet) ovNet.innerText = label;
+    },
+    error: function() {}
+  });
+  setTimeout(pollNetworkStatus, 10000);
+}
+
+/* --------------------------------------------------------------------
                         Network Config
 -------------------------------------------------------------------- */
 
@@ -206,6 +268,7 @@ function confirmModeSelection() {
 
 $(document).ready(function() {
   initFirstBootCheck();
+  initAppState();
 });
 /* --------------------------------------------------------------------
                             action
