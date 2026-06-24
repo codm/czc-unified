@@ -22,6 +22,7 @@ void ZigbeeProxyController::rcpToHostFunc(void* ctx)
     while (self->proxyActive) {
         int n = uart_read_bytes(Board::RCP_UART, buf, sizeof(buf), pdMS_TO_TICKS(10));
         if (n > 0) self->transport->write(buf, n);
+        vTaskDelay(pdTICKS_TO_MS(10));
     }
     vTaskDelete(nullptr);
 }
@@ -33,6 +34,7 @@ void ZigbeeProxyController::hostToRcpFunc(void* ctx)
     while (self->proxyActive) {
         int n = self->transport->read(buf, sizeof(buf));
         if (n > 0) uart_write_bytes(Board::RCP_UART, buf, n);
+        vTaskDelay(pdTICKS_TO_MS(10));
     }
     vTaskDelete(nullptr);
 }

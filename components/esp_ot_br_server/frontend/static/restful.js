@@ -28,8 +28,15 @@ function initAppState() {
 
 function applyDeviceMode(mode) {
   var group = MODE_GROUPS[mode] || 'thread';
-  document.body.classList.remove('mode-thread', 'mode-zigbee');
+  document.body.classList.remove('mode-thread', 'mode-zigbee', 'mode-coordinator');
   document.body.classList.add('mode-' + group);
+  if (mode === 1 || mode === 2) {
+    document.body.classList.add('mode-coordinator');
+    var usbBtn = document.getElementById('zb-btn-usb');
+    var netBtn = document.getElementById('zb-btn-net');
+    if (usbBtn) usbBtn.classList.toggle('active', mode === 1);
+    if (netBtn) netBtn.classList.toggle('active', mode === 2);
+  }
 
   var ovMode = document.getElementById('ov-mode');
   if (ovMode) ovMode.innerText = MODE_NAMES[mode] || '—';
@@ -743,14 +750,20 @@ function http_server_delete_prefix_from_thread_network() {
 
 var RCP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-rcp-fw/releases';
 var ESP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-fw/releases';
+var ZB_MANIFEST_URL  = 'https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json';
 
-var g_flash_type = '';
+var g_flash_type        = '';
+var g_rcp_tab_type      = 'thread';
+var g_coordinator_mode  = 1;  // 1 = USB/UART, 2 = Network/TCP
+
+var TAB_MODE = {thread: 0, coordinator: null, router: 3};
 
 function frontend_flash_esp_button() {
   g_flash_type = 'esp';
   document.getElementById('flash_window_title').innerText = 'Select ESP Firmware';
   document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
   document.getElementById('flash_status').innerText = '';
+  document.getElementById('flash_rcp_tabs').style.display = 'none';
   document.getElementById('flash_window').style.display = 'flex';
 
   fetch_firmware_list_from_url(ESP_RELEASES_URL, parse_github_releases, render_firmware_list, flash_list_error);
@@ -761,9 +774,65 @@ function frontend_flash_rcp_button() {
   document.getElementById('flash_window_title').innerText = 'Select RCP Firmware';
   document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
   document.getElementById('flash_status').innerText = '';
+  document.getElementById('flash_rcp_tabs').style.display = 'block';
   document.getElementById('flash_window').style.display = 'flex';
-  
-  fetch_firmware_list_from_url(RCP_RELEASES_URL, parse_github_releases, render_firmware_list, flash_list_error);
+
+  flash_rcp_tab('thread');
+}
+
+function flash_rcp_tab(type) {
+  g_rcp_tab_type = type;
+  document.querySelectorAll('#flash_rcp_tabs .rcp-tab-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('onclick') === "flash_rcp_tab('" + type + "')");
+  });
+  document.getElementById('flash_coordinator_transport').style.display = (type === 'coordinator') ? 'block' : 'none';
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+
+  if (type === 'thread') {
+    fetch_firmware_list_from_url(RCP_RELEASES_URL, parse_github_releases, render_firmware_list, flash_list_error);
+  } else {
+    fetch_firmware_list_from_url(ZB_MANIFEST_URL, function(data) {
+      return parse_zb_manifest(data, type);
+    }, render_firmware_list, flash_list_error);
+  }
+}
+
+function setCoordTransport(mode) {
+  g_coordinator_mode = mode;
+  document.getElementById('coord-btn-usb').classList.toggle('active', mode === 1);
+  document.getElementById('coord-btn-net').classList.toggle('active', mode === 2);
+}
+
+function setZigbeeTransport(mode) {
+  document.getElementById('zb-btn-usb').classList.toggle('active', mode === 1);
+  document.getElementById('zb-btn-net').classList.toggle('active', mode === 2);
+  document.getElementById('zb-transport-status').innerText = 'Switching — device will reboot...';
+  $.ajax({
+    url: '/device/mode', type: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({mode: mode}),
+    complete: function() {
+      document.getElementById('zb-transport-status').innerText = 'Rebooting — page reloads in 15 seconds.';
+      setTimeout(function() { location.reload(); }, 15000);
+    }
+  });
+}
+
+function parse_zb_manifest(data, type) {
+  var category = data[type] || {};
+  var result = [];
+  Object.keys(category).forEach(function(device) {
+    var entries = category[device];
+    Object.keys(entries).forEach(function(filename) {
+      var entry = entries[filename];
+      result.push({
+        name: filename,
+        version: entry.ver || '—',
+        url: entry.link || ''
+      });
+    });
+  });
+  return result;
 }
 
 /* Generic fetcher — swap parser to support different release endpoints later */
@@ -857,6 +926,17 @@ function render_firmware_list(firmwares) {
 
 function do_flash_with_url(url) {
   document.getElementById('flash_window').style.display = 'none';
+
+  if (g_flash_type === 'rcp') {
+    var mode = (g_rcp_tab_type === 'coordinator') ? g_coordinator_mode
+             : (g_rcp_tab_type === 'router')      ? 3 : 0;
+    $.ajax({
+      url: '/device/mode', type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({mode: mode})
+    });
+  }
+
   var endpoint = g_flash_type === 'esp' ? '/flash/esp' : '/flash/rcp';
   var log = {error: 0, content: ''};
   var title = g_flash_type === 'esp' ? 'Flash ESP' : 'Flash RCP';

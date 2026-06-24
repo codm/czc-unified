@@ -587,6 +587,25 @@
         </div>
       </section>
 
+      <!-- ===================== ZIGBEE CONNECTION (coordinator only) ===================== -->
+      <section id="ZigbeeConnection" class="sub-section coordinator-section">
+        <div class="container">
+          <div class="section-header default-margin">
+            <h2>Zigbee <span style="color: var(--color-primary)">Connection</span></h2>
+            <p>Choose how the host application connects to the Zigbee coordinator. Switching will reboot the device.</p>
+          </div>
+          <div class="part">
+            <div class="submit-form">
+              <div style="margin-bottom:12px;">
+                <button class="rcp-tab-btn" id="zb-btn-usb" onclick="setZigbeeTransport(1)">USB / UART</button>
+                <button class="rcp-tab-btn" id="zb-btn-net" onclick="setZigbeeTransport(2)">Network / TCP</button>
+              </div>
+              <div id="zb-transport-status" style="font-size:13px; color:gray;"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ===================== NETWORK (always) ===================== -->
       <section id="Network" class="sub-section">
         <div class="container">
@@ -718,6 +737,16 @@
         <div class="dialog-content" style="width: 620px; max-width: 90vw;">
           <h2 id="flash_window_title">Select Firmware</h2>
           <div style="width:100%; height:2px; border-top:1px solid #cecaca; clear:both; margin-bottom:15px;"></div>
+          <div id="flash_rcp_tabs" style="display:none; margin-bottom:10px;">
+            <button class="rcp-tab-btn active" onclick="flash_rcp_tab('thread')">Thread</button>
+            <button class="rcp-tab-btn" onclick="flash_rcp_tab('coordinator')">Zigbee Coordinator</button>
+            <button class="rcp-tab-btn" onclick="flash_rcp_tab('router')">Zigbee Router</button>
+          </div>
+          <div id="flash_coordinator_transport" style="display:none; margin-bottom:15px;">
+            <span style="font-size:13px; color:var(--color-secondary); margin-right:8px;">Connection:</span>
+            <button class="rcp-tab-btn active" id="coord-btn-usb" onclick="setCoordTransport(1)">USB / UART</button>
+            <button class="rcp-tab-btn" id="coord-btn-net" onclick="setCoordTransport(2)">Network / TCP</button>
+          </div>
           <div id="flash_firmware_list" style="max-height:350px; overflow-y:auto;"><p>Loading...</p></div>
           <div id="flash_status" style="color:gray; margin-top:10px; font-size:14px;"></div>
           <button type="button" class="dialog-button" style="margin-top:15px;" onclick="frontend_cancel_flash()">Cancel</button>

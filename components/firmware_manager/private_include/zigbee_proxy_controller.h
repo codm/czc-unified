@@ -20,7 +20,6 @@
  *          - ZIGBEE_USB → UartTransport
  *          - ZIGBEE_NET → TcpTransport
  *
- * @note  Not yet implemented — stub only.
  */
 class ZigbeeProxyController : public ProtocolController {
 public:
