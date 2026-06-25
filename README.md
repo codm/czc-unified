@@ -481,9 +481,6 @@ classDiagram
     ZigbeeProxyController *-- IProxyTransport
     IProxyTransport <|.. UartTransport
     IProxyTransport <|.. TcpTransport
-
-    note for ProtocolController "Interface Layer 1\nLifecycle: start / stop / isRunning\nFirmwareManager selects implementation\nbased on DeviceMode"
-    note for IProxyTransport "Interface Layer 2\nTransport: open / close / read / write\nZigbeeProxyController selects implementation\nbased on DeviceMode (USB → UART, NET → TCP)"
 ```
 
 ### Boot-Decision-Tree
