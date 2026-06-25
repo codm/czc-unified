@@ -75,7 +75,7 @@ public:
     esp_err_t requestEspFlash(const char* url);
 
     /**
-     * @brief Switch device mode: write new mode + matching RCP FW URL to NVS, then reboot.
+     * @brief Switch device mode: write new mode
      *
      * @param[in] mode  The target DeviceMode
      *
