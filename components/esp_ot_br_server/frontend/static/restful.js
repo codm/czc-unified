@@ -927,16 +927,6 @@ function render_firmware_list(firmwares) {
 function do_flash_with_url(url) {
   document.getElementById('flash_window').style.display = 'none';
 
-  if (g_flash_type === 'rcp') {
-    var mode = (g_rcp_tab_type === 'coordinator') ? g_coordinator_mode
-             : (g_rcp_tab_type === 'router')      ? 3 : 0;
-    $.ajax({
-      url: '/device/mode', type: 'POST',
-      contentType: 'application/json',
-      data: JSON.stringify({mode: mode})
-    });
-  }
-
   var endpoint = g_flash_type === 'esp' ? '/flash/esp' : '/flash/rcp';
   var log = {error: 0, content: ''};
   var title = g_flash_type === 'esp' ? 'Flash ESP' : 'Flash RCP';
@@ -947,7 +937,11 @@ function do_flash_with_url(url) {
     contentType: 'application/json',
     type: 'POST',
     dataType: 'json',
-    data: JSON.stringify({url: url}),
+    data: JSON.stringify({
+      url,
+      type: g_rcp_tab_type
+    }),
+
     success: function(arg) {
       if (arg.reboot) {
         log.error = 0;

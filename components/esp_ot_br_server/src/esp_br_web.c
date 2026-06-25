@@ -1117,9 +1117,16 @@ static esp_err_t esp_otbr_flash_esp_post_handler(httpd_req_t *req)
     ESP_RETURN_ON_FALSE(request, ESP_FAIL, WEB_TAG, "Failed to parse flash/esp body");
 
     cJSON *url_item = cJSON_GetObjectItem(request, "url");
+    cJSON *firmware_type = cJSON_GetObjectItem(request, "type");
     ESP_GOTO_ON_FALSE(cJSON_IsString(url_item), ESP_FAIL, flash_esp_exit, WEB_TAG, "Missing url in flash/esp request");
 
-    if (s_fw_cbs.flash_esp) {
+    if (s_fw_cbs.set_mode)
+    {
+        s_fw_cbs.set_mode(s_fw_cbs.ctx, firmware_type->valueint);
+    }
+
+    if (s_fw_cbs.flash_esp) 
+    {
         ret = s_fw_cbs.flash_esp(s_fw_cbs.ctx, url_item->valuestring);
     }
     httpd_resp_set_type(req, "application/json");
