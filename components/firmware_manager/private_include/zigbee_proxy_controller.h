@@ -10,7 +10,7 @@
 #include <memory>
 
 /**
- * @brief ProtocolController implementation for Zigbee coordinator proxy mode.
+ * @brief IProtocolController implementation for Zigbee coordinator proxy mode.
  *
  *        Acts as a transparent serial proxy between the CC2652 RCP UART and a
  *        host application via IProxyTransport (USB or TCP).
@@ -20,7 +20,7 @@
  *          - ZIGBEE_NET → TcpTransport
  *
  */
-class ZigbeeProxyController : public ProtocolController {
+class ZigbeeProxyController : public IProtocolController {
 public:
     /**
      * @brief Constructor.

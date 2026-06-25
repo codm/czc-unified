@@ -28,20 +28,20 @@ esp_err_t UartTransport::open()
     };
 
     esp_err_t ret = ESP_OK;
-    ESP_GOTO_ON_ERROR(uart_param_config(Board::HOST_UART, &cfg), cleanup, TAG, "Failed at uart param config");
+    ESP_GOTO_ON_ERROR(uart_param_config(Board::HOST_UART, &cfg), cleanup, TAG, "Failed at [Outside]uart_param_config");
 
     ESP_GOTO_ON_ERROR(uart_set_pin(Board::HOST_UART,
                         Board::HOST_UART_TX, Board::HOST_UART_RX,
                         UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
                     cleanup,
                     TAG,
-                    "Failed at Uart set pin"
+                    "Failed at [Outside]uart_set_pin"
                     );
 
     ESP_GOTO_ON_ERROR(uart_driver_install(Board::HOST_UART, 2048, 2048, 0, nullptr, 0),
                     cleanup,
                     TAG, 
-                    "Failed at uart driver install"
+                    "Failed at [Outside]uart_driver_install"
                     );
 
     return ret;

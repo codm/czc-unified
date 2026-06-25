@@ -3,6 +3,7 @@
 #include "board_config.h"
 #include "driver/uart.h"
 #include "esp_log.h"
+#include "esp_check.h"
 
 static const char* TAG = "ZigbeeProxyController";
 
@@ -35,7 +36,8 @@ void ZigbeeProxyController::rcpToHostFunc(void* ctx)
     uint8_t buf[256];
     while (self->proxyActive) {
         int n = uart_read_bytes(Board::RCP_UART, buf, sizeof(buf), pdMS_TO_TICKS(10));
-        if (n > 0) self->transport->write(buf, n);
+        if (n > 0) 
+            self->transport->write(buf, n);
         vTaskDelay(pdTICKS_TO_MS(10));
     }
     vTaskDelete(nullptr);
@@ -47,7 +49,8 @@ void ZigbeeProxyController::hostToRcpFunc(void* ctx)
     uint8_t buf[256];
     while (self->proxyActive) {
         int n = self->transport->read(buf, sizeof(buf));
-        if (n > 0) uart_write_bytes(Board::RCP_UART, buf, n);
+        if (n > 0) 
+            uart_write_bytes(Board::RCP_UART, buf, n);
         vTaskDelay(pdTICKS_TO_MS(10));
     }
     vTaskDelete(nullptr);
@@ -55,6 +58,29 @@ void ZigbeeProxyController::hostToRcpFunc(void* ctx)
 
 esp_err_t ZigbeeProxyController::start()
 {
+    // RCP Uart init
+    uart_config_t cfg = {
+        .baud_rate  = 115200,
+        .data_bits  = UART_DATA_8_BITS,
+        .parity     = UART_PARITY_DISABLE,
+        .stop_bits  = UART_STOP_BITS_1,
+        .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+    };
+
+    ESP_RETURN_ON_ERROR(uart_param_config(Board::RCP_UART, &cfg), TAG, "Failed at [RCP]uart_param_config");
+
+    ESP_RETURN_ON_ERROR(uart_set_pin(Board::RCP_UART,
+                        Board::RCP_UART_TX, Board::RCP_UART_RX,
+                        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
+                        TAG,
+                        "Failed at [RCP]uart_set_pin"
+                    );
+
+    ESP_RETURN_ON_ERROR(uart_driver_install(Board::RCP_UART, 2048, 2048, 0, nullptr, 0),
+                        TAG,
+                        "Failed at [RCP]uart_driver_install"
+                        );
+
     esp_err_t ret = transport->open();
     if (ret != ESP_OK) 
     {
@@ -86,7 +112,7 @@ esp_err_t ZigbeeProxyController::stop()
 
     transport->close();
 
-    return ESP_OK;
+    return uart_driver_delete(Board::HOST_UART);
 }
 
 bool ZigbeeProxyController::isRunning()

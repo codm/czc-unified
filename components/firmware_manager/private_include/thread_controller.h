@@ -4,7 +4,7 @@
 #include "protocol_controller.h"
 
 /**
- * @brief ProtocolController implementation for OpenThread border router mode.
+ * @brief IProtocolController implementation for OpenThread border router mode.
  *
  *        Registers eventfd, configures the OT radio and host interfaces,
  *        starts the OT stack and the border router, then triggers auto-start
@@ -14,7 +14,7 @@
  *        The shared UART (UART_NUM_2) is owned by the OT Spinel driver for
  *        the entire lifetime of a running ThreadController.
  */
-class ThreadController : public ProtocolController {
+class ThreadController : public IProtocolController {
 public:
     /**
      * @brief Constructor — initialises members to safe defaults.

@@ -9,7 +9,7 @@
  * @brief Operating modes of the device.
  *
  *        Stored in NVS and read at boot by AppController to determine
- *        which ProtocolController to start.
+ *        which IProtocolController to start.
  */
 enum class DeviceMode : int32_t {
     THREAD       = 0,  ///< OpenThread border router (OTBR)
@@ -39,7 +39,7 @@ public:
     /**
      * @brief Start the protocol stack for the given mode.
      *
-     *        Selects the matching ProtocolController and calls its start().
+     *        Selects the matching IProtocolController and calls its start().
      *        Must not be called while any controller is already running.
      *        For ZIGBEE_ROUTER mode, no controller is started.
      *
@@ -64,7 +64,7 @@ public:
     DeviceMode getActiveMode();
 
 private:
-    std::unique_ptr<ProtocolController> protocol;
+    std::unique_ptr<IProtocolController> protocol;
     DeviceMode activeMode;
 };
 
