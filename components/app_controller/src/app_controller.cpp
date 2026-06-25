@@ -103,6 +103,19 @@ esp_err_t AppController::requestModeChange(DeviceMode mode)
 {
     ESP_RETURN_ON_ERROR(AppNvs::writeDeviceMode(mode),           TAG, "Write device mode failed");
     ESP_LOGI(TAG, "Mode change to %d", static_cast<int>(mode));
+    
+    if (firmwareManager.getActiveMode() != DeviceMode::THREAD) 
+    {
+        firmwareManager.stop();
+        vTaskDelay(pdMS_TO_TICKS(50));
+        firmwareManager.start(mode);
+    }
+    else
+    {
+        ESP_LOGD(TAG, "Changing from Thread. Rebooting ESP...");
+        esp_restart();
+    }
+
     return ESP_OK;
 }
 
