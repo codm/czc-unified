@@ -56,6 +56,7 @@ extern "C" void app_main(void)
     // WiFi through the web UI and NSM reconnects automatically
     ESP_LOGI(TAG, "Waiting for internet connection...");
     network.waitUntilInternetIsConnected();
+    ESP_LOGI(TAG, "Routed Connection available! Starting Application...");
 
     // Boot-decision-tree → normal operation (may reboot and never return)
     appController.run();
