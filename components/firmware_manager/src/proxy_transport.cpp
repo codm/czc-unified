@@ -97,8 +97,18 @@ esp_err_t TcpTransport::open()
 
 esp_err_t TcpTransport::close()
 {
-    if (clientFd >= 0) { ::close(clientFd); clientFd = -1; }
-    if (serverFd >= 0) { ::close(serverFd); serverFd = -1; }
+    if (clientFd >= 0) 
+    { 
+        ::close(clientFd); 
+        clientFd = -1; 
+    }
+
+    if (serverFd >= 0) 
+    { 
+        ::close(serverFd); 
+        serverFd = -1; 
+    }
+    
     return ESP_OK;
 }
 
