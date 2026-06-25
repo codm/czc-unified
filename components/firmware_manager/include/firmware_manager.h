@@ -1,7 +1,9 @@
 #ifndef CZC_FIRMWARE_MANAGER_H_
 #define CZC_FIRMWARE_MANAGER_H_
 
+#include "protocol_controller.h"
 #include "esp_err.h"
+#include <memory>
 
 /**
  * @brief Operating modes of the device.
@@ -28,7 +30,9 @@ enum class DeviceMode : int32_t {
 class FirmwareManager {
 public:
     /**
-     * @brief Constructor — initialises members to safe defaults.
+     * @brief Constructor — initialises members to safe defaults. 
+     * 
+     * @warning No protocol defined yet!
      */
     FirmwareManager();
 
@@ -46,6 +50,13 @@ public:
     esp_err_t start(DeviceMode mode);
 
     /**
+     * @brief Stops the protocol Stack currently running.
+     * 
+     * @return `ESP_OK` on success - `ESP_FAIL` else
+     */
+    esp_err_t stop();
+
+    /**
      * @brief Return the currently active device mode.
      *
      * @return `DeviceMode` that was passed to the last successful start()
@@ -53,6 +64,7 @@ public:
     DeviceMode getActiveMode();
 
 private:
+    std::unique_ptr<ProtocolController> protocol;
     DeviceMode activeMode;
 };
 

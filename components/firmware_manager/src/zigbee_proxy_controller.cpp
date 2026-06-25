@@ -9,10 +9,24 @@ static const char* TAG = "ZigbeeProxyController";
 ZigbeeProxyController::ZigbeeProxyController(DeviceMode proxyMode)
     : mode{proxyMode}, proxyActive{false}
 {
-    if (mode == DeviceMode::ZIGBEE_USB)
+    switch (proxyMode)
+    {
+    case DeviceMode::ZIGBEE_USB:
         transport = std::make_unique<UartTransport>();
-    else
+        break;
+    
+    case DeviceMode::ZIGBEE_NET:
         transport = std::make_unique<TcpTransport>(Board::PROXY_TCP_PORT);
+        break;
+    
+    case DeviceMode::ZIGBEE_ROUTER:
+        //transport = std::make_unique<IProxyTransport>();
+        break;
+
+    default:
+        //transport = std::make_unique<IProxyTransport>();
+        break;
+    }
 }
 
 void ZigbeeProxyController::rcpToHostFunc(void* ctx)
@@ -61,8 +75,16 @@ esp_err_t ZigbeeProxyController::stop()
 {
     proxyActive = false;
 
-    if (rcpToHostTask) { vTaskDelete(rcpToHostTask); rcpToHostTask = nullptr; }
-    if (hostToRcpTask) { vTaskDelete(hostToRcpTask); hostToRcpTask = nullptr; }
+    if (rcpToHostTask) 
+    { 
+        vTaskDelete(rcpToHostTask); 
+        rcpToHostTask = nullptr; 
+    }
+    if (hostToRcpTask) 
+    { 
+        vTaskDelete(hostToRcpTask); 
+        hostToRcpTask = nullptr; 
+    }
 
     transport->close();
 
