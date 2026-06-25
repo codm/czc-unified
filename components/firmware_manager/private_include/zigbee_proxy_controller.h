@@ -5,7 +5,6 @@
 #include "firmware_manager.h"
 #include "proxy_transport.h"
 
-#include "esp_log_write.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <memory>
@@ -57,7 +56,6 @@ private:
 
     DeviceMode                       mode;
     bool                             proxyActive;
-    vprintf_like_t                   savedVprintf{nullptr};
     std::unique_ptr<IProxyTransport> transport;
     TaskHandle_t                     rcpToHostTask{nullptr};
     TaskHandle_t                     hostToRcpTask{nullptr};

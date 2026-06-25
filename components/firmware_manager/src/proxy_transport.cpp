@@ -3,6 +3,7 @@
 #include "board_config.h"
 #include "driver/uart.h"
 #include "esp_log.h"
+#include "esp_check.h"
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -16,6 +17,8 @@ static const char* TAG = "ProxyTransport";
 
 esp_err_t UartTransport::open()
 {
+    savedVprintf = esp_log_set_vprintf([](const char*, va_list) -> int { return 0; });
+
     uart_config_t cfg = {
         .baud_rate  = 115200,
         .data_bits  = UART_DATA_8_BITS,
@@ -24,20 +27,40 @@ esp_err_t UartTransport::open()
         .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
     };
 
-    esp_err_t ret = uart_param_config(Board::HOST_UART, &cfg);
-    if (ret != ESP_OK) return ret;
+    esp_err_t ret = ESP_OK;
+    ESP_GOTO_ON_ERROR(uart_param_config(Board::HOST_UART, &cfg), cleanup, TAG, "Failed at uart param config");
 
-    ret = uart_set_pin(Board::HOST_UART,
-                       Board::HOST_UART_TX, Board::HOST_UART_RX,
-                       UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    if (ret != ESP_OK) return ret;
+    ESP_GOTO_ON_ERROR(uart_set_pin(Board::HOST_UART,
+                        Board::HOST_UART_TX, Board::HOST_UART_RX,
+                        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
+                    cleanup,
+                    TAG,
+                    "Failed at Uart set pin"
+                    );
 
-    return uart_driver_install(Board::HOST_UART, 2048, 2048, 0, nullptr, 0);
+    ESP_GOTO_ON_ERROR(uart_driver_install(Board::HOST_UART, 2048, 2048, 0, nullptr, 0),
+                    cleanup,
+                    TAG, 
+                    "Failed at uart driver install"
+                    );
+
+    return ret;
+
+cleanup:
+    esp_log_set_vprintf(savedVprintf);
+    savedVprintf = nullptr;
+    return ESP_FAIL;
 }
 
 esp_err_t UartTransport::close()
 {
-    return uart_driver_delete(Board::HOST_UART);
+    // esp_err_t ret = uart_driver_delete(Board::HOST_UART);
+
+    if (savedVprintf) {
+        esp_log_set_vprintf(savedVprintf);
+        savedVprintf = nullptr;
+    }
+    return ESP_OK;
 }
 
 int UartTransport::write(const uint8_t* buf, size_t len)
@@ -108,7 +131,7 @@ esp_err_t TcpTransport::close()
         ::close(serverFd); 
         serverFd = -1; 
     }
-    
+
     return ESP_OK;
 }
 

@@ -55,12 +55,10 @@ void ZigbeeProxyController::hostToRcpFunc(void* ctx)
 
 esp_err_t ZigbeeProxyController::start()
 {
-    savedVprintf = esp_log_set_vprintf([](const char*, va_list) -> int { return 0; });
-
     esp_err_t ret = transport->open();
-    if (ret != ESP_OK) {
-        esp_log_set_vprintf(savedVprintf);
-        savedVprintf = nullptr;
+    if (ret != ESP_OK) 
+    {
+        ESP_LOGE(TAG, "Error starting Transport protocol");
         return ret;
     }
 
@@ -88,10 +86,6 @@ esp_err_t ZigbeeProxyController::stop()
 
     transport->close();
 
-    if (savedVprintf) {
-        esp_log_set_vprintf(savedVprintf);
-        savedVprintf = nullptr;
-    }
     return ESP_OK;
 }
 

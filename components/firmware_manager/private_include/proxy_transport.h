@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "esp_err.h"
+#include "esp_log_write.h"
 
 /**
  * @brief Bidirectional byte-stream interface between the Zigbee proxy and its host.
@@ -54,6 +55,8 @@ public:
     esp_err_t close() override;
     int write(const uint8_t* buf, size_t len) override;
     int read(uint8_t* buf, size_t len) override;
+private:
+    vprintf_like_t savedVprintf{nullptr};
 };
 
 // ---------------------------------------------------------------------------
