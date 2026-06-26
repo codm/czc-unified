@@ -161,14 +161,18 @@ When the Coordinator tab is active, a sub-row appears with two buttons: **USB / 
 All sections live in `index.html` as `<section>` elements inside the main content area. The minimum structure is:
 
 ```html
-<section id="MyFeature" class="sub-section VISIBILITY-CLASS">
+<section id="MyFeature"
+         class="page-section hidden"
+         data-modes="thread"
+         data-nav-label="My Feature"
+         data-nav-icon="icon-settings">
   <div class="container">
     <div class="section-header default-margin">
-      <h2>My <span style="color: var(--color-primary)">Feature</span></h2>
+      <h2>My <span class="text-primary">Feature</span></h2>
       <p>Short description shown below the heading.</p>
     </div>
-    <div class="part">
-      <div class="submit-form">
+    <div class="content-panel">
+      <div class="form-card">
         <!-- content here -->
       </div>
     </div>
@@ -176,59 +180,45 @@ All sections live in `index.html` as `<section>` elements inside the main conten
 </section>
 ```
 
-Replace `VISIBILITY-CLASS` with one of the classes from the table below — or omit it entirely if the section should always be visible.
+- `class="page-section hidden"` — always include `hidden` for mode-specific sections; omit it for sections that are always visible.
+- `data-modes` — controls when the section is shown (see table below).
+- `data-nav-label` — the label that appears in the sidebar navigation link.
+- `data-nav-icon` — the icon id (from the SVG sprite) for the sidebar link. Omit to show the link without an icon.
 
-### 2. Add a sidebar link (optional)
+### 2. Sidebar navigation
 
-Sidebar links live in the `<ul class="sidebar-nav">` in `index.html`. Add an `<li>` with the same visibility class:
+The sidebar is built automatically from the `data-nav-label` and `data-nav-icon` attributes of all visible sections. **No manual HTML changes needed** — `buildSidebar()` in `restful.js` generates the links after the device mode is fetched.
 
-```html
-<li class="VISIBILITY-CLASS">
-  <a href="#MyFeature">
-    <svg class="icon-stroke"><use href="#icon-settings"/></svg>
-    My Feature
-  </a>
-</li>
-```
+### 3. Visibility — data-modes values
 
-### 3. Visibility classes
+| Value | When visible |
+|---|---|
+| `all` | Always (Network, Firmware, Debug, Overview) |
+| `thread` | Thread OTBR mode only (mode 0) |
+| `zigbee` | Any Zigbee mode (modes 1, 2, 3) |
+| `coordinator` | Zigbee Coordinator only (modes 1 and 2) |
 
-| Class | When visible | Use for |
-|---|---|---|
-| *(none)* | Always | Network, Firmware, Debug, Overview |
-| `thread-section` | Thread mode only (mode 0) | Scan, Form, OpenThread settings, Topology |
-| `zigbee-section` | Any Zigbee mode (modes 1, 2, 3) | MQTT, Security, anything Zigbee-specific |
-| `coordinator-section` | Coordinator only (modes 1 and 2) | Connection type toggle, host config |
+Multiple values can be combined with a space: `data-modes="thread coordinator"`.
 
-These classes work through CSS rules in `style.css`:
+### 4. Adding a new mode
 
-```css
-.thread-section      { display: none; }   body.mode-thread      .thread-section      { display: block; }
-.zigbee-section      { display: none; }   body.mode-zigbee      .zigbee-section      { display: block; }
-.coordinator-section { display: none; }   body.mode-coordinator .coordinator-section { display: block; }
-```
+To add a mode not covered above, extend `sectionVisible()` in `restful.js`:
 
-The body class is set by `applyDeviceMode(mode)` in `restful.js` on every page load.
-
-### 4. Adding a new mode-specific body class
-
-If you need a visibility class that isn't covered above (e.g., router-only), add two things:
-
-**`style.css`** — append:
-```css
-.router-section{display:none}body.mode-router .router-section{display:block}
-```
-
-**`restful.js`** — in `applyDeviceMode()`, add the class when appropriate:
 ```javascript
-function applyDeviceMode(mode) {
-  document.body.classList.remove('mode-thread', 'mode-zigbee', 'mode-coordinator', 'mode-router');
-  // ... existing logic ...
-  if (mode === 3) document.body.classList.add('mode-router');
+function sectionVisible(section, group, isCoordinator) {
+  var modes = (section.dataset.modes || 'all').split(' ');
+  return modes.some(function(m) {
+    if (m === 'all')         return true;
+    if (m === 'thread')      return group === 'thread';
+    if (m === 'zigbee')      return group === 'zigbee';
+    if (m === 'coordinator') return isCoordinator;
+    if (m === 'router')      return group === 'zigbee' && !isCoordinator; // example
+    return false;
+  });
 }
 ```
 
-Then use `class="sub-section router-section"` on the section.
+Then use `data-modes="router"` on the section.
 
 ### 5. Add JavaScript logic
 

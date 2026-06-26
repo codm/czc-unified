@@ -1,5 +1,3 @@
-var OT_SERVER_PACKAGE_VERSION = "v1.0.0";
-
 /* --------------------------------------------------------------------
                App State — Device Mode & Network Status
 -------------------------------------------------------------------- */
@@ -17,35 +15,95 @@ var NET_STATE = {
   5: {label: 'WiFi Retry',   icon: 'icon-wifi'}
 };
 
+/**
+ * @brief Gets current ESP Device Mode
+ * 
+ *        Displays relevant Sections and hides the rest
+ *        Builds Sidebar Navigation Links
+ */
 function initAppState() {
   $.ajax({
     url: '/device/mode', type: 'GET', dataType: 'json',
-    success: function(data) { applyDeviceMode(data.mode); },
-    error:   function()     { document.body.classList.add('mode-thread'); }
+    success: 
+      function(data) 
+      { 
+        applyDeviceMode(data.mode); 
+      },
+    error:   
+      function()     
+      { 
+        applyDeviceMode(0); 
+      }
   });
+  
   pollNetworkStatus();
 }
 
 function applyDeviceMode(mode) {
-  var group = MODE_GROUPS[mode] || 'thread';
-  document.body.classList.remove('mode-thread', 'mode-zigbee', 'mode-coordinator');
-  document.body.classList.add('mode-' + group);
-  if (mode === 1 || mode === 2) {
-    document.body.classList.add('mode-coordinator');
-    var usbBtn = document.getElementById('zb-btn-usb');
-    var netBtn = document.getElementById('zb-btn-net');
-    if (usbBtn) usbBtn.classList.toggle('active', mode === 1);
-    if (netBtn) netBtn.classList.toggle('active', mode === 2);
-  }
+  var group         = MODE_GROUPS[mode] || 'thread';
+  var isCoordinator = (mode === 1 || mode === 2);
 
   var ovMode = document.getElementById('ov-mode');
   if (ovMode) ovMode.innerText = MODE_NAMES[mode] || '—';
 
   var badge = document.getElementById('hdr-mode');
   if (badge) {
-    badge.querySelector('.hdr-badge-icon use').setAttribute('href', '#' + (MODE_ICONS[mode] || 'icon-thread'));
-    badge.querySelector('.hdr-badge-label').innerText = MODE_NAMES[mode] || '—';
+    badge.querySelector('.badge-icon use').setAttribute('href', '#' + (MODE_ICONS[mode] || 'icon-thread'));
+    badge.querySelector('.badge-label').innerText = MODE_NAMES[mode] || '—';
   }
+
+  if (isCoordinator) {
+    var usbBtn = document.getElementById('zb-btn-usb');
+    var netBtn = document.getElementById('zb-btn-net');
+    if (usbBtn) usbBtn.classList.toggle('active', mode === 1);
+    if (netBtn) netBtn.classList.toggle('active', mode === 2);
+  }
+
+  applySectionVisibility(group, isCoordinator);
+  buildSidebar(group, isCoordinator);
+}
+
+/* Gibt true zurück wenn die section im aktuellen Modus sichtbar sein soll.
+   data-modes ist eine Leerzeichen-getrennte Liste: "thread coordinator" etc. */
+function sectionVisible(section, group, isCoordinator) {
+  var modes = (section.dataset.modes || 'all').split(' ');
+  return modes.some(function(m) {
+    if (m === 'all')         return true;
+    if (m === 'thread')      return group === 'thread';
+    if (m === 'zigbee')      return group === 'zigbee';
+    if (m === 'coordinator') return isCoordinator;
+    return false;
+  });
+}
+
+function applySectionVisibility(group, isCoordinator) {
+  document.querySelectorAll('section[data-modes]').forEach(function(section) {
+    section.classList.toggle('hidden', !sectionVisible(section, group, isCoordinator));
+  });
+}
+
+function buildSidebar(group, isCoordinator) {
+  var nav = document.getElementById('sidebar-nav');
+  if (!nav) return;
+
+  var html = '';
+  document.querySelectorAll('section[data-nav-label]').forEach(function(section) {
+    if (!sectionVisible(section, group, isCoordinator)) return;
+    var label = section.dataset.navLabel;
+    var icon  = section.dataset.navIcon || '';
+    var href  = section.dataset.navHref || ('#' + section.id);
+    html += '<li><a href="' + href + '">'
+          + (icon ? '<svg class="icon-stroke"><use href="#' + icon + '"/></svg> ' : '')
+          + label
+          + '</a></li>';
+  });
+  nav.innerHTML = html;
+
+  nav.querySelectorAll('a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      document.querySelector('.app-body').classList.remove('sidebar-open');
+    });
+  });
 }
 
 function pollNetworkStatus() {
@@ -57,8 +115,8 @@ function pollNetworkStatus() {
 
       var badge = document.getElementById('hdr-net');
       if (badge) {
-        badge.querySelector('.hdr-badge-icon use').setAttribute('href', '#' + info.icon);
-        badge.querySelector('.hdr-badge-label').innerText = label;
+        badge.querySelector('.badge-icon use').setAttribute('href', '#' + info.icon);
+        badge.querySelector('.badge-label').innerText = label;
       }
 
       var ovNet = document.getElementById('ov-net');
@@ -234,9 +292,9 @@ function selectMode(mode) {
   g_selected_mode = mode;
   for (var i = 0; i < 4; i++) {
     var card = document.getElementById('mode-card-' + i);
-    if (card) card.classList.remove('mode-card-selected');
+    if (card) card.classList.remove('selection-card--active');
   }
-  document.getElementById('mode-card-' + mode).classList.add('mode-card-selected');
+  document.getElementById('mode-card-' + mode).classList.add('selection-card--active');
   document.getElementById('mode-confirm-name').innerText          = g_mode_names[mode];
   document.getElementById('mode-confirm-bar').style.display       = 'block';
 }
@@ -245,7 +303,7 @@ function cancelModeSelection() {
   g_selected_mode = -1;
   for (var i = 0; i < 4; i++) {
     var card = document.getElementById('mode-card-' + i);
-    if (card) card.classList.remove('mode-card-selected');
+    if (card) card.classList.remove('selection-card--active');
   }
   document.getElementById('mode-confirm-bar').style.display = 'none';
 }
@@ -379,7 +437,7 @@ function fill_thread_available_network_table(data) {
     }
     rows += '<td>'
     rows +=
-        "<button class=\"btn-submit\" onclick=\"frontend_show_join_network_window(this)\">Join<\/button>"
+        "<button class=\"btn-sm\" onclick=\"frontend_show_join_network_window(this)\">Join<\/button>"
     rows += '</td>'
     rows += '</tr>'
     row_id++;
@@ -782,7 +840,7 @@ function frontend_flash_rcp_button() {
 
 function flash_rcp_tab(type) {
   g_rcp_tab_type = type;
-  document.querySelectorAll('#flash_rcp_tabs .rcp-tab-btn').forEach(function(btn) {
+  document.querySelectorAll('#flash_rcp_tabs .tab-btn').forEach(function(btn) {
     btn.classList.toggle('active', btn.getAttribute('onclick') === "flash_rcp_tab('" + type + "')");
   });
   document.getElementById('flash_coordinator_transport').style.display = (type === 'coordinator') ? 'block' : 'none';
@@ -911,7 +969,7 @@ function render_firmware_list(firmwares) {
       + '<thead><tr><th>Name</th><th>Version</th><th></th></tr></thead><tbody>';
   firmwares.forEach(function(fw, idx) {
     html += '<tr><td>' + fw.name + '</td><td>' + (fw.version || '—') + '</td>'
-        + '<td><button class="btn-submit" data-fw-idx="' + idx + '">Flash</button></td></tr>';
+        + '<td><button class="btn-sm" data-fw-idx="' + idx + '">Flash</button></td></tr>';
   });
   html += '</tbody></table>';
   container.innerHTML = html;
