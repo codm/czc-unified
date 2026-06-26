@@ -49,7 +49,7 @@ Core of the component. Responsibilities:
 - Registers all URI handlers (REST API + Web GUI + static file fallback).
 - Serves static files (HTML, CSS, JS) from SPIFFS with `Content-Encoding: gzip`.
 - Serves the favicon from the embedded binary symbol.
-- Holds `s_flash_cbs` — the callback struct that bridges the C webserver to the C++ `System_manager`.
+- Holds `s_flash_cbs` — the callback struct that bridges the C webserver to the C++ `AppController`.
 - Listens on `IP_EVENT_STA_GOT_IP` and `IP_EVENT_ETH_GOT_IP` to auto-start the server once the device has an IP address.
 
 ### `src/esp_br_web_api.c`
@@ -158,19 +158,16 @@ typedef struct {
 
 **How the struct travels through the program:**
 
-1. `System_manager::initThread()` builds a `system_flash_callbacks_t`, pointing the
-   function pointers at two `static` adapter functions and setting `ctx = this`.
-2. `Thread_controller::init(flash_cbs)` receives the struct and forwards it unchanged to
-   the webserver.
-3. `esp_br_web_start(base_path, flash_cbs)` copies the struct **by value** into a static,
-   file-scope variable `s_flash_cbs` — a copy is required because the original struct
-   lives on `initThread()`'s stack and would be invalid once that function returns.
-4. The HTTP handlers `esp_otbr_flash_esp_post_handler` / `esp_otbr_flash_rcp_post_handler`
+1. `AppController::fillFirmwareCallbacks()` builds a `web_firmware_callbacks_t`, pointing
+   the function pointers at two `static` adapter functions and setting `ctx = this`.
+2. `esp_br_web_start(base_path, flash_cbs, net_cbs)` copies the struct **by value** into a
+   static, file-scope variable `s_fw_cbs` — a copy is required because the original struct
+   lives on the caller's stack and would be invalid once that function returns.
+3. The HTTP handlers `esp_otbr_flash_esp_post_handler` / `esp_otbr_flash_rcp_post_handler`
    parse `{"url": ...}` from the request body and call
-   `s_flash_cbs.flash_esp(s_flash_cbs.ctx, url)` / `s_flash_cbs.flash_rcp(...)`.
-5. The static adapter functions `flash_esp_cb` / `flash_rcp_cb` (in `System_manager.cpp`)
-   `static_cast` `ctx` back to `System_manager*` and call `flashEspFirmware(url)` /
-   `initRcpFirmwareFlash(url)`.
+   `s_fw_cbs.flash_esp(s_fw_cbs.ctx, url)` / `s_fw_cbs.flash_rcp(...)`.
+4. The static adapter functions cast `ctx` back to `AppController*` and call
+   `requestEspFlash(url)` / `requestRcpFlash(url)`.
 
 This keeps the webserver completely free of `System_manager`/C++ knowledge while still
 letting it trigger application-level actions. The same pattern can be reused for future

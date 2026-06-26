@@ -13,4 +13,8 @@ idf_component_register(
         freertos
         log
         spiffs
+    
+    PRIV_REQUIRES
+        esp_driver_uart
+        lwip
 )

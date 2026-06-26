@@ -305,6 +305,7 @@ czc_ot_firmware/
 │   └── esp_ot_br_server/         HTTP server + web frontend (C)
 │       ├── include/esp_br_web.h  ← web callback structs + esp_br_web_start()
 │       └── frontend/             HTML/JS/CSS (gzip-compressed into SPIFFS)
+│           └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
 │
 └── partitions.csv                Flash partition table
 ```
@@ -327,7 +328,7 @@ Both use the same OTA partition; a `busy` flag prevents simultaneous access.
 
 Selects and starts the correct `ProtocolController` implementation based on `DeviceMode`:
 - `ThreadController` — OTBR stack (Spinel over UART).
-- `ZigbeeProxyController` — transparent serial proxy (USB or TCP). *(stub — not yet fully implemented)*
+- `ZigbeeProxyController` — transparent serial proxy (USB or TCP). Pumps bytes between the RCP UART and an `IProxyTransport` implementation (`UartTransport` for USB, `TcpTransport` for TCP) using two FreeRTOS tasks.
 
 ##### `status_light`
 
@@ -408,6 +409,8 @@ classDiagram
         +start(mode) esp_err_t
         +getActiveMode() DeviceMode
     }
+
+    %% ── Interface Layer 1: Protocol lifecycle ──────────────────────────
     class ProtocolController {
         <<interface>>
         +start() esp_err_t
@@ -420,9 +423,36 @@ classDiagram
         +isRunning() bool
     }
     class ZigbeeProxyController {
+        -transport unique_ptr~IProxyTransport~
+        -rcpToHostTask TaskHandle_t
+        -hostToRcpTask TaskHandle_t
         +start() esp_err_t
         +stop() esp_err_t
         +isRunning() bool
+    }
+
+    %% ── Interface Layer 2: Byte-stream transport ────────────────────────
+    class IProxyTransport {
+        <<interface>>
+        +open() esp_err_t
+        +close() esp_err_t
+        +write(buf, len) int
+        +read(buf, len) int
+    }
+    class UartTransport {
+        +open() esp_err_t
+        +close() esp_err_t
+        +write(buf, len) int
+        +read(buf, len) int
+    }
+    class TcpTransport {
+        -port uint16_t
+        -serverFd int
+        -clientFd int
+        +open() esp_err_t
+        +close() esp_err_t
+        +write(buf, len) int
+        +read(buf, len) int
     }
 
     class NetworkStateMachine {
@@ -443,9 +473,14 @@ classDiagram
     UpdateManager *-- RcpUpdater
     UpdateManager *-- OtaUpdater
     RcpUpdater *-- RcpHal
+
     FirmwareManager o-- ProtocolController
     ProtocolController <|.. ThreadController
     ProtocolController <|.. ZigbeeProxyController
+
+    ZigbeeProxyController *-- IProxyTransport
+    IProxyTransport <|.. UartTransport
+    IProxyTransport <|.. TcpTransport
 ```
 
 ### Boot-Decision-Tree

@@ -13,7 +13,7 @@
  * @note  virtual dispatch is intentional here — the mode switch is a cold
  *        path (reboot-gated) so vtable cost is irrelevant.
  */
-class ProtocolController {
+class IProtocolController {
 public:
     /**
      * @brief Start the protocol stack.
@@ -36,7 +36,7 @@ public:
      */
     virtual bool isRunning() = 0;
 
-    virtual ~ProtocolController() = default;
+    virtual ~IProtocolController() = default;
 };
 
 #endif // CZC_PROTOCOL_CONTROLLER_H_

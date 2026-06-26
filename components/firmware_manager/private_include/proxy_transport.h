@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "esp_err.h"
+#include "esp_log_write.h"
 
 /**
  * @brief Bidirectional byte-stream interface between the Zigbee proxy and its host.
@@ -16,6 +18,9 @@
  */
 class IProxyTransport {
 public:
+    virtual esp_err_t open()  = 0;
+    virtual esp_err_t close() = 0;
+
     /**
      * @brief Write bytes to the host side.
      *
@@ -42,21 +47,41 @@ public:
 // ---------------------------------------------------------------------------
 
 /**
- * @brief IProxyTransport over USB/UART serial — stub, not yet implemented.
+ * @brief IProxyTransport over USB/UART serial.
  */
 class UartTransport : public IProxyTransport {
 public:
+    esp_err_t open() override;
+    esp_err_t close() override;
     int write(const uint8_t* buf, size_t len) override;
     int read(uint8_t* buf, size_t len) override;
+private:
+    vprintf_like_t savedVprintf{nullptr};
 };
 
+// ---------------------------------------------------------------------------
+
 /**
- * @brief IProxyTransport over TCP with IP whitelist — stub, not yet implemented.
+ * @brief IProxyTransport over TCP.
+ *
+ *        open() binds and listens on PROXY_TCP_PORT.
+ *        The first read() call blocks until a client connects (accept).
+ *        When the client disconnects, the next read() accepts a new one.
  */
 class TcpTransport : public IProxyTransport {
 public:
+    TcpTransport(uint16_t port);
+    ~TcpTransport();
+
+    esp_err_t open() override;
+    esp_err_t close() override;
     int write(const uint8_t* buf, size_t len) override;
     int read(uint8_t* buf, size_t len) override;
+
+private:
+    uint16_t port;
+    int      serverFd{-1};
+    int      clientFd{-1};
 };
 
 #endif // CZC_PROXY_TRANSPORT_H_

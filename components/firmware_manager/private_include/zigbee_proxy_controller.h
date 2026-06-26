@@ -2,11 +2,15 @@
 #define CZC_ZIGBEE_PROXY_CONTROLLER_H_
 
 #include "protocol_controller.h"
-#include "proxy_transport.h"
 #include "firmware_manager.h"
+#include "proxy_transport.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <memory>
 
 /**
- * @brief ProtocolController implementation for Zigbee coordinator proxy mode.
+ * @brief IProtocolController implementation for Zigbee coordinator proxy mode.
  *
  *        Acts as a transparent serial proxy between the CC2652 RCP UART and a
  *        host application via IProxyTransport (USB or TCP).
@@ -15,9 +19,8 @@
  *          - ZIGBEE_USB → UartTransport
  *          - ZIGBEE_NET → TcpTransport
  *
- * @note  Not yet implemented — stub only.
  */
-class ZigbeeProxyController : public ProtocolController {
+class ZigbeeProxyController : public IProtocolController {
 public:
     /**
      * @brief Constructor.
@@ -48,8 +51,14 @@ public:
     bool isRunning() override;
 
 private:
-    DeviceMode  mode;
-    bool        proxyActive;
+    static void rcpToHostFunc(void* ctx);
+    static void hostToRcpFunc(void* ctx);
+
+    DeviceMode                       mode;
+    bool                             proxyActive;
+    std::unique_ptr<IProxyTransport> transport;
+    TaskHandle_t                     rcpToHostTask{nullptr};
+    TaskHandle_t                     hostToRcpTask{nullptr};
 };
 
 #endif // CZC_ZIGBEE_PROXY_CONTROLLER_H_

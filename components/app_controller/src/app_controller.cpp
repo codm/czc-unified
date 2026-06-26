@@ -9,11 +9,11 @@
 
 static const char* TAG = "AppController";
 
-constexpr const char* RCP_URL_THREAD  =
+constexpr char* RCP_URL_THREAD  =
     "https://github.com/codm/czc-ot-rcp-fw/releases/download/V1.0.0/czc_ot_rcp_fw_1.0.0.bin";
-constexpr const char* RCP_URL_ZIGBEE_COORD =
+constexpr char* RCP_URL_ZIGBEE_COORD =
     "https://raw.githubusercontent.com/codm/czc-fw/zb_fws/ti/coordinator/CC1352P7_coordinator_20250321.bin";
-constexpr const char* RCP_URL_ZIGBEE_ROUTER =
+constexpr char* RCP_URL_ZIGBEE_ROUTER =
     "https://raw.githubusercontent.com/codm/czc-fw/zb_fws/ti/router/CC1352P7_router_20250403.bin";
 
 static const char* rcpUrlForMode(DeviceMode mode)
@@ -102,12 +102,20 @@ esp_err_t AppController::requestEspFlash(const char* url)
 esp_err_t AppController::requestModeChange(DeviceMode mode)
 {
     ESP_RETURN_ON_ERROR(AppNvs::writeDeviceMode(mode),           TAG, "Write device mode failed");
-    ESP_RETURN_ON_ERROR(AppNvs::writeRcpUrl(rcpUrlForMode(mode)), TAG, "Write RCP URL failed");
-    ESP_RETURN_ON_ERROR(AppNvs::writeRcpPending(true),            TAG, "Write RCP pending failed");
-    ESP_RETURN_ON_ERROR(AppNvs::writeDeviceSetup(true),           TAG, "Write device setup failed");
-    ESP_LOGI(TAG, "Mode change to %d scheduled — rebooting", static_cast<int>(mode));
-    vTaskDelay(pdMS_TO_TICKS(200));
-    esp_restart();
+    ESP_LOGI(TAG, "Mode change to %d", static_cast<int>(mode));
+    
+    if (firmwareManager.getActiveMode() != DeviceMode::THREAD) 
+    {
+        firmwareManager.stop();
+        vTaskDelay(pdMS_TO_TICKS(50));
+        firmwareManager.start(mode);
+    }
+    else
+    {
+        ESP_LOGD(TAG, "Changing from Thread. Rebooting ESP...");
+        esp_restart();
+    }
+
     return ESP_OK;
 }
 
