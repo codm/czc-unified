@@ -64,6 +64,22 @@ esp_err_t readRcpUrl(char* outBuf, size_t bufLen);
 esp_err_t writeRcpUrl(const char* url);
 
 /**
+ * @brief Read the target mode saved alongside a pending RCP flash.
+ *
+ * @return Stored `DeviceMode`, defaults to `DeviceMode::THREAD` if not set
+ */
+DeviceMode readRcpUpdateTarget();
+
+/**
+ * @brief Write the target mode for the pending RCP flash to NVS.
+ *
+ * @param[in] mode  Mode to activate once the flash completes
+ *
+ * @return `ESP_OK` on success
+ */
+esp_err_t writeRcpUpdateTarget(DeviceMode mode);
+
+/**
  * @brief Read the stored device mode from NVS.
  *
  * @return Stored `DeviceMode`, defaults to `DeviceMode::THREAD` if not set

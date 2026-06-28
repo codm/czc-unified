@@ -641,6 +641,27 @@
             </div>
           </div>
         </div>
+        <div id="flash_window" class="dialog">
+          <div class="dialog-content dialog-content--lg">
+            <h2 id="flash_window_title">Select Firmware</h2>
+            <div class="dialog-divider"></div>
+            <div id="flash_rcp_tabs" style="display:none;">
+              <button class="tab-btn active" onclick="buildThreadFirmwareList(this)">Thread</button>
+              <button class="tab-btn" onclick="buildCoordinatorFirmwareList(this)">Zigbee Coordinator</button>
+              <button class="tab-btn" onclick="buildRouterFirmwareList(this)">Zigbee Router</button>
+            </div>
+            <template id="fw-row-tpl">
+              <tr>
+                <td class="fw-version"></td>
+                <td class="fw-notes"></td>
+                <td><button class="btn-sm">Flash</button></td>
+              </tr>
+            </template>
+            <div id="flash_firmware_list"><p>Loading...</p></div>
+            <div id="flash_status"></div>
+            <button type="button" class="btn-dialog-cancel" onclick="frontend_cancel_flash()">Cancel</button>
+          </div>
+        </div>
       </section>
 
       <!-- ===================== DEBUG (always) ===================== -->
@@ -664,26 +685,8 @@
         </div>
       </section>
 
-      <!-- ===================== DIALOGS ===================== -->
-      <div id="flash_window" class="dialog">
-        <div class="dialog-content dialog-content--lg">
-          <h2 id="flash_window_title">Select Firmware</h2>
-          <div class="dialog-divider"></div>
-          <div id="flash_rcp_tabs" style="display:none;">
-            <button class="tab-btn active" onclick="flash_rcp_tab('thread')">Thread</button>
-            <button class="tab-btn" onclick="flash_rcp_tab('coordinator')">Zigbee Coordinator</button>
-            <button class="tab-btn" onclick="flash_rcp_tab('router')">Zigbee Router</button>
-          </div>
-          <div id="flash_coordinator_transport" style="display:none;">
-            <button class="tab-btn active" id="coord-btn-usb" onclick="setCoordTransport(1)">USB / UART</button>
-            <button class="tab-btn" id="coord-btn-net" onclick="setCoordTransport(2)">Network / TCP</button>
-          </div>
-          <div id="flash_firmware_list"><p>Loading...</p></div>
-          <div id="flash_status"></div>
-          <button type="button" class="btn-dialog-cancel" onclick="frontend_cancel_flash()">Cancel</button>
-        </div>
-      </div>
-
+      <!-- ===================== MISC DIALOGS ===================== -->
+      <!-- Thread API call logs -->
       <div id="log_window" class="dialog">
         <div class="dialog-content dialog-content--sm">
           <div id="log_window_title"><span class="log-title">Tip:</span></div>

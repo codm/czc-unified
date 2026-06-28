@@ -57,13 +57,16 @@ public:
     /**
      * @brief Schedule an RCP firmware update: write intent to NVS and reboot.
      *
-     *        The actual flashing happens on the next boot via the boot-decision-tree.
+     *        Writes URL, target mode, and pending flag atomically to NVS, then reboots.
+     *        The actual flashing and mode switch happen on the next boot via the
+     *        boot-decision-tree — no live firmware-manager restart is performed.
      *
-     * @param[in] url  HTTPS URL of the TI firmware binary
+     * @param[in] url   HTTPS URL of the TI firmware binary
+     * @param[in] mode  DeviceMode to activate after the flash completes
      *
      * @return `ESP_OK` if the intent was written successfully
      */
-    esp_err_t requestRcpFlash(const char* url);
+    esp_err_t requestRcpFlash(const char* url, DeviceMode mode);
 
     /**
      * @brief Start a live ESP OTA update.

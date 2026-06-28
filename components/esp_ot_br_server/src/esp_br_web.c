@@ -1151,16 +1151,12 @@ static esp_err_t esp_otbr_flash_rcp_post_handler(httpd_req_t *req)
     int mode = cJSON_IsNumber(type_item) ? (int)cJSON_GetNumberValue(type_item) : 0;
     cJSON_Delete(request);
 
-    if (s_fw_cbs.set_mode) {
-        s_fw_cbs.set_mode(s_fw_cbs.ctx, mode);
-    }
-
     // Send response before flash_rcp — it triggers immediate reboot, connection would die otherwise
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"scheduled\",\"reboot\":true}");
 
     if (s_fw_cbs.flash_rcp) {
-        s_fw_cbs.flash_rcp(s_fw_cbs.ctx, url);
+        s_fw_cbs.flash_rcp(s_fw_cbs.ctx, url, mode);
     }
 
     return ESP_OK;

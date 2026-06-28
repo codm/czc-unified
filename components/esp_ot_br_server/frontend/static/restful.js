@@ -550,100 +550,61 @@ function newest_manifest_url(category) {
   return bestUrl;
 }
 
-var g_flash_type        = '';
-var g_rcp_tab_type      = 'thread';
-var g_coordinator_mode  = 1;  // 1 = USB/UART, 2 = Network/TCP
-
-var TAB_MODE = {thread: 0, coordinator: null, router: 3};
-
 function frontend_flash_esp_button() {
-  g_flash_type = 'esp';
+  // build dialog window
   document.getElementById('flash_window_title').innerText = 'Select ESP Firmware';
   document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
   document.getElementById('flash_status').innerText = '';
   document.getElementById('flash_rcp_tabs').style.display = 'none';
   document.getElementById('flash_window').style.display = 'flex';
 
-  fetch_firmware_list_from_url(ESP_RELEASES_URL, parse_github_releases, render_firmware_list, flash_list_error);
+  fetch_github_firmwares(ESP_RELEASES_URL)
+    .done(function(list) { render_firmware_list(list, "esp"); })
+    .fail(flash_list_error);
 }
 
 function frontend_flash_rcp_button() {
-  g_flash_type = 'rcp';
   document.getElementById('flash_window_title').innerText = 'Select RCP Firmware';
   document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
   document.getElementById('flash_status').innerText = '';
   document.getElementById('flash_rcp_tabs').style.display = 'block';
   document.getElementById('flash_window').style.display = 'flex';
 
-  flash_rcp_tab('thread');
+  buildThreadFirmwareList();
 }
 
-function flash_rcp_tab(type) {
-  g_rcp_tab_type = type;
-  document.querySelectorAll('#flash_rcp_tabs .tab-btn').forEach(function(btn) {
-    btn.classList.toggle('active', btn.getAttribute('onclick') === "flash_rcp_tab('" + type + "')");
+function setRcpTabActive(btn) {
+  document.querySelectorAll('#flash_rcp_tabs .tab-btn').forEach(function(b) {
+    b.classList.remove('active');
   });
-  document.getElementById('flash_coordinator_transport').style.display = (type === 'coordinator') ? 'block' : 'none';
+  btn.classList.add('active');
+}
+
+function buildThreadFirmwareList(btn)
+{
+  if (btn) setRcpTabActive(btn);
   document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
-
-  if (type === 'thread') {
-    fetch_firmware_list_from_url(RCP_RELEASES_URL, parse_github_releases, render_firmware_list, flash_list_error);
-  } else {
-    fetch_firmware_list_from_url(ZB_MANIFEST_URL, function(data) {
-      return parse_zb_manifest(data, type);
-    }, render_firmware_list, flash_list_error);
-  }
+  fetch_github_firmwares(RCP_RELEASES_URL)
+    .done(function(list) { render_firmware_list(list, "rcp", 0); })
+    .fail(flash_list_error);
 }
 
-function setCoordTransport(mode) {
-  g_coordinator_mode = mode;
-  document.getElementById('coord-btn-usb').classList.toggle('active', mode === 1);
-  document.getElementById('coord-btn-net').classList.toggle('active', mode === 2);
+function buildCoordinatorFirmwareList(btn)
+{
+  if (btn) setRcpTabActive(btn);
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+  fetch_manifest_firmwares(ZB_MANIFEST_URL, "coordinator")
+    .done(function(list) { render_firmware_list(list, "rcp", 1); })
+    .fail(flash_list_error);
 }
 
-function setZigbeeTransport(mode) {
-  document.getElementById('zb-btn-usb').classList.toggle('active', mode === 1);
-  document.getElementById('zb-btn-net').classList.toggle('active', mode === 2);
-  document.getElementById('zb-transport-status').innerText = 'Switching — device will reboot...';
-  $.ajax({
-    url: '/device/mode', type: 'POST',
-    contentType: 'application/json',
-    data: JSON.stringify({mode: mode}),
-    complete: function() {
-      document.getElementById('zb-transport-status').innerText = 'Rebooting — page reloads in 15 seconds.';
-      setTimeout(function() { location.reload(); }, 15000);
-    }
-  });
-}
-
-function parse_zb_manifest(data, type) {
-  var category = data[type] || {};
-  var result = [];
-  Object.keys(category).forEach(function(device) {
-    var entries = category[device];
-    Object.keys(entries).forEach(function(filename) {
-      var entry = entries[filename];
-      result.push({
-        name: filename,
-        version: entry.ver || '—',
-        url: entry.link || ''
-      });
-    });
-  });
-  return result;
-}
-
-/* Generic fetcher — swap parser to support different release endpoints later */
-function fetch_firmware_list_from_url(url, parser, onSuccess, onError) {
-  $.ajax({
-    url: url,
-    async: true,
-    type: 'GET',
-    dataType: 'json',
-    headers: {'Accept': 'application/vnd.github.v3+json'},
-    success: function(data) { onSuccess(parser(data)); },
-    error: onError
-  });
+function buildRouterFirmwareList(btn)
+{
+  if (btn) setRcpTabActive(btn);
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+  fetch_manifest_firmwares(ZB_MANIFEST_URL, "router")
+    .done(function(list) { render_firmware_list(list, "rcp", 3); })
+    .fail(flash_list_error);
 }
 
 function flash_list_error() {
@@ -651,93 +612,161 @@ function flash_list_error() {
       '<p style="color:red">Failed to load firmware list.</p>';
 }
 
-/* GitHub Releases API parser */
-function parse_github_releases(releases) {
-  var result = [];
-  releases.forEach(function(release) {
-    // if (release.draft || release.prerelease) return;
-    if (release.draft) return;
-    release.assets.forEach(function(asset) {
-      if (!asset.name.endsWith('.bin')) return;
-      result.push({name: asset.name, version: release.tag_name, url: asset.browser_download_url});
+/* ── Firmware info fetchers ────────────────────────────────────────────────
+ *
+ * Both functions return a jQuery Promise that resolves to a list of objects:
+ *
+ *   {
+ *     version    {string}  Release tag or firmware version string
+ *     link       {string}  Direct download URL of the .bin binary
+ *     notes_link {string}  URL of the release page / changelog
+ *   }
+ *
+ * Usage:
+ *   fetch_github_firmwares(url).done(function(list) { ... }).fail(onError);
+ *   fetch_manifest_firmwares(url, 'coordinator').done(function(list) { ... });
+ */
+
+/**
+ * Fetches firmware entries from a GitHub Releases API endpoint.
+ * Each .bin asset in a non-draft release produces one entry.
+ *
+ * @param  {string}  url  GitHub Releases API URL
+ * @return {$.Deferred}   Resolves to FirmwareEntry[]
+ */
+function fetch_github_firmwares(url) {
+  return $.getJSON(url).then(function(releases) {
+    var result = [];
+    releases.forEach(function(release) {
+      if (release.draft) return;
+      release.assets.forEach(function(asset) {
+        if (!asset.name.endsWith('.bin')) return;
+        result.push({
+          version:    release.tag_name,
+          link:       asset.browser_download_url,
+          notes_link: release.html_url
+        });
+      });
     });
+    return result;
   });
-  return result;
 }
 
-/* Legacy parsers — kept for future use after serving architecture change */
-function parse_releases_php(data) {
-  var entries = Array.isArray(data) ? data : (data.releases || data.items || []);
-  var result = [];
-  entries.forEach(function(entry) {
-    var url = entry.url || entry.download_url || entry.firmware_url || '';
-    var version = entry.version || entry.tag || entry.tag_name || '';
-    var name = entry.name || version || url.split('/').pop();
-    if (url) result.push({name: name, version: version, url: url});
-  });
-  return result;
-}
-
-function parse_manifest_json(data) {
-  var entries = data.files || data.firmware || (Array.isArray(data) ? data : []);
-  var result = [];
-  entries.forEach(function(entry) {
-    var url = entry.url || entry.path || entry.download_url || '';
-    var version = entry.ver || entry.version || entry.fw || '';
-    var name = entry.name || entry.fw || version || url.split('/').pop();
-    var isRelevant = /ot|rcp|openthread|thread/i.test(name + version + url);
-    if (url && isRelevant) result.push({name: name, version: version, url: url});
-  });
-  if (!result.length) {
-    entries.forEach(function(entry) {
-      var url = entry.url || entry.path || entry.download_url || '';
-      var version = entry.ver || entry.version || entry.fw || '';
-      var name = entry.name || entry.fw || version || url.split('/').pop();
-      if (url) result.push({name: name, version: version, url: url});
+/**
+ * Fetches firmware entries from a manifest JSON for a specific mode.
+ * Manifest structure: data[mode][device][filename] = {ver, link, notes, baud}
+ *
+ * @param  {string}                url   Manifest JSON URL
+ * @param  {'router'|'coordinator'} mode  Firmware category to extract
+ * @return {$.Deferred}                  Resolves to FirmwareEntry[]
+ */
+function fetch_manifest_firmwares(url, mode) {
+  return $.getJSON(url).then(function(data) {
+    var category = data[mode] || {};
+    var result = [];
+    Object.keys(category).forEach(function(device) {
+      var entries = category[device];
+      Object.keys(entries).forEach(function(filename) {
+        var entry = entries[filename];
+        result.push({
+          version:    entry.ver  || '—',
+          link:       entry.link || '',
+          notes_link: manifest_extract_url(entry.notes || '')
+        });
+      });
     });
-  }
-  return result;
+    return result;
+  });
 }
 
-function render_firmware_list(firmwares) {
+/* Extracts the first URL from a markdown link "[text](url)" or a bare https:// string */
+function manifest_extract_url(str) {
+  var match = str.match(/\]\(([^)]+)\)/);
+  if (match) return match[1];
+  return /^https?:\/\//.test(str) ? str : '';
+}
+
+/**
+ * @brief Renders firmware list from FirmwareEntry[] List
+ * 
+ * @param[in] `firmwares` FirmwareEntry[] List
+ * @param[in] `device` ESP or RCP
+ * @param[in] `mode` only needed when device is RCP - RCP mode  
+*/ 
+function render_firmware_list(firmwares, device, mode) {
   var container = document.getElementById('flash_firmware_list');
+  var template  = document.getElementById('fw-row-tpl');
+
+  container.innerHTML = '';
+
   if (!firmwares.length) {
-    container.innerHTML = '<p style="color:orange">No firmware versions found.</p>';
+    var msg = document.createElement('p');
+    msg.style.color = 'orange';
+    msg.textContent = 'No firmware versions found.';
+    container.appendChild(msg);
     return;
   }
-  var html = '<table class="pure-table pure-table-horizontal" style="width:100%">'
-      + '<thead><tr><th>Name</th><th>Version</th><th></th></tr></thead><tbody>';
-  firmwares.forEach(function(fw, idx) {
-    html += '<tr><td>' + fw.name + '</td><td>' + (fw.version || '—') + '</td>'
-        + '<td><button class="btn-sm" data-fw-idx="' + idx + '">Flash</button></td></tr>';
-  });
-  html += '</tbody></table>';
-  container.innerHTML = html;
 
-  container.querySelectorAll('button[data-fw-idx]').forEach(function(btn) {
-    var idx = parseInt(btn.getAttribute('data-fw-idx'));
-    btn.addEventListener('click', function() {
-      do_flash_with_url(firmwares[idx].url);
-    });
+  var table = document.createElement('table');
+  table.className = 'pure-table pure-table-horizontal';
+  table.style.width = '100%';
+
+  var thead     = table.createTHead();
+  var headerRow = thead.insertRow();
+  ['Version', 'Info', ''].forEach(function(label) {
+    var th = document.createElement('th');
+    th.textContent = label;
+    headerRow.appendChild(th);
   });
+
+  var tbody = table.createTBody();
+  firmwares.forEach(function(fw) {
+    var row = template.content.cloneNode(true).querySelector('tr');
+
+    row.querySelector('.fw-version').textContent = fw.version || '—';
+
+    if (fw.notes_link) {
+      var a = document.createElement('a');
+      a.href        = fw.notes_link;
+      a.textContent = 'Firmware Info';
+      a.target      = '_blank';
+      a.rel         = 'noopener';
+      row.querySelector('.fw-notes').appendChild(a);
+    }
+
+    if (device === 'esp') 
+    {
+      row.querySelector('button').addEventListener('click', function() {
+        do_esp_flash_with_url(fw.link);
+      });
+    }
+    else 
+    {
+      row.querySelector('button').addEventListener('click', function() {
+        do_rcp_flash_with_url(fw.link, mode);
+      });
+    }
+
+    tbody.appendChild(row);
+  });
+
+  container.appendChild(table);
 }
 
-function do_flash_with_url(url) {
+function do_esp_flash_with_url(url) 
+{
   document.getElementById('flash_window').style.display = 'none';
+  let log = {error: 0, content: ''};
+  let title = "Flash ESP";
 
-  var endpoint = g_flash_type === 'esp' ? '/flash/esp' : '/flash/rcp';
-  var log = {error: 0, content: ''};
-  var title = g_flash_type === 'esp' ? 'Flash ESP' : 'Flash RCP';
-  document.getElementById('flash_status').innerText = 'Flashing...';
   $.ajax({
-    url: endpoint,
+    url: '/flash/esp',
     async: true,
     contentType: 'application/json',
     type: 'POST',
     dataType: 'json',
     data: JSON.stringify({
-      url,
-      type: g_rcp_tab_type
+      url
     }),
 
     success: function(arg) {
@@ -755,15 +784,49 @@ function do_flash_with_url(url) {
       frontend_log_show(title, log);
     },
     error: function(arg) {
-      if (g_flash_type === 'rcp') {
-        // Connection drop is expected: ESP reboots immediately after scheduling the flash
+      log.error = 1;
+      log.content = 'Unknown error';
+      console.log(arg);
+      frontend_log_show(title, log);
+    }
+  });
+}
+
+function do_rcp_flash_with_url(url, mode) {
+  document.getElementById('flash_window').style.display = 'none';
+
+  let log = {error: 0, content: ''};
+  let title = "Flash RCP";
+  document.getElementById('flash_status').innerText = 'Flashing...';
+  $.ajax({
+    url: '/flash/rcp',
+    async: true,
+    contentType: 'application/json',
+    type: 'POST',
+    dataType: 'json',
+    data: JSON.stringify({
+      url,
+      type: mode
+    }),
+
+    success: function(arg) {
+      if (arg.reboot) {
         log.error = 0;
         log.content = 'Flash scheduled. Device is rebooting...';
+      } else if (arg.status === 'flashing' || arg.status === 'started') {
+        log.error = 0;
+        log.content = arg.message || 'Flashing firmware...';
       } else {
-        log.error = 1;
-        log.content = 'Unknown error';
-        console.log(arg);
+        console_show_response_result(arg);
+        log.error = arg.error;
+        log.content = arg.message || 'Unknown response';
       }
+      frontend_log_show(title, log);
+    },
+    error: function(arg) {
+      // Connection drop is expected: ESP reboots immediately after scheduling the flash
+      log.error = 0;
+      log.content = 'Flash scheduled. Device is rebooting...';
       frontend_log_show(title, log);
     }
   });
@@ -771,6 +834,25 @@ function do_flash_with_url(url) {
 
 function frontend_cancel_flash() {
   document.getElementById('flash_window').style.display = 'none';
+}
+
+/* --------------------------------------------------------------------
+                     Zigbee Transport Mode
+-------------------------------------------------------------------- */
+
+function setZigbeeTransport(mode) {
+  document.getElementById('zb-btn-usb').classList.toggle('active', mode === 1);
+  document.getElementById('zb-btn-net').classList.toggle('active', mode === 2);
+  document.getElementById('zb-transport-status').innerText = 'Switching — this may take a few seconds ...';
+  $.ajax({
+    url: '/device/mode', type: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({mode: mode}),
+    complete: function() {
+      document.getElementById('zb-transport-status').innerText = ' page reloads in 10 seconds.';
+      setTimeout(function() { location.reload(); }, 10000);
+    }
+  });
 }
 
 /* --------------------------------------------------------------------

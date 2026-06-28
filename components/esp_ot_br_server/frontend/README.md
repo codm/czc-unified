@@ -123,6 +123,37 @@ Opened by `frontend_flash_rcp_button()`. The dialog contains three tabs:
 | Zigbee Coordinator | `manifest.json` → `coordinator` key | 1 (USB) or 2 (NET) |
 | Zigbee Router | `manifest.json` → `router` key | 3 |
 
+### Firmware info fetchers
+
+Two functions fetch and parse firmware metadata into a common shape:
+
+```js
+// FirmwareEntry
+{
+  version:    string  // release tag or version string, e.g. "V1.0.0" / "20250403"
+  link:       string  // direct .bin download URL
+  notes_link: string  // URL of the release page or changelog
+}
+```
+
+| Function | Source | `notes_link` |
+|---|---|---|
+| `fetch_github_firmwares(url)` | GitHub Releases API | `html_url` of the release |
+| `fetch_manifest_firmwares(url, mode)` | Manifest JSON | first URL extracted from `notes` field |
+
+Both return a jQuery Promise. Usage:
+
+```js
+fetch_github_firmwares(ESP_RELEASES_URL)
+  .done(function(list) { /* list is FirmwareEntry[] */ })
+  .fail(onError);
+
+fetch_manifest_firmwares(ZB_MANIFEST_URL, 'coordinator')
+  .done(function(list) { ... });
+```
+
+The `notes` field in the manifest can be a bare URL (`https://...`) or a Markdown link (`[text](url)`). `manifest_extract_url()` handles both cases.
+
 ### Manifest format
 
 The Zigbee manifest (`ZB_MANIFEST_URL`) has this structure:
@@ -131,7 +162,7 @@ The Zigbee manifest (`ZB_MANIFEST_URL`) has this structure:
 {
   "coordinator": {
     "CC2652P7": {
-      "filename.bin": { "ver": "20250403", "link": "https://...", "baud": "115200" }
+      "filename.bin": { "ver": "20250403", "link": "https://...", "notes": "https://...", "baud": "115200" }
     }
   },
   "router": { ... },
