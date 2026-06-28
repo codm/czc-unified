@@ -698,6 +698,13 @@ section {
     width: 660px;
 }
 
+/* Centered status/progress view inside a dialog */
+.dialog-status {
+    width: 420px;
+    text-align: center;
+    padding: 48px 40px;
+}
+
 /* Horizontal separator line inside a dialog */
 .dialog-divider {
     width: 100%;

@@ -711,7 +711,7 @@
 
       <!-- Mode selection popup (first boot) -->
       <div id="mode-selection-modal" class="dialog" style="display:none;">
-        <div class="dialog-content dialog-content--lg">
+        <div class="dialog-content dialog-content--lg" id="mode-select-view">
           <h2>Welcome to CZC</h2>
           <p class="text-muted">
             Select the operating mode. The matching RCP firmware will be flashed automatically.
@@ -739,6 +739,11 @@
             <button id="mode-confirm-btn" class="btn-dialog-confirm" onclick="confirmModeSelection()">Confirm &amp; Flash RCP</button>
             <button class="btn-dialog-cancel" onclick="cancelModeSelection()">Back</button>
           </div>
+        </div>
+        <div class="dialog-content dialog-status" id="mode-flash-view" style="display:none;">
+          <h2 id="mode-flash-title">Setup complete</h2>
+          <p id="mode-flash-msg">The RCP is being flashed. The device will reboot automatically.</p>
+          <p class="text-muted" id="mode-flash-sub">Page reloads in 20 seconds...</p>
         </div>
       </div>
 

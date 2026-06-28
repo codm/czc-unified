@@ -86,8 +86,9 @@ void AppController::run()
 
 esp_err_t AppController::requestRcpFlash(const char* url)
 {
-    ESP_RETURN_ON_ERROR(AppNvs::writeRcpUrl(url),      TAG, "Write RCP URL failed");
-    ESP_RETURN_ON_ERROR(AppNvs::writeRcpPending(true), TAG, "Write RCP pending failed");
+    ESP_RETURN_ON_ERROR(AppNvs::writeDeviceSetup(true), TAG, "Write device setup failed");
+    ESP_RETURN_ON_ERROR(AppNvs::writeRcpUrl(url),       TAG, "Write RCP URL failed");
+    ESP_RETURN_ON_ERROR(AppNvs::writeRcpPending(true),  TAG, "Write RCP pending failed");
     ESP_LOGI(TAG, "RCP flash scheduled — rebooting");
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();
@@ -101,19 +102,16 @@ esp_err_t AppController::requestEspFlash(const char* url)
 
 esp_err_t AppController::requestModeChange(DeviceMode mode)
 {
-    ESP_RETURN_ON_ERROR(AppNvs::writeDeviceMode(mode),           TAG, "Write device mode failed");
+    ESP_RETURN_ON_ERROR(AppNvs::writeDeviceMode(mode), TAG, "Write device mode failed");
     ESP_LOGI(TAG, "Mode change to %d", static_cast<int>(mode));
-    
-    if (firmwareManager.getActiveMode() != DeviceMode::THREAD) 
+
+    // Live switch only for non-Thread modes (e.g. coordinator USB <-> Net).
+    // Thread mode changes always go through flash_rcp which handles the reboot.
+    if (firmwareManager.getActiveMode() != DeviceMode::THREAD)
     {
         firmwareManager.stop();
         vTaskDelay(pdMS_TO_TICKS(50));
         firmwareManager.start(mode);
-    }
-    else
-    {
-        ESP_LOGD(TAG, "Changing from Thread. Rebooting ESP...");
-        esp_restart();
     }
 
     return ESP_OK;

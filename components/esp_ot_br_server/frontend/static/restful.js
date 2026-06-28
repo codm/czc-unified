@@ -18,6 +18,11 @@ const NET_STATE = {
   5: {label: 'WiFi Retry',   icon: 'icon-wifi'}
 };
 
+$(document).ready(function() {
+  initFirstBootCheck();
+  initAppState();
+});
+
 /**
  * @brief Gets current ESP Device Mode
  * 
@@ -367,10 +372,19 @@ function pollWifiConnection(statusEl, attempts)
 var g_selected_mode = -1;
 var g_mode_names    = ['Thread OTBR', 'Zigbee Coordinator USB', 'Zigbee Coordinator Network', 'Zigbee Router'];
 
+const numberOfModeBoxes = 4;
+
+/* Checks if ESP was setup (NVS) 
+If not Web interface setup is started:
+1. Internet connection setup
+2. RCP Mode and according flash */
 function initFirstBootCheck() {
   $.ajax({
-    url: '/device/mode', type: 'GET', dataType: 'json',
-    success: function(data) {
+    url: '/device/mode', 
+    type: 'GET', 
+    dataType: 'json',
+    success: function(data) 
+    {
       if (!data.device_setup) {
         document.getElementById('internet-waiting-overlay').style.display = 'flex';
         pollInternetForModePopup();
@@ -382,12 +396,17 @@ function initFirstBootCheck() {
 
 function pollInternetForModePopup() {
   $.ajax({
-    url: '/network/status', type: 'GET', dataType: 'json',
-    success: function(status) {
+    url: '/network/status', 
+    type: 'GET', 
+    dataType: 'json',
+    success: function(status)
+    {
       if (status.connected) {
         document.getElementById('internet-waiting-overlay').style.display = 'none';
         document.getElementById('mode-selection-modal').style.display     = 'flex';
-      } else {
+      } 
+      else 
+      {
         document.getElementById('waiting-status-text').innerText = 'Waiting for Ethernet or WiFi connection...';
         setTimeout(pollInternetForModePopup, 2000);
       }
@@ -399,63 +418,137 @@ function pollInternetForModePopup() {
   });
 }
 
-function selectMode(mode) {
-  g_selected_mode = mode;
-  for (var i = 0; i < 4; i++) {
-    var card = document.getElementById('mode-card-' + i);
-    if (card) card.classList.remove('selection-card--active');
+function selectMode(mode) 
+{
+  for (let iii = 0; iii < numberOfModeBoxes; iii++) 
+  {
+    let card = document.getElementById('mode-card-' + iii);
+    if (card) 
+      card.classList.remove('selection-card--active');
   }
+
   document.getElementById('mode-card-' + mode).classList.add('selection-card--active');
-  document.getElementById('mode-confirm-name').innerText          = g_mode_names[mode];
-  document.getElementById('mode-confirm-bar').style.display       = 'block';
+  document.getElementById('mode-confirm-name').innerText = MODES[mode].name;
+  document.getElementById('mode-confirm-bar').style.display = 'block';
 }
 
-function cancelModeSelection() {
-  g_selected_mode = -1;
-  for (var i = 0; i < 4; i++) {
-    var card = document.getElementById('mode-card-' + i);
-    if (card) card.classList.remove('selection-card--active');
+function cancelModeSelection() 
+{
+  for (let iii = 0; iii < numberOfModeBoxes; iii++) 
+  {
+    let card = document.getElementById('mode-card-' + iii);
+    if (card) 
+      card.classList.remove('selection-card--active');
   }
   document.getElementById('mode-confirm-bar').style.display = 'none';
 }
 
-function confirmModeSelection() {
-  if (g_selected_mode < 0) return;
-  var btn = document.getElementById('mode-confirm-btn');
-  btn.disabled    = true;
-  btn.innerText   = 'Flashing RCP & rebooting...';
-
-  $.ajax({
-    url: '/device/mode', type: 'POST',
-    contentType: 'application/json',
-    data: JSON.stringify({mode: g_selected_mode}),
-    complete: function() {
-      // Connection drop expected on reboot — always treat as success
-      document.getElementById('mode-selection-modal').innerHTML =
-        '<div class="dialog-content" style="text-align:center; padding:40px;">' +
-        '<h2 style="margin-bottom:16px;">Setup complete</h2>' +
-        '<p>The RCP is being flashed. The device will reboot automatically.</p>' +
-        '<p style="color:gray; font-size:13px; margin-top:12px;">Page reloads in 20 seconds...</p>' +
-        '</div>';
-      setTimeout(function() { location.reload(); }, 20000);
+function getSelectedMode()
+{
+  for (let iii = 0; iii < numberOfModeBoxes; iii++)
+  {
+    let card = document.getElementById('mode-card-' + iii);
+    if (card)
+    {
+      if (card.classList.contains('selection-card--active'))
+        return iii;
     }
-  });
+  }
+  return -1;
 }
 
-$(document).ready(function() {
-  initFirstBootCheck();
-  initAppState();
-});
+function confirmModeSelection() {
+  let selectedMode = getSelectedMode();
+  if (selectedMode < 0) 
+    return;
+
+  let btn = document.getElementById('mode-confirm-btn');
+  btn.disabled = true;
+  btn.innerText = 'Flashing RCP & rebooting...';
+
+  fetchNewestRcpRelease(selectedMode).then(function(rcpUrl) 
+  {
+    console.log(selectedMode);
+    console.log(rcpUrl);
+
+    $.ajax({
+      url: '/flash/rcp',
+      async: true,
+      type: 'POST',
+      contentType: 'application/json',
+      dataType: 'json',
+      data: JSON.stringify({
+        url: rcpUrl,
+        type: selectedMode
+      }),
+      complete: function() {
+        // Connection drop expected on reboot — always treat as success
+        document.getElementById('mode-select-view').style.display = 'none';
+        document.getElementById('mode-flash-view').style.display = 'block';
+        setTimeout(function() { location.reload(); }, 20000);
+      }
+    });
+  });
+}
 
 /* --------------------------------------------------------------------
                             Flash
 -------------------------------------------------------------------- */
-// var RCP_MANIFEST_URL = 'https://raw.githubusercontent.com/codm/XZG/zb_fws/ti/manifest.json';
 // var ESP_RELEASES_URL = 'https://docs.codm.de/tools/releases.php';
 
-var RCP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-rcp-fw/releases';
-var ESP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-fw/releases';
-var ZB_MANIFEST_URL  = 'https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json';
+let RCP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-rcp-fw/releases';
+let ESP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-fw/releases';
+let ZB_MANIFEST_URL  = 'https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json';
+
+// Returns a Promise that resolves to the download URL of the newest firmware for the given mode
+function fetchNewestRcpRelease(mode)
+{
+  switch (mode) {
+    case 0: // Thread — GitHub RCP releases, newest first
+      return $.getJSON(RCP_RELEASES_URL).then(newest_github_bin_url);
+
+    case 1: // Coordinator USB
+    case 2: // Coordinator Network
+      return $.getJSON(ZB_MANIFEST_URL).then(function(data) { return newest_manifest_url(data.coordinator); });
+
+    case 3: // Router
+      return $.getJSON(ZB_MANIFEST_URL).then(function(data) { return newest_manifest_url(data.router); });
+
+    default:
+      return $.Deferred().reject('Invalid mode').promise();
+  }
+}
+
+// Returns browser_download_url of the first .bin from the newest non-draft GitHub release
+function newest_github_bin_url(releases) {
+  for (var i = 0; i < releases.length; i++) {
+    if (releases[i].draft) continue;
+    for (var j = 0; j < releases[i].assets.length; j++) {
+      if (releases[i].assets[j].name.endsWith('.bin'))
+        return releases[i].assets[j].browser_download_url;
+    }
+  }
+  return null;
+}
+
+// Returns the link of the entry with the highest version string in a manifest category.
+// Strips short variant prefixes (e.g. "x4_") before comparing — uses the part after the first "_".
+function newest_manifest_url(category) {
+  var bestUrl = null, bestVer = null;
+  Object.keys(category || {}).forEach(function(device) {
+    Object.keys(category[device] || {}).forEach(function(filename) {
+      var entry = category[device][filename];
+      var ver = entry.ver || '';
+      var u = ver.indexOf('_');
+      var comparableVer = (u > 0 && u <= 3) ? ver.slice(u + 1) : ver;
+      if (!bestVer || comparableVer > bestVer) {
+        bestVer = comparableVer;
+        bestUrl = entry.link || null;
+      }
+    });
+  });
+  return bestUrl;
+}
 
 var g_flash_type        = '';
 var g_rcp_tab_type      = 'thread';
