@@ -146,8 +146,8 @@
             <h2><span class="text-primary">Discover</span> Thread Network</h2>
             <p>Here, you can scan for available Thread networks, and choose to join one of them.</p>
           </div>
-          <div class="row">
-            <table id="available_networks_table" class="pure-table pure-table-horizontal">
+          <div>
+            <table id="available_networks_table" class="pure-table pure-table-horizontal" style="width:100%">
               <caption>Available Thread Networks</caption>
               <thead>
                 <tr>
@@ -203,9 +203,8 @@
               </div>
             </div>
           </div>
-          <div class="row">
-            <button class="btn-sm" style="margin-top: 1%; margin-left: 1275px;"
-              onclick="http_server_scan_thread_network()">SCAN</button>
+          <div style="text-align:right; margin-top:12px;">
+            <button class="btn-sm" onclick="http_server_scan_thread_network()">SCAN</button>
           </div>
         </div>
       </section>
@@ -334,7 +333,7 @@
             <p>The status of the ESP-OpenThread network, including IPv6, network, OpenThread, RCP, WPAN, and other components.</p>
           </div>
           <div class="row g-4 g-lg-5">
-            <ul class="nav nav-pills mb-3">
+            <ul class="nav nav-pills mb-3 col-md-12">
               <li><a class="nav-link active" data-bs-toggle="pill" id="link_0" onclick="http_server_get_thread_network_properties()">OverView</a></li>
               <li><a class="nav-link" data-bs-toggle="pill" id="link_1">IPv6</a></li>
               <li><a class="nav-link" data-bs-toggle="pill" id="link_2">Network</a></li>
@@ -342,7 +341,7 @@
               <li><a class="nav-link" data-bs-toggle="pill" id="link_4">RCP</a></li>
               <li><a class="nav-link" data-bs-toggle="pill" id="link_5">WPAN</a></li>
             </ul>
-            <div class="tab-content" id="status-content">
+            <div class="tab-content col-md-12" id="status-content">
               <div class="tab-pane active" id="tab0">
                 <div class="row">
                   <div class="col-lg-3">
@@ -399,7 +398,7 @@
                 </div>
               </div>
               <div class="tab-pane" id="tab1">
-                <div class="row">
+                <div>
                   <div class="d-flex align-items-center mt-4"><h4>Link Local Address</h4></div>
                   <p id="t-ipv6-link_local_address" class="tab-elem-value">unknown</p>
                   <div class="d-flex align-items-center mt-4"><h4>Routing Local Address</h4></div>
@@ -411,7 +410,7 @@
                 </div>
               </div>
               <div class="tab-pane" id="tab2">
-                <div class="row">
+                <div>
                   <div class="d-flex align-items-center mt-4"><h4>Name</h4></div>
                   <p id="t-network-name" class="tab-elem-value">unknown</p>
                   <div class="d-flex align-items-center mt-4"><h4>PANID</h4></div>
@@ -425,7 +424,7 @@
                 </div>
               </div>
               <div class="tab-pane" id="tab3">
-                <div class="row">
+                <div>
                   <div class="d-flex align-items-center mt-4"><h4>Version</h4></div>
                   <p id="t-openthread-version" class="tab-elem-value">unknown</p>
                   <div class="d-flex align-items-center mt-4"><h4>Version API</h4></div>
@@ -437,7 +436,7 @@
                 </div>
               </div>
               <div class="tab-pane" id="tab4">
-                <div class="row">
+                <div>
                   <div class="d-flex align-items-center mt-4"><h4>Channel</h4></div>
                   <p id="t-rcp-channel" class="tab-elem-value">unknown</p>
                   <div class="d-flex align-items-center mt-4"><h4>EUI64</h4></div>
@@ -449,7 +448,7 @@
                 </div>
               </div>
               <div class="tab-pane" id="tab5">
-                <div class="row">
+                <div>
                   <div class="d-flex align-items-center mt-4"><h4>Service</h4></div>
                   <p id="t-WPAN-service" class="tab-elem-value">unknown</p>
                 </div>
