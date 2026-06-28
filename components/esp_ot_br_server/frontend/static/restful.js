@@ -210,49 +210,79 @@ function setHeaderNetworkBadge(network_status)
                         Network Config
 -------------------------------------------------------------------- */
 
-function toggleStaticIpFields(prefix) {
-  var dhcp = document.getElementById(prefix + '-dhcp').checked;
-  document.getElementById(prefix + '-static-fields').querySelectorAll('input').forEach(function(inp) {
-    inp.disabled = dhcp;
+/* Load both configs when Network section first becomes visible */
+$(document).ready(function() 
+{
+  let networkSection = document.getElementById('Network');
+  if (!networkSection) 
+    return;
+  let loaded = false;
+  let observer = new IntersectionObserver(function(entries) 
+  {
+    if (entries[0].isIntersecting && !loaded) {
+      loaded = true;
+      loadNetworkConfig('ethernet');
+      loadNetworkConfig('wifi');
+    }
   });
-}
+  observer.observe(networkSection);
+});
 
-function loadNetworkConfig(type) {
-  var url    = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
-  var prefix = type === 'wifi' ? 'wifi' : 'eth';
+function loadNetworkConfig(type) 
+{
+  let url    = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
+  let prefix = type === 'wifi' ? 'wifi' : 'eth';
   $.ajax({
-    url: url, type: 'GET', dataType: 'json',
-    success: function(cfg) {
-      var form = document.getElementById(prefix + '-config-form');
+    url: url, 
+    type: 'GET', 
+    dataType: 'json',
+    success: function(cfg) 
+    {
+      let form = document.getElementById(prefix + '-config-form');
       if (type === 'wifi') {
         form.querySelector('[name=ssid]').value     = cfg.ssid || '';
         form.querySelector('[name=password]').value = '';
       }
-      form.querySelector('[name=static_ip]').value     = cfg.static_ip     || '';
+      form.querySelector('[name=static_ip]').value      = cfg.static_ip     || '';
       form.querySelector('[name=gateway]').value        = cfg.gateway       || '';
       form.querySelector('[name=dns_primary]').value    = cfg.dns_primary   || '';
       form.querySelector('[name=dns_secondary]').value  = cfg.dns_secondary || '';
       document.getElementById(prefix + '-dhcp').checked = cfg.dhcp !== false;
       toggleStaticIpFields(prefix);
     },
-    error: function() { console.log('Failed to load ' + type + ' config'); }
+    error: function() 
+    { 
+      console.log('Failed to load ' + type + ' config'); 
+    }
   });
 }
 
-function saveNetworkConfig(type) {
-  var prefix   = type === 'wifi' ? 'wifi' : 'eth';
-  var url      = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
-  var form     = document.getElementById(prefix + '-config-form');
-  var statusEl = document.getElementById(prefix + '-save-status');
+/* Toggle Input fields of Networkconfig depending on the dhcp checkbox */
+function toggleStaticIpFields(prefix) 
+{
+  let dhcp = document.getElementById(prefix + '-dhcp').checked;
+  document.getElementById(prefix + '-static-fields').querySelectorAll('input').forEach(function(inp) {
+    inp.disabled = dhcp;
+  });
+}
 
-  var payload = {
+function saveNetworkConfig(type) 
+{
+  let prefix   = type === 'wifi' ? 'wifi' : 'eth';
+  let url      = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
+  let form     = document.getElementById(prefix + '-config-form');
+  let statusEl = document.getElementById(prefix + '-save-status');
+
+  let payload = 
+  {
     dhcp:          document.getElementById(prefix + '-dhcp').checked,
     static_ip:     form.querySelector('[name=static_ip]').value,
     gateway:       form.querySelector('[name=gateway]').value,
     dns_primary:   form.querySelector('[name=dns_primary]').value,
     dns_secondary: form.querySelector('[name=dns_secondary]').value
   };
-  if (type === 'wifi') {
+  if (type === 'wifi') 
+  {
     payload.ssid     = form.querySelector('[name=ssid]').value;
     payload.password = form.querySelector('[name=password]').value;
   }
@@ -262,72 +292,74 @@ function saveNetworkConfig(type) {
   statusEl.innerText     = 'Saving…';
 
   $.ajax({
-    url: url, type: 'POST',
+    url: url, 
+    type: 'POST',
     contentType: 'application/json',
     data: JSON.stringify(payload),
     complete: function(jqXHR) {
       /* status 0 = connection dropped (expected when AP shuts down to reconnect) */
-      var ok = jqXHR.status === 200 || jqXHR.status === 0;
-      if (!ok) {
+      let ok = jqXHR.status === 200 || jqXHR.status === 0;
+      if (!ok) 
+      {
         statusEl.style.color = 'red';
         statusEl.innerText   = 'Error saving config (HTTP ' + jqXHR.status + ').';
         return;
       }
-      if (type === 'wifi') {
+
+      if (type === 'wifi') 
+      {
         statusEl.style.color = 'darkorange';
         statusEl.innerText   = 'Connecting…';
-        pollForNewIp(statusEl);
-      } else {
+        pollWifiConnection(statusEl);
+      } 
+      else 
+      {
         statusEl.style.color = 'green';
         statusEl.innerText   = 'Saved.';
-        setTimeout(function() { statusEl.style.display = 'none'; }, 4000);
+        setTimeout
+        (function() { statusEl.style.display = 'none'; }, 4000);
       }
     }
   });
 }
 
-function pollForNewIp(statusEl, attempts) {
+/* Polls ESP API and checks if Wifi got a valid IP address. 
+Redirects to new IP or prints error message */
+function pollWifiConnection(statusEl, attempts) 
+{
   attempts = attempts || 0;
-  if (attempts >= 20) {
+  if (attempts >= 20) 
+  {
     statusEl.style.color = 'red';
     statusEl.innerText   = 'Timeout — check WiFi credentials.';
     return;
   }
+  
   setTimeout(function() {
     $.ajax({
       url: '/network/status', type: 'GET', dataType: 'json',
-      success: function(status) {
-        if (status.connected && status.ip) {
+      success: function(status) 
+      {
+        if (status.connected && status.ip) 
+        {
           statusEl.style.color = 'green';
           statusEl.innerText   = 'Connected! Redirecting to ' + status.ip + '…';
           setTimeout(function() { window.location.href = 'http://' + status.ip + '/'; }, 1500);
-        } else {
+        } 
+        else 
+        {
           statusEl.innerText = 'Connecting… (' + (attempts + 1) + ')';
-          pollForNewIp(statusEl, attempts + 1);
+          pollWifiConnection(statusEl, attempts + 1);
         }
       },
-      error: function() {
+      error: function() 
+      {
         statusEl.innerText = 'Waiting for device… (' + (attempts + 1) + ')';
-        pollForNewIp(statusEl, attempts + 1);
+        pollWifiConnection(statusEl, attempts + 1);
       }
     });
   }, 2000);
 }
-
-/* Load both configs when Network section first becomes visible */
-$(document).ready(function() {
-  var networkSection = document.getElementById('Network');
-  if (!networkSection) return;
-  var loaded = false;
-  var observer = new IntersectionObserver(function(entries) {
-    if (entries[0].isIntersecting && !loaded) {
-      loaded = true;
-      loadNetworkConfig('ethernet');
-      loadNetworkConfig('wifi');
-    }
-  });
-  observer.observe(networkSection);
-});
 
 /* --------------------------------------------------------------------
                    First Boot — Mode Selection
