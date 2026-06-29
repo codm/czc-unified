@@ -302,10 +302,15 @@ czc_ot_firmware/
 │   ├── network/                  Ethernet + WiFi state machine
 │   │   └── include/NetworkStateMachine.h, network_config.h, nvs_bind.h
 │   │
-│   └── esp_ot_br_server/         HTTP server + web frontend (C)
-│       ├── include/esp_br_web.h  ← web callback structs + esp_br_web_start()
-│       └── frontend/             HTML/JS/CSS (gzip-compressed into SPIFFS)
-│           └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
+│   ├── esp_ot_br_server/         HTTP server + web frontend (C)
+│   │   ├── include/esp_br_web.h  ← web callback structs + esp_br_web_start()
+│   │   └── frontend/             HTML/JS/CSS (gzip-compressed into SPIFFS)
+│   │       └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
+│   │
+│   └── sse_events/               SSE event broadcast (queue + sender task)
+│       ├── include/sse_events.hpp      ← C++ namespace, post functions + enums
+│       ├── include/sse_events_init.h   ← C-compatible init, included by esp_br_web.c
+│       └── src/sse_events.cpp
 │
 └── partitions.csv                Flash partition table
 ```
@@ -340,7 +345,11 @@ Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWif
 
 ##### `esp_ot_br_server`
 
-HTTP server providing the OpenThread REST API and the web GUI. Defines two C callback structs (`web_firmware_callbacks_t` in `esp_br_web.h`, `web_network_callbacks_t` in `network_config.h`) that decouple it from the C++ application layer.
+HTTP server providing the OpenThread REST API and the web GUI. Defines two C callback structs (`web_firmware_callbacks_t` in `esp_br_web.h`, `web_network_callbacks_t` in `network_config.h`) that decouple it from the C++ application layer. Calls `sse_events_init()` after the HTTP server is started to register the `/events` endpoint.
+
+##### `sse_events`
+
+Server-Sent Events broadcast component. Maintains a vector of connected SSE clients, a FreeRTOS queue for incoming events and a sender task that drains the queue every second and sends a keepalive ping every 20 seconds. The last `device_state` event is retained and immediately replayed to newly connecting clients. Other C++ components post typed events via the `sse_events` namespace (`sse_events.hpp`); the web server registers the `/events` URI handler by calling `sse_events_init()` (`sse_events_init.h`).
 
 ### Flash Partition Layout
 
@@ -463,9 +472,30 @@ classDiagram
         +getNetworkStatus(out) esp_err_t
         +fillNetworkCallbacks(cbs) void
     }
+    class EthernetAPI {
+        +initEthernet() void
+        +closeEthernet() void
+    }
+    class WirelessAPI {
+        +initWifi() void
+        +closeWifi() void
+        +initAccessPoint() void
+        +closeAccessPoint() void
+        +reconnect() void
+    }
 
     class StatusLightManager {
         +init() esp_err_t
+    }
+
+    class SseEvents {
+        +post_flash_progress(target, phase, percent)$ esp_err_t
+        +post_flash_complete(target, success, error)$ esp_err_t
+        +post_device_state(mode, phase)$ esp_err_t
+    }
+    class WebServer {
+        <<C component>>
+        +esp_br_web_start() void
     }
 
     AppController o-- UpdateManager
@@ -481,6 +511,11 @@ classDiagram
     ZigbeeProxyController *-- IProxyTransport
     IProxyTransport <|.. UartTransport
     IProxyTransport <|.. TcpTransport
+
+    NetworkStateMachine *-- EthernetAPI
+    NetworkStateMachine *-- WirelessAPI
+
+    WebServer ..> SseEvents : sse_events_init()
 ```
 
 ### Boot-Decision-Tree

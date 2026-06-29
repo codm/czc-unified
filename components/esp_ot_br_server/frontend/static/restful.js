@@ -21,6 +21,7 @@ const NET_STATE = {
 $(document).ready(function() {
   initFirstBootCheck();
   initAppState();
+  initEventSource();
 });
 
 /**
@@ -488,6 +489,34 @@ function confirmModeSelection() {
         setTimeout(function() { location.reload(); }, 20000);
       }
     });
+  });
+}
+
+/* --------------------------------------------------------------------
+               Server-Sent Events
+-------------------------------------------------------------------- */
+
+function initEventSource()
+{
+  const es = new EventSource('/events');
+
+  es.addEventListener('device_state', function(e) {
+    const data = JSON.parse(e.data);
+    if (data.mode === 'flashing') {
+      showFlashModal(data.phase);
+    } else {
+      hideFlashModal();
+    }
+  });
+
+  es.addEventListener('flash_progress', function(e) {
+    const data = JSON.parse(e.data);
+    updateFlashProgress(data.target, data.phase, data.percent);
+  });
+
+  es.addEventListener('flash_complete', function(e) {
+    const data = JSON.parse(e.data);
+    onFlashComplete(data.target, data.success, data.error);
   });
 }
 

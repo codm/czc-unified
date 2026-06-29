@@ -34,6 +34,8 @@
 #include "openthread/thread.h"
 #include "openthread/thread_ftd.h"
 
+#include "sse_events_init.h"
+
 #define MAX_FILE_SIZE (200 * 1024) // 200 KB
 #define MAX_FILE_SIZE_STR "200KB"
 #define SCRATCH_BUFSIZE 1024 /* Scratch buffer size */
