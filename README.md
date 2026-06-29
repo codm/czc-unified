@@ -314,7 +314,7 @@ czc_ot_firmware/
 
 ##### `app_controller`
 
-Composition root. Runs the boot-decision-tree on every boot and routes web API requests to the appropriate sub-manager. Owns all NVS keys for boot state (`device_setup`, `rcp_pending`, `rcp_url`, `device_mode`) via the private `AppNvs` namespace.
+Composition root. Runs the boot-decision-tree on every boot and routes web API requests to the appropriate sub-manager. Owns all NVS keys for boot state (`device_setup`, `rcp_pending`, `rcp_url`, `rcp_upd_tgt`, `device_mode`) via the private `AppNvs` namespace.
 
 ##### `update_manager`
 
@@ -375,7 +375,7 @@ classDiagram
         -FirmwareManager& firmwareManager
         +run() void
         +fillFirmwareCallbacks(cbs) void
-        +requestRcpFlash(url) esp_err_t
+        +requestRcpFlash(url, mode) esp_err_t
         +requestEspFlash(url) esp_err_t
         +requestModeChange(mode) esp_err_t
         +getCurrentMode() DeviceMode
@@ -500,7 +500,7 @@ flowchart TD
     run(["Normal operation"])
 
     boot --> net --> web --> q1
-    q1 -->|yes| flash --> rb --> boot
+    q1 -->|yes| flash --> setmode["Write device_mode\nfrom rcp_upd_tgt"] --> rb --> boot
     q1 -->|no| q2
     q2 -->|"no (first boot)"| wait -->|"POST /device/mode"| rb
     q2 -->|yes| q3 --> start --> run
@@ -510,7 +510,7 @@ flowchart TD
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/flash/rcp` | Schedule RCP firmware update (NVS intent + reboot) |
+| `POST` | `/flash/rcp` | Schedule RCP firmware update (NVS intent + reboot) — mode applied after flash |
 | `POST` | `/flash/esp` | Start live ESP OTA update |
 | `GET` | `/device/mode` | Returns `{"mode": <int>, "device_setup": <bool>}` |
 | `POST` | `/device/mode` | Set device mode — `{"mode": <int>}` |
@@ -562,13 +562,19 @@ Both flash endpoints reboot the device once the update has been applied.
   Handled by `OtaUpdater` (in `update_manager`).
 
 - **RCP firmware (`/flash/rcp`)** — The CC2652P7 cannot be updated over HTTP directly.
-  `AppController::requestRcpFlash()` writes the URL and a pending flag to NVS, then
-  reboots. On the next boot, `AppController::run()` detects the pending flag and calls
-  `UpdateManager::flashRcp()`, which:
-  1. Downloads the TI binary over HTTPS into the OTA staging partition (`RcpUpdater`).
-  2. Drives the CC2652 BSL over UART (`RcpHal`): sync → bank-erase → download → send-data → reset.
-  
-  The OTA partition is used as raw byte storage for the RCP binary — the ESP's own firmware is never modified during an RCP flash.
+  The request body is `{ "url": "<rcp_firmware.bin>", "type": <DeviceMode int> }`.
+  `AppController::requestRcpFlash(url, mode)` writes URL, target mode (`rcp_upd_tgt`),
+  and a pending flag atomically to NVS, then reboots — **no live firmware-manager restart
+  is performed**, so there is no risk of trying to start a protocol stack with the wrong
+  RCP firmware. On the next boot, `AppController::run()` detects the pending flag and:
+  1. Calls `UpdateManager::flashRcp()`, which downloads the TI binary over HTTPS into the
+     OTA staging partition (`RcpUpdater`) and drives the CC2652 BSL over UART (`RcpHal`):
+     sync → bank-erase → download → send-data → reset.
+  2. On success, reads `rcp_upd_tgt` and writes it to `device_mode`, then reboots.
+  3. On the second reboot, the device starts the protocol stack matching the new mode.
+
+  The OTA partition is used as raw byte storage for the RCP binary — the ESP's own
+  firmware is never modified during an RCP flash.
 
 #### Github Download
 

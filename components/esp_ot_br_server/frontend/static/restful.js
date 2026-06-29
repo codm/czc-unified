@@ -1,14 +1,15 @@
-var OT_SERVER_PACKAGE_VERSION = "v1.0.0";
-
 /* --------------------------------------------------------------------
                App State — Device Mode & Network Status
 -------------------------------------------------------------------- */
 
-var MODE_NAMES  = ['Thread OTBR', 'Zigbee Coordinator USB', 'Zigbee Coordinator Net', 'Zigbee Router'];
-var MODE_ICONS  = ['icon-thread',  'icon-zigbee',            'icon-zigbee',             'icon-zigbee'];
-var MODE_GROUPS = ['thread',       'zigbee',                  'zigbee',                  'zigbee'];
+const MODES = [
+  { name: 'Thread OTBR',            icon: 'icon-thread', group: 'thread',  isCoordinator: false },
+  { name: 'Zigbee Coordinator USB',  icon: 'icon-zigbee', group: 'zigbee',  isCoordinator: true  },
+  { name: 'Zigbee Coordinator Net',  icon: 'icon-zigbee', group: 'zigbee',  isCoordinator: true  },
+  { name: 'Zigbee Router',           icon: 'icon-zigbee', group: 'zigbee',  isCoordinator: false },
+];
 
-var NET_STATE = {
+const NET_STATE = {
   0: {label: 'Initializing', icon: 'icon-softap'},
   1: {label: 'Ethernet',     icon: 'icon-ethernet'},
   2: {label: 'WiFi',         icon: 'icon-wifi'},
@@ -17,172 +18,212 @@ var NET_STATE = {
   5: {label: 'WiFi Retry',   icon: 'icon-wifi'}
 };
 
-function initAppState() {
+$(document).ready(function() {
+  initFirstBootCheck();
+  initAppState();
+});
+
+/**
+ * @brief Gets current ESP Device Mode
+ * 
+ *        Displays relevant Sections and hides the rest
+ *        Builds Sidebar Navigation Links
+ */
+function initAppState() 
+{
   $.ajax({
     url: '/device/mode', type: 'GET', dataType: 'json',
-    success: function(data) { applyDeviceMode(data.mode); },
-    error:   function()     { document.body.classList.add('mode-thread'); }
+    success: 
+      function(data) 
+      { 
+        applyDeviceMode(data.mode); 
+      },
+    error:   
+      function()     
+      { 
+        applyDeviceMode(0); 
+      }
   });
+  
   pollNetworkStatus();
 }
 
-function applyDeviceMode(mode) {
-  var group = MODE_GROUPS[mode] || 'thread';
-  document.body.classList.remove('mode-thread', 'mode-zigbee', 'mode-coordinator');
-  document.body.classList.add('mode-' + group);
-  if (mode === 1 || mode === 2) {
-    document.body.classList.add('mode-coordinator');
-    var usbBtn = document.getElementById('zb-btn-usb');
-    var netBtn = document.getElementById('zb-btn-net');
-    if (usbBtn) usbBtn.classList.toggle('active', mode === 1);
-    if (netBtn) netBtn.classList.toggle('active', mode === 2);
+function applyDeviceMode(mode)
+{
+  let currentMode = MODES[mode];
+
+  setOverviewMode(mode);
+  setHeaderModeBadge(mode);
+
+  if (currentMode.isCoordinator)
+  {
+    setProxyMode(mode);
   }
 
-  var ovMode = document.getElementById('ov-mode');
-  if (ovMode) ovMode.innerText = MODE_NAMES[mode] || '—';
+  applySectionVisibility(currentMode);
+  buildSidebar(currentMode);
+}
 
-  var badge = document.getElementById('hdr-mode');
-  if (badge) {
-    badge.querySelector('.hdr-badge-icon use').setAttribute('href', '#' + (MODE_ICONS[mode] || 'icon-thread'));
-    badge.querySelector('.hdr-badge-label').innerText = MODE_NAMES[mode] || '—';
+function setOverviewMode(mode)
+{
+  let ovMode = document.getElementById('ov-mode');
+  if (ovMode) 
+    ovMode.innerText = MODES[mode].name || '—';
+}
+
+function setHeaderModeBadge(mode)
+{
+  let badge = document.getElementById('hdr-mode');
+  if (badge) 
+  {
+    badge.querySelector('.badge-icon use').setAttribute('href', '#' + (MODES[mode].icon || 'icon-thread'));
+    badge.querySelector('.badge-label').innerText = MODES[mode].name || '—';
   }
 }
 
+function setProxyMode(mode)
+{
+  let usbBtn = document.getElementById('zb-btn-usb');
+    let netBtn = document.getElementById('zb-btn-net');
+    if (usbBtn) 
+      usbBtn.classList.toggle('active', mode === 1);
+    if (netBtn) 
+      netBtn.classList.toggle('active', mode === 2);
+}
+
+function isSectionVisible(section, currentMode)
+{
+  let sectionModes = (section.dataset.modes || 'all').split(' ');
+  let sectionUsedInMode = sectionModes.some(function(mode)
+    {
+      return (mode === 'all') || (mode === currentMode.group);
+    }
+  );
+  return sectionUsedInMode;
+}
+
+/**
+ * @brief Loads Section visibility Information.
+ *        Checks if Section should be displayed and visualizes accordingly.
+ *
+*/
+function applySectionVisibility(currentMode) {
+  document.querySelectorAll('section[data-modes]').forEach
+  (
+    function(section)
+    {
+      section.classList.toggle('hidden', !isSectionVisible(section, currentMode));
+    }
+  );
+}
+
+function buildSidebar(currentMode) {
+  let navbar = document.getElementById('sidebar-nav');
+  if (!navbar)
+    return;
+
+  let navbarHtml = '';
+  document.querySelectorAll('section[data-nav-label]').forEach(function(section)
+  {
+    if (!isSectionVisible(section, currentMode))
+      return;
+    let label = section.dataset.navLabel;
+    let icon  = section.dataset.navIcon || '';
+    let href  = section.dataset.navHref || ('#' + section.id);
+    navbarHtml += '<li><a href="' + href + '">'
+          + (icon ? '<svg class="icon-stroke"><use href="#' + icon + '"/></svg> ' : '')
+          + label
+          + '</a></li>';
+  });
+  navbar.innerHTML = navbarHtml;
+
+  // closes sidebar after click on mobile
+  navbar.querySelectorAll('a').forEach(function(link) 
+  {
+    link.addEventListener('click', function() {
+      document.querySelector('.app-body').classList.remove('sidebar-open');
+    });
+  });
+}
+
+const POLL_INTERVAL_MS = {
+  disconnected: 2000,
+  connected:    10000,
+};
+
+/**
+ * @brief Polls ESP32 network status and updates the UI.
+ *        Polls fast while disconnected, slow once connected.
+ *
+ * @note API returns `network_status_t`
+*/
 function pollNetworkStatus() {
   $.ajax({
-    url: '/network/status', type: 'GET', dataType: 'json',
-    success: function(status) {
-      var info  = NET_STATE[status.mode] || {label: 'Unknown', icon: 'icon-softap'};
-      var label = (status.connected && status.ip) ? info.label + ' · ' + status.ip : info.label;
-
-      var badge = document.getElementById('hdr-net');
-      if (badge) {
-        badge.querySelector('.hdr-badge-icon use').setAttribute('href', '#' + info.icon);
-        badge.querySelector('.hdr-badge-label').innerText = label;
-      }
-
-      var ovNet = document.getElementById('ov-net');
-      if (ovNet) ovNet.innerText = label;
+    url: '/network/status',
+    type: 'GET',
+    dataType: 'json',
+    success: function(network_status)
+    {
+      setHeaderNetworkBadge(network_status);
+      setOverviewNetwork(network_status);
+      const interval = network_status.connected ? POLL_INTERVAL_MS.connected
+                                                : POLL_INTERVAL_MS.disconnected;
+      setTimeout(pollNetworkStatus, interval);
     },
-    error: function() {}
+    error: function()
+    {
+      setTimeout(pollNetworkStatus, POLL_INTERVAL_MS.disconnected);
+    }
   });
-  setTimeout(pollNetworkStatus, 10000);
+}
+
+function buildNetworkStatusString(network_status) 
+{
+  let overViewText = "Unknown";
+  if (network_status.ip && network_status.connected) 
+  {
+    networkState = NET_STATE[network_status.mode];
+    overViewText = networkState.label + ' · ' +  network_status.ip;
+  }
+  return overViewText; 
+}
+
+function setOverviewNetwork(network_status)
+{
+  if (!network_status)
+    return;
+
+  let ovNet = document.getElementById('ov-net');
+  if (ovNet)
+    ovNet.innerText = buildNetworkStatusString(network_status);
+}
+
+function setHeaderNetworkBadge(network_status) 
+{
+  if (!network_status)
+    return;
+
+  let badge = document.getElementById('hdr-net');
+  if (badge) 
+  {
+    badge.querySelector('.badge-icon use').setAttribute('href', '#' + NET_STATE[network_status.mode].icon);
+    badge.querySelector('.badge-label').innerText = buildNetworkStatusString(network_status);
+  }
 }
 
 /* --------------------------------------------------------------------
                         Network Config
 -------------------------------------------------------------------- */
 
-function toggleStaticIpFields(prefix) {
-  var dhcp = document.getElementById(prefix + '-dhcp').checked;
-  document.getElementById(prefix + '-static-fields').querySelectorAll('input').forEach(function(inp) {
-    inp.disabled = dhcp;
-  });
-}
-
-function loadNetworkConfig(type) {
-  var url    = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
-  var prefix = type === 'wifi' ? 'wifi' : 'eth';
-  $.ajax({
-    url: url, type: 'GET', dataType: 'json',
-    success: function(cfg) {
-      var form = document.getElementById(prefix + '-config-form');
-      if (type === 'wifi') {
-        form.querySelector('[name=ssid]').value     = cfg.ssid || '';
-        form.querySelector('[name=password]').value = '';
-      }
-      form.querySelector('[name=static_ip]').value     = cfg.static_ip     || '';
-      form.querySelector('[name=gateway]').value        = cfg.gateway       || '';
-      form.querySelector('[name=dns_primary]').value    = cfg.dns_primary   || '';
-      form.querySelector('[name=dns_secondary]').value  = cfg.dns_secondary || '';
-      document.getElementById(prefix + '-dhcp').checked = cfg.dhcp !== false;
-      toggleStaticIpFields(prefix);
-    },
-    error: function() { console.log('Failed to load ' + type + ' config'); }
-  });
-}
-
-function saveNetworkConfig(type) {
-  var prefix   = type === 'wifi' ? 'wifi' : 'eth';
-  var url      = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
-  var form     = document.getElementById(prefix + '-config-form');
-  var statusEl = document.getElementById(prefix + '-save-status');
-
-  var payload = {
-    dhcp:          document.getElementById(prefix + '-dhcp').checked,
-    static_ip:     form.querySelector('[name=static_ip]').value,
-    gateway:       form.querySelector('[name=gateway]').value,
-    dns_primary:   form.querySelector('[name=dns_primary]').value,
-    dns_secondary: form.querySelector('[name=dns_secondary]').value
-  };
-  if (type === 'wifi') {
-    payload.ssid     = form.querySelector('[name=ssid]').value;
-    payload.password = form.querySelector('[name=password]').value;
-  }
-
-  statusEl.style.display = 'inline';
-  statusEl.style.color   = 'gray';
-  statusEl.innerText     = 'Saving…';
-
-  $.ajax({
-    url: url, type: 'POST',
-    contentType: 'application/json',
-    data: JSON.stringify(payload),
-    complete: function(jqXHR) {
-      /* status 0 = connection dropped (expected when AP shuts down to reconnect) */
-      var ok = jqXHR.status === 200 || jqXHR.status === 0;
-      if (!ok) {
-        statusEl.style.color = 'red';
-        statusEl.innerText   = 'Error saving config (HTTP ' + jqXHR.status + ').';
-        return;
-      }
-      if (type === 'wifi') {
-        statusEl.style.color = 'darkorange';
-        statusEl.innerText   = 'Connecting…';
-        pollForNewIp(statusEl);
-      } else {
-        statusEl.style.color = 'green';
-        statusEl.innerText   = 'Saved.';
-        setTimeout(function() { statusEl.style.display = 'none'; }, 4000);
-      }
-    }
-  });
-}
-
-function pollForNewIp(statusEl, attempts) {
-  attempts = attempts || 0;
-  if (attempts >= 20) {
-    statusEl.style.color = 'red';
-    statusEl.innerText   = 'Timeout — check WiFi credentials.';
-    return;
-  }
-  setTimeout(function() {
-    $.ajax({
-      url: '/network/status', type: 'GET', dataType: 'json',
-      success: function(status) {
-        if (status.connected && status.ip) {
-          statusEl.style.color = 'green';
-          statusEl.innerText   = 'Connected! Redirecting to ' + status.ip + '…';
-          setTimeout(function() { window.location.href = 'http://' + status.ip + '/'; }, 1500);
-        } else {
-          statusEl.innerText = 'Connecting… (' + (attempts + 1) + ')';
-          pollForNewIp(statusEl, attempts + 1);
-        }
-      },
-      error: function() {
-        statusEl.innerText = 'Waiting for device… (' + (attempts + 1) + ')';
-        pollForNewIp(statusEl, attempts + 1);
-      }
-    });
-  }, 2000);
-}
-
 /* Load both configs when Network section first becomes visible */
-$(document).ready(function() {
-  var networkSection = document.getElementById('Network');
-  if (!networkSection) return;
-  var loaded = false;
-  var observer = new IntersectionObserver(function(entries) {
+$(document).ready(function() 
+{
+  let networkSection = document.getElementById('Network');
+  if (!networkSection) 
+    return;
+  let loaded = false;
+  let observer = new IntersectionObserver(function(entries) 
+  {
     if (entries[0].isIntersecting && !loaded) {
       loaded = true;
       loadNetworkConfig('ethernet');
@@ -192,16 +233,158 @@ $(document).ready(function() {
   observer.observe(networkSection);
 });
 
+function loadNetworkConfig(type) 
+{
+  let url    = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
+  let prefix = type === 'wifi' ? 'wifi' : 'eth';
+  $.ajax({
+    url: url, 
+    type: 'GET', 
+    dataType: 'json',
+    success: function(cfg) 
+    {
+      let form = document.getElementById(prefix + '-config-form');
+      if (type === 'wifi') {
+        form.querySelector('[name=ssid]').value     = cfg.ssid || '';
+        form.querySelector('[name=password]').value = '';
+      }
+      form.querySelector('[name=static_ip]').value      = cfg.static_ip     || '';
+      form.querySelector('[name=gateway]').value        = cfg.gateway       || '';
+      form.querySelector('[name=dns_primary]').value    = cfg.dns_primary   || '';
+      form.querySelector('[name=dns_secondary]').value  = cfg.dns_secondary || '';
+      document.getElementById(prefix + '-dhcp').checked = cfg.dhcp !== false;
+      toggleStaticIpFields(prefix);
+    },
+    error: function() 
+    { 
+      console.log('Failed to load ' + type + ' config'); 
+    }
+  });
+}
+
+/* Toggle Input fields of Networkconfig depending on the dhcp checkbox */
+function toggleStaticIpFields(prefix) 
+{
+  let dhcp = document.getElementById(prefix + '-dhcp').checked;
+  document.getElementById(prefix + '-static-fields').querySelectorAll('input').forEach(function(inp) {
+    inp.disabled = dhcp;
+  });
+}
+
+function saveNetworkConfig(type) 
+{
+  let prefix   = type === 'wifi' ? 'wifi' : 'eth';
+  let url      = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
+  let form     = document.getElementById(prefix + '-config-form');
+  let statusEl = document.getElementById(prefix + '-save-status');
+
+  let payload = 
+  {
+    dhcp:          document.getElementById(prefix + '-dhcp').checked,
+    static_ip:     form.querySelector('[name=static_ip]').value,
+    gateway:       form.querySelector('[name=gateway]').value,
+    dns_primary:   form.querySelector('[name=dns_primary]').value,
+    dns_secondary: form.querySelector('[name=dns_secondary]').value
+  };
+  if (type === 'wifi') 
+  {
+    payload.ssid     = form.querySelector('[name=ssid]').value;
+    payload.password = form.querySelector('[name=password]').value;
+  }
+
+  statusEl.style.display = 'inline';
+  statusEl.style.color   = 'gray';
+  statusEl.innerText     = 'Saving…';
+
+  $.ajax({
+    url: url, 
+    type: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify(payload),
+    complete: function(jqXHR) {
+      /* status 0 = connection dropped (expected when AP shuts down to reconnect) */
+      let ok = jqXHR.status === 200 || jqXHR.status === 0;
+      if (!ok) 
+      {
+        statusEl.style.color = 'red';
+        statusEl.innerText   = 'Error saving config (HTTP ' + jqXHR.status + ').';
+        return;
+      }
+
+      if (type === 'wifi') 
+      {
+        statusEl.style.color = 'darkorange';
+        statusEl.innerText   = 'Connecting…';
+        pollWifiConnection(statusEl);
+      } 
+      else 
+      {
+        statusEl.style.color = 'green';
+        statusEl.innerText   = 'Saved.';
+        setTimeout
+        (function() { statusEl.style.display = 'none'; }, 4000);
+      }
+    }
+  });
+}
+
+/* Polls ESP API and checks if Wifi got a valid IP address. 
+Redirects to new IP or prints error message */
+function pollWifiConnection(statusEl, attempts) 
+{
+  attempts = attempts || 0;
+  if (attempts >= 20) 
+  {
+    statusEl.style.color = 'red';
+    statusEl.innerText   = 'Timeout — check WiFi credentials.';
+    return;
+  }
+  
+  setTimeout(function() {
+    $.ajax({
+      url: '/network/status', type: 'GET', dataType: 'json',
+      success: function(status) 
+      {
+        if (status.connected && status.ip) 
+        {
+          statusEl.style.color = 'green';
+          statusEl.innerText   = 'Connected! Redirecting to ' + status.ip + '…';
+          setTimeout(function() { window.location.href = 'http://' + status.ip + '/'; }, 1500);
+        } 
+        else 
+        {
+          statusEl.innerText = 'Connecting… (' + (attempts + 1) + ')';
+          pollWifiConnection(statusEl, attempts + 1);
+        }
+      },
+      error: function() 
+      {
+        statusEl.innerText = 'Waiting for device… (' + (attempts + 1) + ')';
+        pollWifiConnection(statusEl, attempts + 1);
+      }
+    });
+  }, 2000);
+}
+
 /* --------------------------------------------------------------------
                    First Boot — Mode Selection
 -------------------------------------------------------------------- */
 var g_selected_mode = -1;
 var g_mode_names    = ['Thread OTBR', 'Zigbee Coordinator USB', 'Zigbee Coordinator Network', 'Zigbee Router'];
 
+const numberOfModeBoxes = 4;
+
+/* Checks if ESP was setup (NVS) 
+If not Web interface setup is started:
+1. Internet connection setup
+2. RCP Mode and according flash */
 function initFirstBootCheck() {
   $.ajax({
-    url: '/device/mode', type: 'GET', dataType: 'json',
-    success: function(data) {
+    url: '/device/mode', 
+    type: 'GET', 
+    dataType: 'json',
+    success: function(data) 
+    {
       if (!data.device_setup) {
         document.getElementById('internet-waiting-overlay').style.display = 'flex';
         pollInternetForModePopup();
@@ -213,12 +396,17 @@ function initFirstBootCheck() {
 
 function pollInternetForModePopup() {
   $.ajax({
-    url: '/network/status', type: 'GET', dataType: 'json',
-    success: function(status) {
+    url: '/network/status', 
+    type: 'GET', 
+    dataType: 'json',
+    success: function(status)
+    {
       if (status.connected) {
         document.getElementById('internet-waiting-overlay').style.display = 'none';
         document.getElementById('mode-selection-modal').style.display     = 'flex';
-      } else {
+      } 
+      else 
+      {
         document.getElementById('waiting-status-text').innerText = 'Waiting for Ethernet or WiFi connection...';
         setTimeout(pollInternetForModePopup, 2000);
       }
@@ -230,53 +418,443 @@ function pollInternetForModePopup() {
   });
 }
 
-function selectMode(mode) {
-  g_selected_mode = mode;
-  for (var i = 0; i < 4; i++) {
-    var card = document.getElementById('mode-card-' + i);
-    if (card) card.classList.remove('mode-card-selected');
+function selectMode(mode) 
+{
+  for (let iii = 0; iii < numberOfModeBoxes; iii++) 
+  {
+    let card = document.getElementById('mode-card-' + iii);
+    if (card) 
+      card.classList.remove('selection-card--active');
   }
-  document.getElementById('mode-card-' + mode).classList.add('mode-card-selected');
-  document.getElementById('mode-confirm-name').innerText          = g_mode_names[mode];
-  document.getElementById('mode-confirm-bar').style.display       = 'block';
+
+  document.getElementById('mode-card-' + mode).classList.add('selection-card--active');
+  document.getElementById('mode-confirm-name').innerText = MODES[mode].name;
+  document.getElementById('mode-confirm-bar').style.display = 'block';
 }
 
-function cancelModeSelection() {
-  g_selected_mode = -1;
-  for (var i = 0; i < 4; i++) {
-    var card = document.getElementById('mode-card-' + i);
-    if (card) card.classList.remove('mode-card-selected');
+function cancelModeSelection() 
+{
+  for (let iii = 0; iii < numberOfModeBoxes; iii++) 
+  {
+    let card = document.getElementById('mode-card-' + iii);
+    if (card) 
+      card.classList.remove('selection-card--active');
   }
   document.getElementById('mode-confirm-bar').style.display = 'none';
 }
 
+function getSelectedMode()
+{
+  for (let iii = 0; iii < numberOfModeBoxes; iii++)
+  {
+    let card = document.getElementById('mode-card-' + iii);
+    if (card)
+    {
+      if (card.classList.contains('selection-card--active'))
+        return iii;
+    }
+  }
+  return -1;
+}
+
 function confirmModeSelection() {
-  if (g_selected_mode < 0) return;
-  var btn = document.getElementById('mode-confirm-btn');
-  btn.disabled    = true;
-  btn.innerText   = 'Flashing RCP & rebooting...';
+  let selectedMode = getSelectedMode();
+  if (selectedMode < 0) 
+    return;
+
+  let btn = document.getElementById('mode-confirm-btn');
+  btn.disabled = true;
+  btn.innerText = 'Flashing RCP & rebooting...';
+
+  fetchNewestRcpRelease(selectedMode).then(function(rcpUrl) 
+  {
+    console.log(selectedMode);
+    console.log(rcpUrl);
+
+    $.ajax({
+      url: '/flash/rcp',
+      async: true,
+      type: 'POST',
+      contentType: 'application/json',
+      dataType: 'json',
+      data: JSON.stringify({
+        url: rcpUrl,
+        type: selectedMode
+      }),
+      complete: function() {
+        // Connection drop expected on reboot — always treat as success
+        document.getElementById('mode-select-view').style.display = 'none';
+        document.getElementById('mode-flash-view').style.display = 'block';
+        setTimeout(function() { location.reload(); }, 20000);
+      }
+    });
+  });
+}
+
+/* --------------------------------------------------------------------
+                            Flash
+-------------------------------------------------------------------- */
+// var ESP_RELEASES_URL = 'https://docs.codm.de/tools/releases.php';
+
+let RCP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-rcp-fw/releases';
+let ESP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-fw/releases';
+let ZB_MANIFEST_URL  = 'https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json';
+
+// Returns a Promise that resolves to the download URL of the newest firmware for the given mode
+function fetchNewestRcpRelease(mode)
+{
+  switch (mode) {
+    case 0: // Thread — GitHub RCP releases, newest first
+      return $.getJSON(RCP_RELEASES_URL).then(newest_github_bin_url);
+
+    case 1: // Coordinator USB
+    case 2: // Coordinator Network
+      return $.getJSON(ZB_MANIFEST_URL).then(function(data) { return newest_manifest_url(data.coordinator); });
+
+    case 3: // Router
+      return $.getJSON(ZB_MANIFEST_URL).then(function(data) { return newest_manifest_url(data.router); });
+
+    default:
+      return $.Deferred().reject('Invalid mode').promise();
+  }
+}
+
+// Returns browser_download_url of the first .bin from the newest non-draft GitHub release
+function newest_github_bin_url(releases) {
+  for (var i = 0; i < releases.length; i++) {
+    if (releases[i].draft) continue;
+    for (var j = 0; j < releases[i].assets.length; j++) {
+      if (releases[i].assets[j].name.endsWith('.bin'))
+        return releases[i].assets[j].browser_download_url;
+    }
+  }
+  return null;
+}
+
+// Returns the link of the entry with the highest version string in a manifest category.
+// Strips short variant prefixes (e.g. "x4_") before comparing — uses the part after the first "_".
+function newest_manifest_url(category) {
+  var bestUrl = null, bestVer = null;
+  Object.keys(category || {}).forEach(function(device) {
+    Object.keys(category[device] || {}).forEach(function(filename) {
+      var entry = category[device][filename];
+      var ver = entry.ver || '';
+      var u = ver.indexOf('_');
+      var comparableVer = (u > 0 && u <= 3) ? ver.slice(u + 1) : ver;
+      if (!bestVer || comparableVer > bestVer) {
+        bestVer = comparableVer;
+        bestUrl = entry.link || null;
+      }
+    });
+  });
+  return bestUrl;
+}
+
+function frontend_flash_esp_button() {
+  // build dialog window
+  document.getElementById('flash_window_title').innerText = 'Select ESP Firmware';
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+  document.getElementById('flash_status').innerText = '';
+  document.getElementById('flash_rcp_tabs').style.display = 'none';
+  document.getElementById('flash_window').style.display = 'flex';
+
+  fetch_github_firmwares(ESP_RELEASES_URL)
+    .done(function(list) { render_firmware_list(list, "esp"); })
+    .fail(flash_list_error);
+}
+
+function frontend_flash_rcp_button() {
+  document.getElementById('flash_window_title').innerText = 'Select RCP Firmware';
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+  document.getElementById('flash_status').innerText = '';
+  document.getElementById('flash_rcp_tabs').style.display = 'block';
+  document.getElementById('flash_window').style.display = 'flex';
+
+  buildThreadFirmwareList();
+}
+
+function setRcpTabActive(btn) {
+  document.querySelectorAll('#flash_rcp_tabs .tab-btn').forEach(function(b) {
+    b.classList.remove('active');
+  });
+  btn.classList.add('active');
+}
+
+function buildThreadFirmwareList(btn)
+{
+  if (btn) setRcpTabActive(btn);
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+  fetch_github_firmwares(RCP_RELEASES_URL)
+    .done(function(list) { render_firmware_list(list, "rcp", 0); })
+    .fail(flash_list_error);
+}
+
+function buildCoordinatorFirmwareList(btn)
+{
+  if (btn) setRcpTabActive(btn);
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+  fetch_manifest_firmwares(ZB_MANIFEST_URL, "coordinator")
+    .done(function(list) { render_firmware_list(list, "rcp", 1); })
+    .fail(flash_list_error);
+}
+
+function buildRouterFirmwareList(btn)
+{
+  if (btn) setRcpTabActive(btn);
+  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
+  fetch_manifest_firmwares(ZB_MANIFEST_URL, "router")
+    .done(function(list) { render_firmware_list(list, "rcp", 3); })
+    .fail(flash_list_error);
+}
+
+function flash_list_error() {
+  document.getElementById('flash_firmware_list').innerHTML =
+      '<p style="color:red">Failed to load firmware list.</p>';
+}
+
+/* ── Firmware info fetchers ────────────────────────────────────────────────
+ *
+ * Both functions return a jQuery Promise that resolves to a list of objects:
+ *
+ *   {
+ *     version    {string}  Release tag or firmware version string
+ *     link       {string}  Direct download URL of the .bin binary
+ *     notes_link {string}  URL of the release page / changelog
+ *   }
+ *
+ * Usage:
+ *   fetch_github_firmwares(url).done(function(list) { ... }).fail(onError);
+ *   fetch_manifest_firmwares(url, 'coordinator').done(function(list) { ... });
+ */
+
+/**
+ * Fetches firmware entries from a GitHub Releases API endpoint.
+ * Each .bin asset in a non-draft release produces one entry.
+ *
+ * @param  {string}  url  GitHub Releases API URL
+ * @return {$.Deferred}   Resolves to FirmwareEntry[]
+ */
+function fetch_github_firmwares(url) {
+  return $.getJSON(url).then(function(releases) {
+    var result = [];
+    releases.forEach(function(release) {
+      if (release.draft) return;
+      release.assets.forEach(function(asset) {
+        if (!asset.name.endsWith('.bin')) return;
+        result.push({
+          version:    release.tag_name,
+          link:       asset.browser_download_url,
+          notes_link: release.html_url
+        });
+      });
+    });
+    return result;
+  });
+}
+
+/**
+ * Fetches firmware entries from a manifest JSON for a specific mode.
+ * Manifest structure: data[mode][device][filename] = {ver, link, notes, baud}
+ *
+ * @param  {string}                url   Manifest JSON URL
+ * @param  {'router'|'coordinator'} mode  Firmware category to extract
+ * @return {$.Deferred}                  Resolves to FirmwareEntry[]
+ */
+function fetch_manifest_firmwares(url, mode) {
+  return $.getJSON(url).then(function(data) {
+    var category = data[mode] || {};
+    var result = [];
+    Object.keys(category).forEach(function(device) {
+      var entries = category[device];
+      Object.keys(entries).forEach(function(filename) {
+        var entry = entries[filename];
+        result.push({
+          version:    entry.ver  || '—',
+          link:       entry.link || '',
+          notes_link: manifest_extract_url(entry.notes || '')
+        });
+      });
+    });
+    return result;
+  });
+}
+
+/* Extracts the first URL from a markdown link "[text](url)" or a bare https:// string */
+function manifest_extract_url(str) {
+  var match = str.match(/\]\(([^)]+)\)/);
+  if (match) return match[1];
+  return /^https?:\/\//.test(str) ? str : '';
+}
+
+/**
+ * @brief Renders firmware list from FirmwareEntry[] List
+ * 
+ * @param[in] `firmwares` FirmwareEntry[] List
+ * @param[in] `device` ESP or RCP
+ * @param[in] `mode` only needed when device is RCP - RCP mode  
+*/ 
+function render_firmware_list(firmwares, device, mode) {
+  var container = document.getElementById('flash_firmware_list');
+  var template  = document.getElementById('fw-row-tpl');
+
+  container.innerHTML = '';
+
+  if (!firmwares.length) {
+    var msg = document.createElement('p');
+    msg.style.color = 'orange';
+    msg.textContent = 'No firmware versions found.';
+    container.appendChild(msg);
+    return;
+  }
+
+  var table = document.createElement('table');
+  table.className = 'pure-table pure-table-horizontal';
+  table.style.width = '100%';
+
+  var thead     = table.createTHead();
+  var headerRow = thead.insertRow();
+  ['Version', 'Info', ''].forEach(function(label) {
+    var th = document.createElement('th');
+    th.textContent = label;
+    headerRow.appendChild(th);
+  });
+
+  var tbody = table.createTBody();
+  firmwares.forEach(function(fw) {
+    var row = template.content.cloneNode(true).querySelector('tr');
+
+    row.querySelector('.fw-version').textContent = fw.version || '—';
+
+    if (fw.notes_link) {
+      var a = document.createElement('a');
+      a.href        = fw.notes_link;
+      a.textContent = 'Firmware Info';
+      a.target      = '_blank';
+      a.rel         = 'noopener';
+      row.querySelector('.fw-notes').appendChild(a);
+    }
+
+    if (device === 'esp') 
+    {
+      row.querySelector('button').addEventListener('click', function() {
+        do_esp_flash_with_url(fw.link);
+      });
+    }
+    else 
+    {
+      row.querySelector('button').addEventListener('click', function() {
+        do_rcp_flash_with_url(fw.link, mode);
+      });
+    }
+
+    tbody.appendChild(row);
+  });
+
+  container.appendChild(table);
+}
+
+function do_esp_flash_with_url(url) 
+{
+  document.getElementById('flash_window').style.display = 'none';
+  let log = {error: 0, content: ''};
+  let title = "Flash ESP";
 
   $.ajax({
-    url: '/device/mode', type: 'POST',
+    url: '/flash/esp',
+    async: true,
     contentType: 'application/json',
-    data: JSON.stringify({mode: g_selected_mode}),
-    complete: function() {
-      // Connection drop expected on reboot — always treat as success
-      document.getElementById('mode-selection-modal').innerHTML =
-        '<div class="dialog-content" style="text-align:center; padding:40px;">' +
-        '<h2 style="margin-bottom:16px;">Setup complete</h2>' +
-        '<p>The RCP is being flashed. The device will reboot automatically.</p>' +
-        '<p style="color:gray; font-size:13px; margin-top:12px;">Page reloads in 20 seconds...</p>' +
-        '</div>';
-      setTimeout(function() { location.reload(); }, 20000);
+    type: 'POST',
+    dataType: 'json',
+    data: JSON.stringify({
+      url
+    }),
+
+    success: function(arg) {
+      if (arg.reboot) {
+        log.error = 0;
+        log.content = 'Flash scheduled. Device is rebooting...';
+      } else if (arg.status === 'flashing' || arg.status === 'started') {
+        log.error = 0;
+        log.content = arg.message || 'Flashing firmware...';
+      } else {
+        console_show_response_result(arg);
+        log.error = arg.error;
+        log.content = arg.message || 'Unknown response';
+      }
+      frontend_log_show(title, log);
+    },
+    error: function(arg) {
+      log.error = 1;
+      log.content = 'Unknown error';
+      console.log(arg);
+      frontend_log_show(title, log);
     }
   });
 }
 
-$(document).ready(function() {
-  initFirstBootCheck();
-  initAppState();
-});
+function do_rcp_flash_with_url(url, mode) {
+  document.getElementById('flash_window').style.display = 'none';
+
+  let log = {error: 0, content: ''};
+  let title = "Flash RCP";
+  document.getElementById('flash_status').innerText = 'Flashing...';
+  $.ajax({
+    url: '/flash/rcp',
+    async: true,
+    contentType: 'application/json',
+    type: 'POST',
+    dataType: 'json',
+    data: JSON.stringify({
+      url,
+      type: mode
+    }),
+
+    success: function(arg) {
+      if (arg.reboot) {
+        log.error = 0;
+        log.content = 'Flash scheduled. Device is rebooting...';
+      } else if (arg.status === 'flashing' || arg.status === 'started') {
+        log.error = 0;
+        log.content = arg.message || 'Flashing firmware...';
+      } else {
+        console_show_response_result(arg);
+        log.error = arg.error;
+        log.content = arg.message || 'Unknown response';
+      }
+      frontend_log_show(title, log);
+    },
+    error: function(arg) {
+      // Connection drop is expected: ESP reboots immediately after scheduling the flash
+      log.error = 0;
+      log.content = 'Flash scheduled. Device is rebooting...';
+      frontend_log_show(title, log);
+    }
+  });
+}
+
+function frontend_cancel_flash() {
+  document.getElementById('flash_window').style.display = 'none';
+}
+
+/* --------------------------------------------------------------------
+                     Zigbee Transport Mode
+-------------------------------------------------------------------- */
+
+function setZigbeeTransport(mode) {
+  document.getElementById('zb-btn-usb').classList.toggle('active', mode === 1);
+  document.getElementById('zb-btn-net').classList.toggle('active', mode === 2);
+  document.getElementById('zb-transport-status').innerText = 'Switching — this may take a few seconds ...';
+  $.ajax({
+    url: '/device/mode', type: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({mode: mode}),
+    complete: function() {
+      document.getElementById('zb-transport-status').innerText = ' page reloads in 10 seconds.';
+      setTimeout(function() { location.reload(); }, 10000);
+    }
+  });
+}
+
 /* --------------------------------------------------------------------
                             action
 -------------------------------------------------------------------- */
@@ -379,7 +957,7 @@ function fill_thread_available_network_table(data) {
     }
     rows += '<td>'
     rows +=
-        "<button class=\"btn-submit\" onclick=\"frontend_show_join_network_window(this)\">Join<\/button>"
+        "<button class=\"btn-sm\" onclick=\"frontend_show_join_network_window(this)\">Join<\/button>"
     rows += '</td>'
     rows += '</tr>'
     row_id++;
@@ -742,238 +1320,6 @@ function http_server_delete_prefix_from_thread_network() {
   })
 }
 
-/* --------------------------------------------------------------------
-                            Flash
--------------------------------------------------------------------- */
-// var RCP_MANIFEST_URL = 'https://raw.githubusercontent.com/codm/XZG/zb_fws/ti/manifest.json';
-// var ESP_RELEASES_URL = 'https://docs.codm.de/tools/releases.php';
-
-var RCP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-rcp-fw/releases';
-var ESP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-fw/releases';
-var ZB_MANIFEST_URL  = 'https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json';
-
-var g_flash_type        = '';
-var g_rcp_tab_type      = 'thread';
-var g_coordinator_mode  = 1;  // 1 = USB/UART, 2 = Network/TCP
-
-var TAB_MODE = {thread: 0, coordinator: null, router: 3};
-
-function frontend_flash_esp_button() {
-  g_flash_type = 'esp';
-  document.getElementById('flash_window_title').innerText = 'Select ESP Firmware';
-  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
-  document.getElementById('flash_status').innerText = '';
-  document.getElementById('flash_rcp_tabs').style.display = 'none';
-  document.getElementById('flash_window').style.display = 'flex';
-
-  fetch_firmware_list_from_url(ESP_RELEASES_URL, parse_github_releases, render_firmware_list, flash_list_error);
-}
-
-function frontend_flash_rcp_button() {
-  g_flash_type = 'rcp';
-  document.getElementById('flash_window_title').innerText = 'Select RCP Firmware';
-  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
-  document.getElementById('flash_status').innerText = '';
-  document.getElementById('flash_rcp_tabs').style.display = 'block';
-  document.getElementById('flash_window').style.display = 'flex';
-
-  flash_rcp_tab('thread');
-}
-
-function flash_rcp_tab(type) {
-  g_rcp_tab_type = type;
-  document.querySelectorAll('#flash_rcp_tabs .rcp-tab-btn').forEach(function(btn) {
-    btn.classList.toggle('active', btn.getAttribute('onclick') === "flash_rcp_tab('" + type + "')");
-  });
-  document.getElementById('flash_coordinator_transport').style.display = (type === 'coordinator') ? 'block' : 'none';
-  document.getElementById('flash_firmware_list').innerHTML = '<p>Loading...</p>';
-
-  if (type === 'thread') {
-    fetch_firmware_list_from_url(RCP_RELEASES_URL, parse_github_releases, render_firmware_list, flash_list_error);
-  } else {
-    fetch_firmware_list_from_url(ZB_MANIFEST_URL, function(data) {
-      return parse_zb_manifest(data, type);
-    }, render_firmware_list, flash_list_error);
-  }
-}
-
-function setCoordTransport(mode) {
-  g_coordinator_mode = mode;
-  document.getElementById('coord-btn-usb').classList.toggle('active', mode === 1);
-  document.getElementById('coord-btn-net').classList.toggle('active', mode === 2);
-}
-
-function setZigbeeTransport(mode) {
-  document.getElementById('zb-btn-usb').classList.toggle('active', mode === 1);
-  document.getElementById('zb-btn-net').classList.toggle('active', mode === 2);
-  document.getElementById('zb-transport-status').innerText = 'Switching — device will reboot...';
-  $.ajax({
-    url: '/device/mode', type: 'POST',
-    contentType: 'application/json',
-    data: JSON.stringify({mode: mode}),
-    complete: function() {
-      document.getElementById('zb-transport-status').innerText = 'Rebooting — page reloads in 15 seconds.';
-      setTimeout(function() { location.reload(); }, 15000);
-    }
-  });
-}
-
-function parse_zb_manifest(data, type) {
-  var category = data[type] || {};
-  var result = [];
-  Object.keys(category).forEach(function(device) {
-    var entries = category[device];
-    Object.keys(entries).forEach(function(filename) {
-      var entry = entries[filename];
-      result.push({
-        name: filename,
-        version: entry.ver || '—',
-        url: entry.link || ''
-      });
-    });
-  });
-  return result;
-}
-
-/* Generic fetcher — swap parser to support different release endpoints later */
-function fetch_firmware_list_from_url(url, parser, onSuccess, onError) {
-  $.ajax({
-    url: url,
-    async: true,
-    type: 'GET',
-    dataType: 'json',
-    headers: {'Accept': 'application/vnd.github.v3+json'},
-    success: function(data) { onSuccess(parser(data)); },
-    error: onError
-  });
-}
-
-function flash_list_error() {
-  document.getElementById('flash_firmware_list').innerHTML =
-      '<p style="color:red">Failed to load firmware list.</p>';
-}
-
-/* GitHub Releases API parser */
-function parse_github_releases(releases) {
-  var result = [];
-  releases.forEach(function(release) {
-    // if (release.draft || release.prerelease) return;
-    if (release.draft) return;
-    release.assets.forEach(function(asset) {
-      if (!asset.name.endsWith('.bin')) return;
-      result.push({name: asset.name, version: release.tag_name, url: asset.browser_download_url});
-    });
-  });
-  return result;
-}
-
-/* Legacy parsers — kept for future use after serving architecture change */
-function parse_releases_php(data) {
-  var entries = Array.isArray(data) ? data : (data.releases || data.items || []);
-  var result = [];
-  entries.forEach(function(entry) {
-    var url = entry.url || entry.download_url || entry.firmware_url || '';
-    var version = entry.version || entry.tag || entry.tag_name || '';
-    var name = entry.name || version || url.split('/').pop();
-    if (url) result.push({name: name, version: version, url: url});
-  });
-  return result;
-}
-
-function parse_manifest_json(data) {
-  var entries = data.files || data.firmware || (Array.isArray(data) ? data : []);
-  var result = [];
-  entries.forEach(function(entry) {
-    var url = entry.url || entry.path || entry.download_url || '';
-    var version = entry.ver || entry.version || entry.fw || '';
-    var name = entry.name || entry.fw || version || url.split('/').pop();
-    var isRelevant = /ot|rcp|openthread|thread/i.test(name + version + url);
-    if (url && isRelevant) result.push({name: name, version: version, url: url});
-  });
-  if (!result.length) {
-    entries.forEach(function(entry) {
-      var url = entry.url || entry.path || entry.download_url || '';
-      var version = entry.ver || entry.version || entry.fw || '';
-      var name = entry.name || entry.fw || version || url.split('/').pop();
-      if (url) result.push({name: name, version: version, url: url});
-    });
-  }
-  return result;
-}
-
-function render_firmware_list(firmwares) {
-  var container = document.getElementById('flash_firmware_list');
-  if (!firmwares.length) {
-    container.innerHTML = '<p style="color:orange">No firmware versions found.</p>';
-    return;
-  }
-  var html = '<table class="pure-table pure-table-horizontal" style="width:100%">'
-      + '<thead><tr><th>Name</th><th>Version</th><th></th></tr></thead><tbody>';
-  firmwares.forEach(function(fw, idx) {
-    html += '<tr><td>' + fw.name + '</td><td>' + (fw.version || '—') + '</td>'
-        + '<td><button class="btn-submit" data-fw-idx="' + idx + '">Flash</button></td></tr>';
-  });
-  html += '</tbody></table>';
-  container.innerHTML = html;
-
-  container.querySelectorAll('button[data-fw-idx]').forEach(function(btn) {
-    var idx = parseInt(btn.getAttribute('data-fw-idx'));
-    btn.addEventListener('click', function() {
-      do_flash_with_url(firmwares[idx].url);
-    });
-  });
-}
-
-function do_flash_with_url(url) {
-  document.getElementById('flash_window').style.display = 'none';
-
-  var endpoint = g_flash_type === 'esp' ? '/flash/esp' : '/flash/rcp';
-  var log = {error: 0, content: ''};
-  var title = g_flash_type === 'esp' ? 'Flash ESP' : 'Flash RCP';
-  document.getElementById('flash_status').innerText = 'Flashing...';
-  $.ajax({
-    url: endpoint,
-    async: true,
-    contentType: 'application/json',
-    type: 'POST',
-    dataType: 'json',
-    data: JSON.stringify({
-      url,
-      type: g_rcp_tab_type
-    }),
-
-    success: function(arg) {
-      if (arg.reboot) {
-        log.error = 0;
-        log.content = 'Flash scheduled. Device is rebooting...';
-      } else if (arg.status === 'flashing' || arg.status === 'started') {
-        log.error = 0;
-        log.content = arg.message || 'Flashing firmware...';
-      } else {
-        console_show_response_result(arg);
-        log.error = arg.error;
-        log.content = arg.message || 'Unknown response';
-      }
-      frontend_log_show(title, log);
-    },
-    error: function(arg) {
-      if (g_flash_type === 'rcp') {
-        // Connection drop is expected: ESP reboots immediately after scheduling the flash
-        log.error = 0;
-        log.content = 'Flash scheduled. Device is rebooting...';
-      } else {
-        log.error = 1;
-        log.content = 'Unknown error';
-        console.log(arg);
-      }
-      frontend_log_show(title, log);
-    }
-  });
-}
-
-function frontend_cancel_flash() {
-  document.getElementById('flash_window').style.display = 'none';
-}
 
 /* --------------------------------------------------------------------
                             commission

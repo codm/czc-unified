@@ -349,7 +349,7 @@ bool NetworkStateMachine::nvsWifiConfigExists()
 
 void NetworkStateMachine::onEthernetConfigUpdated()
 {
-    ESP_LOGI(TAG, "Ethernet config changed — reinitialising interface");
+    ESP_LOGI(TAG, "Ethernet config changed — reinitializing interface");
     if(ethernetAPI.getEthIsInitialised())
     {
         ethernetAPI.closeEthernet();

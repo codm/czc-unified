@@ -16,8 +16,9 @@ extern "C" {
  *        mirroring the web_network_callbacks_t pattern in network_config.h.
  */
 typedef struct {
-    /** Schedule RCP firmware update (writes NVS intent + reboots). */
-    esp_err_t (*flash_rcp)        (void *ctx, const char *url);
+    /** Schedule RCP firmware update (writes URL, target mode, pending flag to NVS, reboots).
+     *  The mode is applied to device_mode after the flash completes on the next boot. */
+    esp_err_t (*flash_rcp)        (void *ctx, const char *url, int mode);
 
     /** Start a live ESP OTA update. */
     esp_err_t (*flash_esp)        (void *ctx, const char *url);

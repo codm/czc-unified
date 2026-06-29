@@ -1117,13 +1117,7 @@ static esp_err_t esp_otbr_flash_esp_post_handler(httpd_req_t *req)
     ESP_RETURN_ON_FALSE(request, ESP_FAIL, WEB_TAG, "Failed to parse flash/esp body");
 
     cJSON *url_item = cJSON_GetObjectItem(request, "url");
-    cJSON *firmware_type = cJSON_GetObjectItem(request, "type");
     ESP_GOTO_ON_FALSE(cJSON_IsString(url_item), ESP_FAIL, flash_esp_exit, WEB_TAG, "Missing url in flash/esp request");
-
-    if (s_fw_cbs.set_mode)
-    {
-        s_fw_cbs.set_mode(s_fw_cbs.ctx, firmware_type->valueint);
-    }
 
     if (s_fw_cbs.flash_esp) 
     {
@@ -1144,7 +1138,8 @@ static esp_err_t esp_otbr_flash_rcp_post_handler(httpd_req_t *req)
     cJSON *request = httpd_request_convert2_json(req, cJSON_Object);
     ESP_RETURN_ON_FALSE(request, ESP_FAIL, WEB_TAG, "Failed to parse flash/rcp body");
 
-    cJSON *url_item = cJSON_GetObjectItem(request, "url");
+    cJSON *url_item  = cJSON_GetObjectItem(request, "url");
+    cJSON *type_item = cJSON_GetObjectItem(request, "type");
     if (!cJSON_IsString(url_item)) {
         ESP_LOGE(WEB_TAG, "Missing url in flash/rcp request");
         cJSON_Delete(request);
@@ -1153,14 +1148,15 @@ static esp_err_t esp_otbr_flash_rcp_post_handler(httpd_req_t *req)
 
     char url[256];
     strlcpy(url, url_item->valuestring, sizeof(url));
+    int mode = cJSON_IsNumber(type_item) ? (int)cJSON_GetNumberValue(type_item) : 0;
     cJSON_Delete(request);
 
-    // Send response before callback — callback triggers immediate reboot, connection would die otherwise
+    // Send response before flash_rcp — it triggers immediate reboot, connection would die otherwise
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"scheduled\",\"reboot\":true}");
 
     if (s_fw_cbs.flash_rcp) {
-        s_fw_cbs.flash_rcp(s_fw_cbs.ctx, url);
+        s_fw_cbs.flash_rcp(s_fw_cbs.ctx, url, mode);
     }
 
     return ESP_OK;

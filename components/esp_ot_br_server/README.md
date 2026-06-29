@@ -131,7 +131,7 @@ This project adds two endpoints for remote firmware updates:
 | Endpoint | Method | Purpose | Request body | Response |
 |---|---|---|---|---|
 | `/flash/esp` | `POST` | Starts an OTA update of the ESP32 itself | `{ "url": "<firmware.ota.bin>" }` | `{ "status": "flashing", "message": "..." }` |
-| `/flash/rcp` | `POST` | Schedules a firmware update of the CC2652 RCP (downloads now, flashes via BSL on next boot) | `{ "url": "<rcp_firmware.bin>" }` | `{ "status": "scheduled", "reboot": true }` |
+| `/flash/rcp` | `POST` | Schedules a firmware update of the CC2652 RCP; target mode written to NVS and applied after the flash completes on next boot | `{ "url": "<rcp_firmware.bin>", "type": <DeviceMode int> }` | `{ "status": "scheduled", "reboot": true }` |
 
 > **Testing:** A browser address bar cannot send POST requests. Use e.g. `curl`:
 > ```bash
@@ -151,9 +151,9 @@ the webserver. The two are connected through a small callback struct defined in
 ```c
 typedef struct {
     esp_err_t (*flash_esp)(void *ctx, const char *url);
-    esp_err_t (*flash_rcp)(void *ctx, const char *url);
-    void *ctx;   // opaque pointer, cast back to System_manager* in the adapters
-} system_flash_callbacks_t;
+    esp_err_t (*flash_rcp)(void *ctx, const char *url, int mode);
+    void *ctx;   // opaque pointer, cast back to AppController* in the adapters
+} web_firmware_callbacks_t;
 ```
 
 **How the struct travels through the program:**
@@ -164,10 +164,15 @@ typedef struct {
    static, file-scope variable `s_fw_cbs` — a copy is required because the original struct
    lives on the caller's stack and would be invalid once that function returns.
 3. The HTTP handlers `esp_otbr_flash_esp_post_handler` / `esp_otbr_flash_rcp_post_handler`
-   parse `{"url": ...}` from the request body and call
-   `s_fw_cbs.flash_esp(s_fw_cbs.ctx, url)` / `s_fw_cbs.flash_rcp(...)`.
+   parse `{"url": ..., "type": ...}` from the request body and call
+   `s_fw_cbs.flash_esp(s_fw_cbs.ctx, url)` / `s_fw_cbs.flash_rcp(s_fw_cbs.ctx, url, mode)`.
 4. The static adapter functions cast `ctx` back to `AppController*` and call
-   `requestEspFlash(url)` / `requestRcpFlash(url)`.
+   `requestEspFlash(url)` / `requestRcpFlash(url, mode)`.
+
+**Why `flash_rcp` carries the mode:** The target `DeviceMode` is written atomically to NVS
+alongside the URL and pending flag inside `requestRcpFlash`. This avoids calling `set_mode`
+before the flash, which would attempt a live firmware-manager restart with the wrong RCP
+firmware and could crash the HTTP server task before the response is sent.
 
 This keeps the webserver completely free of `System_manager`/C++ knowledge while still
 letting it trigger application-level actions. The same pattern can be reused for future
