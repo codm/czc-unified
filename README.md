@@ -308,9 +308,9 @@ czc_ot_firmware/
 │   │       └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
 │   │
 │   └── sse_events/               SSE event broadcast (queue + sender task)
-│       ├── include/sse_events.hpp      ← C++ namespace, post functions + enums
+│       ├── include/sse_events.hpp      ← Sse_events class + payload enums
 │       ├── include/sse_events_init.h   ← C-compatible init, included by esp_br_web.c
-│       └── src/sse_events.cpp
+│       └── src/sse_events.cpp, sse_events_init.cpp
 │
 └── partitions.csv                Flash partition table
 ```
@@ -341,15 +341,25 @@ Event-driven LED manager. Other components post `LedState` events; the manager a
 
 ##### `network`
 
-Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWifiConfig()`, `getEthernetConfig()`, `setEthernetConfig()`, `getNetworkStatus()` and `fillNetworkCallbacks()`. NVS bindings in `NvsBinding` namespace support full IP configuration (DHCP / static IP / gateway / DNS).
+Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWifiConfig()`, `getEthernetConfig()`, `setEthernetConfig()`, `getNetworkStatus()` and `fillNetworkCallbacks()`. NVS bindings in `NvsBinding` namespace support full IP configuration (DHCP / static IP / gateway / DNS). See [`components/network/README.md`](components/network/README.md) for the full state diagram and NVS layout.
 
 ##### `esp_ot_br_server`
 
 HTTP server providing the OpenThread REST API and the web GUI. Defines two C callback structs (`web_firmware_callbacks_t` in `esp_br_web.h`, `web_network_callbacks_t` in `network_config.h`) that decouple it from the C++ application layer. Calls `sse_events_init()` after the HTTP server is started to register the `/events` endpoint.
 
+**Frontend build process.** All assets under `frontend/` (`index.html`, `static/restful.js`, `static/style.css`, `wifi_configuration.html`) are compressed with **gzip level 9** at build time via [`gzip_frontend.py`](components/esp_ot_br_server/gzip_frontend.py), invoked from `CMakeLists.txt` both at configure time (so `EMBED_FILES` has the compressed `wifi_configuration.html` available) and at build time (re-runs when a `frontend/` source file changes, tracked via the `build/frontend_gz/.stamp` file). Typical compression ratio is ~20-23% of original size.
+
+| File(s) | Mechanism | Location in flash |
+|---|---|---|
+| `favicon.ico` | `EMBED_FILES` → binary symbol | App binary (`.rodata`) |
+| `wifi_configuration.html` (gzipped) | `EMBED_FILES` → binary symbol | App binary (`.rodata`) — fallback if SPIFFS is unavailable |
+| `index.html`, `restful.js`, `style.css` (gzipped) | `spiffs_create_partition_image` | SPIFFS partition (`0x3F2000`, 56 KB) |
+
+All file handlers in `esp_br_web.c` set the `Content-Encoding: gzip` response header and read with `fopen("rb")` + `httpd_resp_send_chunk` (binary-safe) rather than the string-based `httpd_resp_sendstr_chunk`, since gzip data contains null bytes that would otherwise truncate the response.
+
 ##### `sse_events`
 
-Server-Sent Events broadcast component. Maintains a vector of connected SSE clients, a FreeRTOS queue for incoming events and a sender task that drains the queue every second and sends a keepalive ping every 20 seconds. The last `device_state` event is retained and immediately replayed to newly connecting clients. Other C++ components post typed events via the `sse_events` namespace (`sse_events.hpp`); the web server registers the `/events` URI handler by calling `sse_events_init()` (`sse_events_init.h`).
+Server-Sent Events broadcast component. `Sse_events` (`sse_events.hpp`) owns the connected-client vector, a FreeRTOS queue of `SseEvent` items and a sender task that drains the queue every second and sends a `: ping\n\n` keepalive every 20 seconds. `sse_events_init(server)` (`sse_events_init.h`, called once from `esp_br_web.c` after the HTTP server starts) owns a `static Sse_events` instance and registers the `/events` URI handler. See [SSE Events](#sse-events) for the event catalog (implemented and planned).
 
 ### Flash Partition Layout
 
@@ -367,7 +377,7 @@ The firmware uses a custom partition table ([`partitions.csv`](partitions.csv)) 
 
 **OTA update flow:** The ESP-IDF OTA mechanism alternates between `ota_0` and `ota_1`. The `ota_data` partition records which slot is active. A `/flash/esp` OTA update writes the new image into the *inactive* slot and switches the `ota_data` pointer — the previously running firmware remains intact in the other slot until the next update.
 
-**SPIFFS:** Holds the gzip-compressed web GUI files (`index.html`, `restful.js`, `style.css`). The `wifi_configuration.html` is additionally embedded directly into the app binary as a fallback. See [`components/esp_ot_br_server/README.md`](components/esp_ot_br_server/README.md) for details on the build process.
+**SPIFFS:** Holds the gzip-compressed web GUI files (`index.html`, `restful.js`, `style.css`). The `wifi_configuration.html` is additionally embedded directly into the app binary as a fallback — see [`esp_ot_br_server`](#esp_ot_br_server) above for the build process.
 
 > **Note:** Switching between the OTBR and the CZC Zigbee firmware over-the-air is not yet possible because the two firmwares use different partition layouts. See [Zigbee to OTBR complications](#zigbee-to-otbr-complications) for details.
 
@@ -488,10 +498,21 @@ classDiagram
         +init() esp_err_t
     }
 
-    class SseEvents {
-        +post_flash_progress(target, phase, percent)$ esp_err_t
-        +post_flash_complete(target, success, error)$ esp_err_t
-        +post_device_state(mode, phase)$ esp_err_t
+    class Sse_events {
+        -httpd_handle_t server
+        -vector~httpd_req_t*~ s_clients
+        -SemaphoreHandle_t s_mutex
+        -QueueHandle_t event_queue
+        -TaskHandle_t send_task
+        +init() esp_err_t
+        -sse_handler(req)$ esp_err_t
+        -add_client(async_req) esp_err_t
+        -sse_task(pv_parameters)$ void
+        -send_to_all(buffer, len) esp_err_t
+    }
+    class SseEvent {
+        +char event[32]
+        +char data[256]
     }
     class WebServer {
         <<C component>>
@@ -515,7 +536,8 @@ classDiagram
     NetworkStateMachine *-- EthernetAPI
     NetworkStateMachine *-- WirelessAPI
 
-    WebServer ..> SseEvents : sse_events_init()
+    WebServer ..> Sse_events : sse_events_init()
+    Sse_events ..> SseEvent : event_queue
 ```
 
 ### Boot-Decision-Tree
@@ -586,6 +608,44 @@ esp_br_web_start("/spiffs", &fwCbs, &netCbs);
 ```
 
 HTTP handlers parse the JSON body and call the matching function pointer. `AppController` and `NetworkStateMachine` remain invisible to the web server.
+
+### SSE Events
+
+The `/events` endpoint (`sse_events` component) streams server-push events to the web
+frontend (`EventSource` in JS) as `event: <name>\ndata: <json>\n\n` frames, plus a
+`: ping\n\n` keepalive every 20 s. `Sse_events` itself is transport-only — it has no
+public "post" API yet; producers enqueue an `SseEvent{event, data}` onto its internal
+queue (`event_queue`), which the sender task drains once per second. This section is the
+catalog of event names/payloads producers and the frontend agree on, kept up to date as
+events are added — independent of whether the producer-side enqueue helper already
+exists.
+
+#### Pattern: state-change event → frontend re-fetches
+
+The general shape for new events: a component posts a small/empty "something changed"
+event, and the frontend reacts by calling the existing REST GET endpoint for the full,
+current state — the SSE event is a signal, not the payload. This avoids duplicating
+response shapes between SSE and REST, and keeps `SseEvent::data` (256 bytes) from
+becoming a bottleneck for larger payloads.
+
+| Event | Payload | Producer | Frontend reaction |
+|---|---|---|---|
+| `device_state` | `{"mode": "<normal\|setup\|flashing>", "phase": "<str, optional>"}` | `app_controller` / `firmware_manager` (boot + mode transitions) | Update device status banner |
+| `flash_progress` | `{"percent": <int>, "phase": "<downloading\|writing\|rebooting\|verifying>", "target": "<esp\|rcp>"}` | `update_manager` (`OtaUpdater` / `RcpUpdater`) during `/flash/esp`, `/flash/rcp` | Update flash progress bar |
+| `flash_complete` | `{"target": "<esp\|rcp>", "success": <bool>, "error": "<str, optional>"}` | `update_manager`, end of flash | Close flash dialog / show error |
+| `network_changed` *(planned)* | `{}` | `NetworkStateMachine`, on state transition / IP change / config write | Re-fetch `/network/status` (and `/network/wifi` or `/network/ethernet` if that config view is open) |
+
+`SseFlashTarget`, `SseFlashPhase`, and `SseDeviceMode` in
+[`sse_events.hpp`](components/sse_events/include/sse_events.hpp) already model the
+`flash_progress`/`flash_complete`/`device_state` payloads above (left over from an
+earlier iteration of this component); they currently have no enqueue path wired up.
+
+**Planned: `network_changed`.** The frontend currently polls a network status endpoint
+on an interval. The plan is to remove that polling loop and instead have
+`NetworkStateMachine` push a `network_changed` event whenever connectivity state, IP, or
+stored config changes; the frontend listens on `/events` and re-fetches the relevant
+`/network/*` endpoint only when notified. The event payload itself stays minimal (or
+empty) — the point is cutting polling traffic, not duplicating `NetworkStatus` over SSE.
 
 ### Firmware Flash
 
