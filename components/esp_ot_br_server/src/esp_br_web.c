@@ -1352,8 +1352,8 @@ static httpd_handle_t *start_esp_br_http_server(const char *base_path)
     strlcpy(s_server.data.base_path, base_path, ESP_VFS_PATH_MAX + 1);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 2;
-    config.max_resp_headers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 2;
+    config.max_uri_handlers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 3;
+    config.max_resp_headers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 3;
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.stack_size = 8 * 1024;
     s_server.port = config.server_port;
@@ -1368,6 +1368,9 @@ static httpd_handle_t *start_esp_br_http_server(const char *base_path)
     httpd_server_register_http_uri(&s_server, s_resource_handlers, sizeof(s_resource_handlers) / sizeof(httpd_uri_t));
     httpd_server_register_http_uri(&s_server, s_web_gui_handlers, sizeof(s_web_gui_handlers) / sizeof(httpd_uri_t));
     httpd_server_register_http_uri(&s_server, s_device_handlers, sizeof(s_device_handlers) / sizeof(httpd_uri_t));
+
+    sse_events_init(s_server.handle);
+
     httpd_register_uri_handler(s_server.handle, &default_uris_get);
 
     ESP_LOGI(WEB_TAG, "Web server started on port %d (all interfaces)", s_server.port);

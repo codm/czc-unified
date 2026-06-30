@@ -12,9 +12,11 @@ extern "C" {
  * @brief Initialises the SSE event queue, sender task and registers the /events URI handler.
  *
  * Must be called once after the HTTP server has been started.
+ * 
+ * Creates Static Sse_events Object
  *
  * @param[in] server  Handle of the running HTTP server.
- * @return `ESP_OK` on success, `ESP_ERR_NO_MEM` if queue or mutex creation failed.
+ * @return `ESP_OK` on success
  */
 esp_err_t sse_events_init(httpd_handle_t server);
 
