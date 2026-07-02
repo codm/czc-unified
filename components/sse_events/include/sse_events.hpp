@@ -15,7 +15,7 @@ enum class SseFlashPhase {
 
 enum class SseDeviceMode { NORMAL, SETUP, FLASHING };
 
-namespace sse_events {
+namespace Sse_events {
 
 /**
  * @brief Initializes the SSE subsystem and registers the /events URI handler.
@@ -40,13 +40,13 @@ esp_err_t init(httpd_handle_t server);
  *
  * @param[in] target   Which chip is being flashed (ESP or RCP).
  * @param[in] phase    Current phase of the flash process.
- * @param[in] percent  Progress percentage (0–100).
+ * @param[in] percent  Progress percentage (0,00–100.00) with %.2f precision.
  *
  * @return `ESP_OK` if the event was enqueued,
  *         `ESP_FAIL` if the queue is full,
  *         `ESP_ERR_INVALID_STATE` if the subsystem is not initialized.
  */
-esp_err_t post_flash_progress(SseFlashTarget target, SseFlashPhase phase, int percent);
+esp_err_t post_flash_progress(SseFlashTarget target, SseFlashPhase phase, float percent);
 
 /**
  * @brief Posts a flash-complete event to all connected SSE clients.
@@ -80,6 +80,6 @@ esp_err_t post_flash_complete(SseFlashTarget target, bool success, const char *e
  */
 esp_err_t post_device_state(SseDeviceMode mode, const char *phase = nullptr);
 
-} // namespace sse_events
+} // namespace Sse_events
 
 #endif // SSE_EVENTS_HPP_

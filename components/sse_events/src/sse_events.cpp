@@ -11,7 +11,7 @@
 #include "esp_log.h"
 #include "esp_check.h"
 
-static const char *TAG = "sse_events";
+static const char *TAG = "Sse_events";
 
 constexpr uint8_t  MAX_CLIENTS {4};
 constexpr uint8_t  QUEUE_SIZE {16};
@@ -29,6 +29,7 @@ struct SseEvent {
 static std::vector<httpd_req_t *> s_clients;
 static SemaphoreHandle_t s_mutex {nullptr};
 static QueueHandle_t s_queue {nullptr};
+static char s_cached_device_state_frame[SSE_SIZE] {0};
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -57,6 +58,26 @@ static void send_to_all(const char *buffer, size_t len)
         }
     }
     xSemaphoreGive(s_mutex);
+}
+
+/**
+ * @brief Sends an SseEvent to one specific client.
+ * 
+ * @param[in] client  Pointer to the specific client.
+ * @param[in] buffer  Pointer to the data to send.
+ * @param[in] len     Number of bytes to send.
+ * 
+ * @return `ESP_OK` on success - `ESP_FAIL` if client could not be reached
+ */
+static esp_err_t send_to_single_client(httpd_req_t* client, const char* buffer, size_t len)
+{
+    if (httpd_resp_send_chunk(client, buffer, static_cast<ssize_t>(len)) != ESP_OK)
+    {
+        ESP_LOGW(TAG, "Client could not be reached!");
+        httpd_req_async_handler_complete(client);
+        return ESP_FAIL;
+    }
+    return ESP_OK;
 }
 
 /**
@@ -109,6 +130,15 @@ static void add_client(httpd_req_t *async_req)
         ESP_LOGW(TAG, "SSE client limit reached, rejecting");
         httpd_req_async_handler_complete(async_req);
         return;
+    }
+
+    if (s_cached_device_state_frame[0] != '\0') {
+        esp_err_t ret = send_to_single_client(async_req, s_cached_device_state_frame, strlen(s_cached_device_state_frame));
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "New client unreachable, dropping connection");
+            xSemaphoreGive(s_mutex);
+            return;
+        }
     }
 
     s_clients.push_back(async_req);
@@ -174,7 +204,7 @@ static esp_err_t post(const char *event, const char *data)
 // Public namespace API
 // ---------------------------------------------------------------------------
 
-namespace sse_events {
+namespace Sse_events {
 
 esp_err_t init(httpd_handle_t server)
 {
@@ -199,7 +229,7 @@ esp_err_t init(httpd_handle_t server)
     return ESP_OK;
 }
 
-esp_err_t post_flash_progress(SseFlashTarget target, SseFlashPhase phase, int percent)
+esp_err_t post_flash_progress(SseFlashTarget target, SseFlashPhase phase, float percent)
 {
     const char *target_str = (target == SseFlashTarget::ESP) ? "esp" : "rcp";
     const char *phase_str;
@@ -212,7 +242,7 @@ esp_err_t post_flash_progress(SseFlashTarget target, SseFlashPhase phase, int pe
     }
     char data[128];
     snprintf(data, sizeof(data),
-             "{\"percent\":%d,\"phase\":\"%s\",\"target\":\"%s\"}",
+             "{\"percent\":%.2f,\"phase\":\"%s\",\"target\":\"%s\"}",
              percent, phase_str, target_str);
     return post("flash_progress", data);
 }
@@ -240,13 +270,15 @@ esp_err_t post_device_state(SseDeviceMode mode, const char *phase)
         case SseDeviceMode::FLASHING: mode_str = "flashing"; break;
         default:                      mode_str = "unknown";  break;
     }
-    char data[128];
-    if (phase) {
+    char data[SSE_DATA_SIZE];
+    if (phase)
         snprintf(data, sizeof(data), "{\"mode\":\"%s\",\"phase\":\"%s\"}", mode_str, phase);
-    } else {
+    else
         snprintf(data, sizeof(data), "{\"mode\":\"%s\"}", mode_str);
-    }
+
+    snprintf(s_cached_device_state_frame, sizeof(s_cached_device_state_frame),
+             "event: device_state\ndata: %s\n\n", data);
     return post("device_state", data);
 }
 
-} // namespace sse_events
+} // namespace Sse_events
