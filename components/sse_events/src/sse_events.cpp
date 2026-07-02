@@ -34,6 +34,16 @@ static QueueHandle_t s_queue {nullptr};
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * @brief Sends a raw buffer to all connected SSE clients, pruning dead connections.
+ *
+ *        Acquires the client mutex, iterates over s_clients and calls
+ *        `httpd_resp_send_chunk` for each entry. Clients for which the send
+ *        fails are completed via `httpd_req_async_handler_complete` and removed.
+ *
+ * @param[in] buffer  Pointer to the data to send.
+ * @param[in] len     Number of bytes to send.
+ */
 static void send_to_all(const char *buffer, size_t len)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
@@ -49,6 +59,16 @@ static void send_to_all(const char *buffer, size_t len)
     xSemaphoreGive(s_mutex);
 }
 
+/**
+ * @brief FreeRTOS task that drains the event queue and sends periodic keep-alive pings.
+ *
+ *        Wakes every second, flushes all pending `SseEvent` entries from
+ *        `s_queue` by formatting them into SSE frames and forwarding them to
+ *        `send_to_all`. Every `PING_INTERVAL_S` seconds a comment frame is sent
+ *        to prevent proxies and browsers from closing idle connections.
+ *
+ * @param[in] pvParameters  Unused task parameter (required by FreeRTOS signature).
+ */
 static void sse_task(void *)
 {
     SseEvent ev;
@@ -70,6 +90,16 @@ static void sse_task(void *)
     }
 }
 
+/**
+ * @brief Adds an asynchronous HTTP request handle to the active client list.
+ *
+ *        Acquires the client mutex and appends `async_req` to `s_clients` if
+ *        `MAX_CLIENTS` has not been reached. If the limit is exceeded the
+ *        request is immediately completed and the connection is rejected.
+ *
+ * @param[in] async_req  Asynchronous request handle obtained from
+ *                       `httpd_req_async_handler_begin`.
+ */
 static void add_client(httpd_req_t *async_req)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
@@ -87,6 +117,19 @@ static void add_client(httpd_req_t *async_req)
     xSemaphoreGive(s_mutex);
 }
 
+/**
+ * @brief ESP-IDF HTTP URI handler for the SSE endpoint ("/events").
+ *
+ *        Converts the incoming synchronous request to an asynchronous handle,
+ *        sets the required SSE response headers (Content-Type, Cache-Control,
+ *        Connection), sends an initial confirmation comment and registers the
+ *        connection via `add_client`.
+ *
+ * @param[in] req  Incoming HTTP request from the ESP-IDF HTTP server.
+ *
+ * @return `ESP_OK` on success,
+ *         `ESP_FAIL` if the async upgrade fails.
+ */
 static esp_err_t sse_handler(httpd_req_t *req)
 {
     httpd_req_t *async_req {nullptr};
@@ -103,6 +146,19 @@ static esp_err_t sse_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/**
+ * @brief Enqueues a named SSE event for delivery to all connected clients.
+ *
+ *        Copies event name and data into a `SseEvent` struct and posts it to
+ *        `s_queue` in a non-blocking fashion (timeout = 0).
+ *
+ * @param[in] event  Null-terminated event name (max `SSE_EVENT_SIZE - 1` chars).
+ * @param[in] data   Null-terminated event data (max `SSE_DATA_SIZE - 1` chars).
+ *
+ * @return `ESP_OK` if the event was enqueued,
+ *         `ESP_FAIL` if the queue is full,
+ *         `ESP_ERR_INVALID_STATE` if `s_queue` is not initialized.
+ */
 static esp_err_t post(const char *event, const char *data)
 {
     if (!s_queue) 
@@ -124,7 +180,8 @@ esp_err_t init(httpd_handle_t server)
 {
     s_mutex = xSemaphoreCreateMutex();
     s_queue = xQueueCreate(QUEUE_SIZE, sizeof(SseEvent));
-    if (!s_mutex || !s_queue) return ESP_ERR_NO_MEM;
+    if (!s_mutex || !s_queue) 
+        return ESP_ERR_NO_MEM;
 
     static const httpd_uri_t uri = {
         .uri     = "/events",
