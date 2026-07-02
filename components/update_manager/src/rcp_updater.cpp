@@ -27,7 +27,7 @@ RcpUpdater::RcpUpdater()
 
 esp_err_t RcpUpdater::flash(const char* url)
 {
-    Sse_events::post_device_state(SseDeviceMode::FLASHING, nullptr);
+    Sse_events::flash::post_device_state(SseDeviceMode::FLASHING, nullptr);
 
     ESP_RETURN_ON_ERROR(hal.init(Board::RCP_UART), TAG, "HAL init failed");
     ESP_RETURN_ON_ERROR(downloadToStaging(url),    TAG, "Download failed");
@@ -37,11 +37,11 @@ esp_err_t RcpUpdater::flash(const char* url)
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Flash failed during RCP write!");
-        Sse_events::post_flash_complete(SseFlashTarget::RCP, false, "Flash failed during write!");
+        Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, false, "Flash failed during write!");
         return ESP_FAIL;
     }
-    Sse_events::post_flash_complete(SseFlashTarget::RCP, true);
-    Sse_events::post_device_state(SseDeviceMode::NORMAL, nullptr);
+    Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, true);
+    Sse_events::flash::post_device_state(SseDeviceMode::NORMAL, nullptr);
 
     return ESP_OK;
 }
@@ -145,7 +145,7 @@ esp_err_t RcpUpdater::downloadToStaging(const char* url)
         float progressPercent {(static_cast<float>(offset) / contentLength) * 100};
         if ((progressPercent - lastLoggedPercent) > PERCENT_PRINT_DELTA) 
         {
-            Sse_events::post_flash_progress(SseFlashTarget::RCP, SseFlashPhase::DOWNLOADING, progressPercent);
+            Sse_events::flash::post_flash_progress(SseFlashTarget::RCP, SseFlashPhase::DOWNLOADING, progressPercent);
             ESP_LOGD(TAG, "RCP Flash in progress: %.2f%% Done!", progressPercent);
             lastLoggedPercent = progressPercent;
         }
@@ -216,7 +216,7 @@ esp_err_t RcpUpdater::flashFromStaging()
         float progressPercent {(static_cast<float>(offset) / totalSize) * 100};
         if ((progressPercent - lastLoggedPercent) > PERCENT_PRINT_DELTA) 
         {
-            Sse_events::post_flash_progress(SseFlashTarget::RCP, SseFlashPhase::WRITING, progressPercent);
+            Sse_events::flash::post_flash_progress(SseFlashTarget::RCP, SseFlashPhase::WRITING, progressPercent);
             ESP_LOGD(TAG, "RCP Flash in progress: %.2f%% Done!", progressPercent);
             lastLoggedPercent = progressPercent;
         }

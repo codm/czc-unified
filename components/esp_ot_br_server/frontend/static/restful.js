@@ -370,8 +370,6 @@ function pollWifiConnection(statusEl, attempts)
 /* --------------------------------------------------------------------
                    First Boot — Mode Selection
 -------------------------------------------------------------------- */
-var g_selected_mode = -1;
-var g_mode_names    = ['Thread OTBR', 'Zigbee Coordinator USB', 'Zigbee Coordinator Network', 'Zigbee Router'];
 
 const numberOfModeBoxes = 4;
 

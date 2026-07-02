@@ -229,7 +229,7 @@ esp_err_t init(httpd_handle_t server)
     return ESP_OK;
 }
 
-esp_err_t post_flash_progress(SseFlashTarget target, SseFlashPhase phase, float percent)
+esp_err_t flash::post_flash_progress(SseFlashTarget target, SseFlashPhase phase, float percent)
 {
     const char *target_str = (target == SseFlashTarget::ESP) ? "esp" : "rcp";
     const char *phase_str;
@@ -247,7 +247,7 @@ esp_err_t post_flash_progress(SseFlashTarget target, SseFlashPhase phase, float 
     return post("flash_progress", data);
 }
 
-esp_err_t post_flash_complete(SseFlashTarget target, bool success, const char *error)
+esp_err_t flash::post_flash_complete(SseFlashTarget target, bool success, const char *error)
 {
     const char *target_str = (target == SseFlashTarget::ESP) ? "esp" : "rcp";
     char data[128];
@@ -261,7 +261,7 @@ esp_err_t post_flash_complete(SseFlashTarget target, bool success, const char *e
     return post("flash_complete", data);
 }
 
-esp_err_t post_device_state(SseDeviceMode mode, const char *phase)
+esp_err_t flash::post_device_state(SseDeviceMode mode, const char *phase)
 {
     const char *mode_str;
     switch (mode) {
