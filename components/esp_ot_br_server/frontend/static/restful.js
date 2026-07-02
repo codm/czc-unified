@@ -388,14 +388,14 @@ function initFirstBootCheck() {
     {
       if (!data.device_setup) {
         document.getElementById('internet-waiting-overlay').style.display = 'flex';
-        pollInternetForModePopup();
+        pollNetworkForModePopup();
       }
     },
     error: function() { /* device not yet reachable — ignore */ }
   });
 }
 
-function pollInternetForModePopup() {
+function pollNetworkForModePopup() {
   $.ajax({
     url: '/network/status', 
     type: 'GET', 
@@ -409,12 +409,12 @@ function pollInternetForModePopup() {
       else 
       {
         document.getElementById('waiting-status-text').innerText = 'Waiting for Ethernet or WiFi connection...';
-        setTimeout(pollInternetForModePopup, 2000);
+        setTimeout(pollNetworkForModePopup, 2000);
       }
     },
     error: function() {
       document.getElementById('waiting-status-text').innerText = 'Waiting for device...';
-      setTimeout(pollInternetForModePopup, 3000);
+      setTimeout(pollNetworkForModePopup, 3000);
     }
   });
 }
@@ -518,6 +518,68 @@ function initEventSource()
     const data = JSON.parse(e.data);
     onFlashComplete(data.target, data.success, data.error);
   });
+}
+
+/* --------------------------------------------------------------------
+                     Flash Status Modal
+-------------------------------------------------------------------- */
+
+function _isFlashStatusActive() {
+  return !!document.querySelector('#flash_status .flash-status-view');
+}
+
+function showFlashModal(phase) {
+  if (!_isFlashStatusActive()) {
+    const statusEl = document.getElementById('flash_status');
+    const tpl = document.getElementById('flash-status-tpl').content.cloneNode(true);
+    statusEl.replaceChildren(tpl);
+    document.getElementById('flash_firmware_list').style.display = 'none';
+    document.getElementById('flash_rcp_tabs').style.display = 'none';
+    document.getElementById('flash_window_title').innerText = 'Flashing…';
+  }
+  document.getElementById('flash_status').querySelector('.flash-status-phase').textContent =
+    _flashPhaseLabel(phase);
+  document.getElementById('flash_window').style.display = 'flex';
+}
+
+function hideFlashModal() {
+  document.getElementById('flash_window').style.display = 'none';
+  _resetFlashStatus();
+}
+
+function updateFlashProgress(target, phase, percent) {
+  if (!_isFlashStatusActive()) showFlashModal(phase);
+  const statusEl = document.getElementById('flash_status');
+  statusEl.querySelector('.flash-status-phase').textContent = _flashPhaseLabel(phase);
+  statusEl.querySelector('.flash-progress-bar-fill').style.width = percent.toFixed(1) + '%';
+  statusEl.querySelector('.flash-progress-label').textContent = percent.toFixed(1) + '%';
+}
+
+function onFlashComplete(target, success, error) {
+  if (_isFlashStatusActive()) {
+    const statusEl = document.getElementById('flash_status');
+    statusEl.querySelector('.flash-progress-bar-fill').style.width = '100%';
+    statusEl.querySelector('.flash-progress-label').textContent = '100%';
+    statusEl.querySelector('.flash-status-phase').textContent =
+      success ? 'Flash complete!' : 'Flash failed: ' + (error || 'Unknown error');
+  }
+  if (success) setTimeout(hideFlashModal, 2000);
+}
+
+function _flashPhaseLabel(phase) {
+  switch (phase) {
+    case 'downloading': return 'Downloading firmware…';
+    case 'writing':     return 'Writing to device…';
+    case 'verifying':   return 'Verifying…';
+    case 'rebooting':   return 'Rebooting…';
+    default:            return 'Flashing…';
+  }
+}
+
+function _resetFlashStatus() {
+  document.getElementById('flash_status').replaceChildren();
+  document.getElementById('flash_firmware_list').style.display = '';
+  document.getElementById('flash_window_title').innerText = 'Select Firmware';
 }
 
 /* --------------------------------------------------------------------
@@ -821,6 +883,17 @@ function do_esp_flash_with_url(url)
   });
 }
 
+function pollUntilOnline(onReady) {
+  fetch(window.location.href, { cache: 'no-store', signal: AbortSignal.timeout(2000) })
+    .then(function(r) {
+      if (r.ok) onReady();
+      else setTimeout(function() { pollUntilOnline(onReady); }, 2000);
+    })
+    .catch(function() {
+      setTimeout(function() { pollUntilOnline(onReady); }, 2000);
+    });
+}
+
 function do_rcp_flash_with_url(url, mode) {
   document.getElementById('flash_window').style.display = 'none';
 
@@ -842,21 +915,25 @@ function do_rcp_flash_with_url(url, mode) {
       if (arg.reboot) {
         log.error = 0;
         log.content = 'Flash scheduled. Device is rebooting...';
+        frontend_log_show(title, log);
+        pollUntilOnline(function() { window.location.reload(); });
       } else if (arg.status === 'flashing' || arg.status === 'started') {
         log.error = 0;
         log.content = arg.message || 'Flashing firmware...';
+        frontend_log_show(title, log);
       } else {
         console_show_response_result(arg);
         log.error = arg.error;
         log.content = arg.message || 'Unknown response';
+        frontend_log_show(title, log);
       }
-      frontend_log_show(title, log);
     },
-    error: function(arg) {
+    error: function() {
       // Connection drop is expected: ESP reboots immediately after scheduling the flash
       log.error = 0;
       log.content = 'Flash scheduled. Device is rebooting...';
       frontend_log_show(title, log);
+      pollUntilOnline(function() { window.location.reload(); });
     }
   });
 }

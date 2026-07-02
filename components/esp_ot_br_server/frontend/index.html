@@ -657,8 +657,17 @@
               </tr>
             </template>
             <div id="flash_firmware_list"><p>Loading...</p></div>
+            <template id="flash-status-tpl">
+              <div class="flash-status-view">
+                <p class="flash-status-phase"></p>
+                <div class="flash-progress-bar-track">
+                  <div class="flash-progress-bar-fill"></div>
+                </div>
+                <p class="flash-progress-label">0%</p>
+              </div>
+            </template>
             <div id="flash_status"></div>
-            <button type="button" class="btn-dialog-cancel" onclick="frontend_cancel_flash()">Cancel</button>
+            <!-- <button type="button" class="btn-dialog-cancel" onclick="frontend_cancel_flash()">Cancel</button> -->
           </div>
         </div>
       </section>
