@@ -10,17 +10,16 @@ const MODES = [
 ];
 
 const NET_STATE = {
-  0: {label: 'Initializing', icon: 'icon-softap'},
-  1: {label: 'Ethernet',     icon: 'icon-ethernet'},
-  2: {label: 'WiFi',         icon: 'icon-wifi'},
-  3: {label: 'SoftAP',       icon: 'icon-softap'},
-  4: {label: 'ETH Retry',    icon: 'icon-ethernet'},
-  5: {label: 'WiFi Retry',   icon: 'icon-wifi'}
+  0: {label: 'Initializing', icon: 'icon-softap',   isAccessPoint: false},
+  1: {label: 'Ethernet',     icon: 'icon-ethernet', isAccessPoint: false},
+  2: {label: 'WiFi',         icon: 'icon-wifi',     isAccessPoint: false},
+  3: {label: 'SoftAP',       icon: 'icon-softap',   isAccessPoint: true},
+  4: {label: 'ETH Retry',    icon: 'icon-ethernet', isAccessPoint: false},
+  5: {label: 'WiFi Retry',   icon: 'icon-wifi',     isAccessPoint: false}
 };
 
 $(document).ready(function() {
-  initFirstBootCheck();
-  initAppState();
+  initFrontend();
   initEventSource();
 });
 
@@ -30,23 +29,61 @@ $(document).ready(function() {
  *        Displays relevant Sections and hides the rest
  *        Builds Sidebar Navigation Links
  */
-function initAppState() 
+function initFrontend()
 {
   $.ajax({
-    url: '/device/mode', type: 'GET', dataType: 'json',
-    success: 
-      function(data) 
-      { 
-        applyDeviceMode(data.mode); 
+    url: '/device/mode',
+    type: 'GET',
+    dataType: 'json',
+    success:
+      function(data)
+      {
+        applyDeviceMode(data.mode);
+        networkSetupCheck(!data.device_setup);
       },
-    error:   
-      function()     
-      { 
-        applyDeviceMode(0); 
+    error:
+      function()
+      {
+        applyDeviceMode(0);
       }
   });
-  
-  pollNetworkStatus();
+}
+
+/* Always fetches network status once to populate the header badge / overview.
+   When firstBoot is true (device_setup === false) it additionally drives the
+   SoftAP overlay + RCP mode wizard, polling only while stuck in AP mode
+   (AP-to-STA transitions drop the connection outright, so SSE can't be relied
+   on there). Live updates afterwards come from the 'network_state_change' SSE event. */
+function networkSetupCheck(firstBoot)
+{
+  $.ajax({
+    url: '/network/status',
+    type: 'GET',
+    dataType: 'json',
+    success: function(status)
+    {
+      setHeaderNetworkBadge(status);
+      setOverviewNetwork(status);
+
+      if (!firstBoot)
+        return;
+
+      if (NET_STATE[status.mode].isAccessPoint) {
+        document.getElementById('internet-waiting-overlay').style.display = 'flex';
+        setTimeout(function() { networkSetupCheck(true); }, 2000);
+      }
+      else
+      {
+        document.getElementById('internet-waiting-overlay').style.display = 'none';
+        document.getElementById('mode-selection-modal').style.display     = 'flex';
+      }
+    },
+    error: function()
+    {
+      if (firstBoot)
+        setTimeout(function() { networkSetupCheck(true); }, 3000);
+    }
+  });
 }
 
 function applyDeviceMode(mode)
@@ -147,41 +184,10 @@ function buildSidebar(currentMode) {
   });
 }
 
-const POLL_INTERVAL_MS = {
-  disconnected: 2000,
-  connected:    10000,
-};
-
-/**
- * @brief Polls ESP32 network status and updates the UI.
- *        Polls fast while disconnected, slow once connected.
- *
- * @note API returns `network_status_t`
-*/
-function pollNetworkStatus() {
-  $.ajax({
-    url: '/network/status',
-    type: 'GET',
-    dataType: 'json',
-    success: function(network_status)
-    {
-      setHeaderNetworkBadge(network_status);
-      setOverviewNetwork(network_status);
-      const interval = network_status.connected ? POLL_INTERVAL_MS.connected
-                                                : POLL_INTERVAL_MS.disconnected;
-      setTimeout(pollNetworkStatus, interval);
-    },
-    error: function()
-    {
-      setTimeout(pollNetworkStatus, POLL_INTERVAL_MS.disconnected);
-    }
-  });
-}
-
 function buildNetworkStatusString(network_status) 
 {
   let overViewText = "Unknown";
-  if (network_status.ip && network_status.connected) 
+  if (network_status.ip && !NET_STATE[network_status.mode].isAccessPoint)
   {
     networkState = NET_STATE[network_status.mode];
     overViewText = networkState.label + ' · ' +  network_status.ip;
@@ -346,7 +352,7 @@ function pollWifiConnection(statusEl, attempts)
       url: '/network/status', type: 'GET', dataType: 'json',
       success: function(status) 
       {
-        if (status.connected && status.ip) 
+        if (!NET_STATE[status.mode].isAccessPoint && status.ip)
         {
           statusEl.style.color = 'green';
           statusEl.innerText   = 'Connected! Redirecting to ' + status.ip + '…';
@@ -372,50 +378,6 @@ function pollWifiConnection(statusEl, attempts)
 -------------------------------------------------------------------- */
 
 const numberOfModeBoxes = 4;
-
-/* Checks if ESP was setup (NVS) 
-If not Web interface setup is started:
-1. Internet connection setup
-2. RCP Mode and according flash */
-function initFirstBootCheck() {
-  $.ajax({
-    url: '/device/mode', 
-    type: 'GET', 
-    dataType: 'json',
-    success: function(data) 
-    {
-      if (!data.device_setup) {
-        document.getElementById('internet-waiting-overlay').style.display = 'flex';
-        pollNetworkForModePopup();
-      }
-    },
-    error: function() { /* device not yet reachable — ignore */ }
-  });
-}
-
-function pollNetworkForModePopup() {
-  $.ajax({
-    url: '/network/status', 
-    type: 'GET', 
-    dataType: 'json',
-    success: function(status)
-    {
-      if (status.connected) {
-        document.getElementById('internet-waiting-overlay').style.display = 'none';
-        document.getElementById('mode-selection-modal').style.display     = 'flex';
-      } 
-      else 
-      {
-        document.getElementById('waiting-status-text').innerText = 'Waiting for Ethernet or WiFi connection...';
-        setTimeout(pollNetworkForModePopup, 2000);
-      }
-    },
-    error: function() {
-      document.getElementById('waiting-status-text').innerText = 'Waiting for device...';
-      setTimeout(pollNetworkForModePopup, 3000);
-    }
-  });
-}
 
 function selectMode(mode) 
 {
@@ -515,6 +477,14 @@ function initEventSource()
   es.addEventListener('flash_complete', function(e) {
     const data = JSON.parse(e.data);
     onFlashComplete(data.target, data.success, data.error);
+  });
+
+  // network
+  es.addEventListener('network_state_change', function(e) {
+    const status = JSON.parse(e.data);
+
+    setHeaderNetworkBadge(status);
+    setOverviewNetwork(status);
   });
 }
 

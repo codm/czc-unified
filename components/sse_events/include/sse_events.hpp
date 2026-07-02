@@ -88,9 +88,14 @@ namespace Sse_events
         /**
          * @brief Post a network-state-change event to all connected SSE clients
          * 
-         * @param[in]
+         * @param[in] mode  Current Network State Machine operating Mode casted to int.
+         * @param[in] ip    Current IP Address - Either Routed IP or SoftAP IP.
+         *  
+         * @return `ESP_OK` if the event was enqueued,
+         *         `ESP_FAIL` if the queue is full,
+         *         `ESP_ERR_INVALID_STATE` if the subsystem is not initialized.
          */
-
+        esp_err_t post_network_state_change(int mode, const char* ip);
     } // namespace network
 
 } // namespace Sse_events

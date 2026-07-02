@@ -84,11 +84,12 @@ public:
     bool getEthIsInitialised();
 
     /**
-     * @brief Gets current Wireless IP Address. Either routed Wifi IP oder SoftAP IP.
-     * 
-     * @return Current IP wireless Address - empty when not initalized.
+     * @brief Gets current Ethernet IP Address.
+     *
+     * @param[out] out      Buffer receiving the null-terminated IP string; empty when not initialized.
+     * @param[in]  out_size Size of `out` in bytes.
      */
-    const char* getCurrentIp();
+    void getCurrentIp(char* out, size_t out_size);
 
     /** @return True if the Ethernet interface currently holds a valid IP address. */
     bool getEthIsConnected();

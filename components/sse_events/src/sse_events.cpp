@@ -240,7 +240,7 @@ esp_err_t flash::post_flash_progress(SseFlashTarget target, SseFlashPhase phase,
         case SseFlashPhase::VERIFYING:   phase_str = "verifying";   break;
         default:                         phase_str = "unknown";     break;
     }
-    char data[128];
+    char data[SSE_DATA_SIZE];
     snprintf(data, sizeof(data),
              "{\"percent\":%.2f,\"phase\":\"%s\",\"target\":\"%s\"}",
              percent, phase_str, target_str);
@@ -250,7 +250,7 @@ esp_err_t flash::post_flash_progress(SseFlashTarget target, SseFlashPhase phase,
 esp_err_t flash::post_flash_complete(SseFlashTarget target, bool success, const char *error)
 {
     const char *target_str = (target == SseFlashTarget::ESP) ? "esp" : "rcp";
-    char data[128];
+    char data[SSE_DATA_SIZE];
     if (success) {
         snprintf(data, sizeof(data), "{\"target\":\"%s\",\"success\":true}", target_str);
     } else {
@@ -264,11 +264,12 @@ esp_err_t flash::post_flash_complete(SseFlashTarget target, bool success, const 
 esp_err_t flash::post_device_state(SseDeviceMode mode, const char *phase)
 {
     const char *mode_str;
-    switch (mode) {
-        case SseDeviceMode::NORMAL:   mode_str = "normal";   break;
-        case SseDeviceMode::SETUP:    mode_str = "setup";    break;
-        case SseDeviceMode::FLASHING: mode_str = "flashing"; break;
-        default:                      mode_str = "unknown";  break;
+    switch (mode) 
+    {
+    case SseDeviceMode::NORMAL:   mode_str = "normal";   break;
+    case SseDeviceMode::SETUP:    mode_str = "setup";    break;
+    case SseDeviceMode::FLASHING: mode_str = "flashing"; break;
+    default:                      mode_str = "unknown";  break;
     }
     char data[SSE_DATA_SIZE];
     if (phase)
@@ -280,5 +281,13 @@ esp_err_t flash::post_device_state(SseDeviceMode mode, const char *phase)
              "event: device_state\ndata: %s\n\n", data);
     return post("device_state", data);
 }
+esp_err_t network::post_network_state_change(int mode, const char *ip)
+{
+    char data[SSE_DATA_SIZE];
+    snprintf(data, sizeof(data), "{\"mode\":%d,\"ip\":\"%s\"}", mode, ip);
+
+    return post("network_state_change", data);
+}
 
 } // namespace Sse_events
+

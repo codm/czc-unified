@@ -38,7 +38,6 @@ typedef struct {
 typedef struct {
     int  mode;       /**< Active NetworkState cast to int */
     char ip[16];     /**< Current IPv4 address — empty string if not connected */
-    bool connected;  /**< true if a routed interface is up */
 } network_status_t;
 
 /**

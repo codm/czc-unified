@@ -112,19 +112,18 @@ bool EthernetAPI::getEthIsInitialised()
     return this->ethIsInitialised;
 }
 
-const char *EthernetAPI::getCurrentIp()
+void EthernetAPI::getCurrentIp(char* out, size_t out_size)
 {
-    char ip_addr[16] {'\n'};
-    
+    out[0] = '\0';
+
     if (ethNetif)
     {
         esp_netif_ip_info_t info{};
         if (esp_netif_get_ip_info(ethNetif, &info) == ESP_OK)
         {
-            snprintf(ip_addr, sizeof(ip_addr), IPSTR, IP2STR(&info.ip));
+            snprintf(out, out_size, IPSTR, IP2STR(&info.ip));
         }
     }
-    return ip_addr;
 }
 
 bool EthernetAPI::getEthIsConnected()

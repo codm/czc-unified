@@ -303,24 +303,30 @@ esp_err_t NetworkStateMachine::initNewState(NetworkState newState)
     switch (currentState) 
     {
     case NetworkState::ACCESS_POINT:
-        if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF) 
+        if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF)
         {
             wirelessAPI.initAccessPoint();
-            Sse_events::network::post_network_state_change(static_cast<int>(currentState), wirelessAPI.getCurrentIp());
+            char ip[16];
+            wirelessAPI.getCurrentIp(ip, sizeof(ip));
+            Sse_events::network::post_network_state_change(static_cast<int>(currentState), ip);
         }
         break;
     case NetworkState::WIFI:
         if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF)
         {
             wirelessAPI.initWifi();
-            Sse_events::network::post_network_state_change(static_cast<int>(currentState), wirelessAPI.getCurrentIp());
-        } 
-            
+            char ip[16];
+            wirelessAPI.getCurrentIp(ip, sizeof(ip));
+            Sse_events::network::post_network_state_change(static_cast<int>(currentState), ip);
+        }
+
         break;
     case NetworkState::ETHERNET:
-        if(this->ethernetAPI.getEthIsInitialised() == false) 
+        if(this->ethernetAPI.getEthIsInitialised() == false)
         {
-            Sse_events::network::post_network_state_change(static_cast<int>(currentState), ethernetAPI.getCurrentIp());
+            char ip[16];
+            ethernetAPI.getCurrentIp(ip, sizeof(ip));
+            Sse_events::network::post_network_state_change(static_cast<int>(currentState), ip);
             ethernetAPI.initEthernet();
         }
         break;
@@ -431,23 +437,14 @@ esp_err_t NetworkStateMachine::setEthernetConfig(const ethernet_config_data_t* c
 esp_err_t NetworkStateMachine::getNetworkStatus(network_status_t* out)
 {
     memset(out, 0, sizeof(*out));
-    out->mode      = static_cast<int>(currentState);
-    out->connected = (currentState == NetworkState::ETHERNET ||
-                      currentState == NetworkState::WIFI);
+    out->mode = static_cast<int>(currentState);
 
-    if (out->connected)
-    {
-        const char* ifkey{currentState == NetworkState::ETHERNET ? "ETH_DEF" : "WIFI_STA_DEF"};
-        esp_netif_t* netif{esp_netif_get_handle_from_ifkey(ifkey)};
-        if (netif)
-        {
-            esp_netif_ip_info_t info{};
-            if (esp_netif_get_ip_info(netif, &info) == ESP_OK)
-            {
-                snprintf(out->ip, sizeof(out->ip), IPSTR, IP2STR(&info.ip));
-            }
-        }
-    }
+    if (currentState == NetworkState::ACCESS_POINT || currentState == NetworkState::WIFI)
+        wirelessAPI.getCurrentIp(out->ip, sizeof(out->ip));
+
+    else if (currentState == NetworkState::ETHERNET)
+        ethernetAPI.getCurrentIp(out->ip, sizeof(out->ip));
+
     return ESP_OK;
 }
 

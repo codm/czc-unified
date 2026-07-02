@@ -1308,7 +1308,6 @@ static esp_err_t network_status_get_handler(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "mode",      status.mode);
     cJSON_AddStringToObject(root, "ip",        status.ip);
-    cJSON_AddBoolToObject  (root, "connected", status.connected);
     esp_err_t ret = httpd_send_packet(req, root);
     cJSON_Delete(root);
     return ret;
