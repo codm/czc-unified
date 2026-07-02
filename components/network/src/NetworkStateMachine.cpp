@@ -1,5 +1,6 @@
 #include "NetworkStateMachine.h"
 #include "mdns.h"
+#include "sse_events.hpp"
 
 const char* NetworkStateMachine::TAG = "network-state-machine";
 ESP_EVENT_DEFINE_BASE(NETWORK_EVENT);
@@ -142,7 +143,6 @@ void NetworkStateMachine::onEthernetGotIp(ip_event_got_ip_t* event_data)
     setState(NetworkState::ETHERNET);
     ESP_LOGI(TAG, "Ethernet got IP -> changed mode to Ethernet");
     esp_netif_create_ip6_linklocal(event_data->esp_netif);
-    EthernetAPI::logNetDiag(event_data->esp_netif);
 }
 
 void NetworkStateMachine::onWifiLostIp()
@@ -267,31 +267,32 @@ void NetworkStateMachine::setState(NetworkState newState)
 
 esp_err_t NetworkStateMachine::exitState(NetworkState currentState, NetworkState newState)
 {
-    switch (currentState) {
-        case NetworkState::ACCESS_POINT:
-            if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::ACCESSPOINT) wirelessAPI.closeAccessPoint();
-            break;
-        case NetworkState::WIFI:
-            // keep WiFi running when transitioning to retry – we want to keep reconnecting
-            if(newState != NetworkState::RETRY_WIFI) {
-                if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::WIFI) wirelessAPI.closeWifi();
-            }
-            break;
-        case NetworkState::ETHERNET:
-            if(this->ethernetAPI.getEthIsInitialised()) ethernetAPI.closeEthernet();
-            break;
-        case NetworkState::RETRY_ETHERNET:
-            if(esp_timer_is_active(retryTimer)) esp_timer_stop(retryTimer);
-            break;
-        case NetworkState::RETRY_WIFI:
-            if(esp_timer_is_active(retryTimer)) esp_timer_stop(retryTimer);
-            // keep WiFi running when reconnect succeeded, close it for all other transitions
-            if(newState != NetworkState::WIFI) {
-                if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::WIFI) wirelessAPI.closeWifi();
-            }
-            break;
-        default:
-            break;
+    switch (currentState) 
+    {
+    case NetworkState::ACCESS_POINT:
+        if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::ACCESSPOINT) wirelessAPI.closeAccessPoint();
+        break;
+    case NetworkState::WIFI:
+        // keep WiFi running when transitioning to retry – we want to keep reconnecting
+        if(newState != NetworkState::RETRY_WIFI) {
+            if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::WIFI) wirelessAPI.closeWifi();
+        }
+        break;
+    case NetworkState::ETHERNET:
+        if(this->ethernetAPI.getEthIsInitialised()) ethernetAPI.closeEthernet();
+        break;
+    case NetworkState::RETRY_ETHERNET:
+        if(esp_timer_is_active(retryTimer)) esp_timer_stop(retryTimer);
+        break;
+    case NetworkState::RETRY_WIFI:
+        if(esp_timer_is_active(retryTimer)) esp_timer_stop(retryTimer);
+        // keep WiFi running when reconnect succeeded, close it for all other transitions
+        if(newState != NetworkState::WIFI) {
+            if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::WIFI) wirelessAPI.closeWifi();
+        }
+        break;
+    default:
+        break;
     }
 
     return ESP_OK;
@@ -299,30 +300,42 @@ esp_err_t NetworkStateMachine::exitState(NetworkState currentState, NetworkState
 
 esp_err_t NetworkStateMachine::initNewState(NetworkState newState)
 {
-    switch (currentState) {
-        case NetworkState::ACCESS_POINT:
-            if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF) {
-                wirelessAPI.initAccessPoint();
-            }
-            break;
-        case NetworkState::WIFI:
-            if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF) wirelessAPI.initWifi();
-            break;
-        case NetworkState::ETHERNET:
-            if(this->ethernetAPI.getEthIsInitialised() == false) ethernetAPI.initEthernet();
-            break;
-        case NetworkState::RETRY_ETHERNET:
-            ESP_ERROR_CHECK(esp_timer_start_once(retryTimer, 10000000)); // 10s deadline
-            break;
-        case NetworkState::RETRY_WIFI:
-            if(wirelessAPI.getActiveWirelessMode() != ActiveWirelessMode::WIFI)
-                wirelessAPI.initWifi();   // first connect — STA_START triggers esp_wifi_connect()
-            else
-                wirelessAPI.reconnect(); // already up, just reconnect
-            ESP_ERROR_CHECK(esp_timer_start_once(retryTimer, 10000000)); // 10s deadline
-            break;
-        default:
-            break;
+    switch (currentState) 
+    {
+    case NetworkState::ACCESS_POINT:
+        if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF) 
+        {
+            wirelessAPI.initAccessPoint();
+            Sse_events::network::post_network_state_change(static_cast<int>(currentState), wirelessAPI.getCurrentIp());
+        }
+        break;
+    case NetworkState::WIFI:
+        if(this->wirelessAPI.getActiveWirelessMode() == ActiveWirelessMode::OFF)
+        {
+            wirelessAPI.initWifi();
+            Sse_events::network::post_network_state_change(static_cast<int>(currentState), wirelessAPI.getCurrentIp());
+        } 
+            
+        break;
+    case NetworkState::ETHERNET:
+        if(this->ethernetAPI.getEthIsInitialised() == false) 
+        {
+            Sse_events::network::post_network_state_change(static_cast<int>(currentState), ethernetAPI.getCurrentIp());
+            ethernetAPI.initEthernet();
+        }
+        break;
+    case NetworkState::RETRY_ETHERNET:
+        ESP_ERROR_CHECK(esp_timer_start_once(retryTimer, 10000000)); // 10s deadline
+        break;
+    case NetworkState::RETRY_WIFI:
+        if(wirelessAPI.getActiveWirelessMode() != ActiveWirelessMode::WIFI)
+            wirelessAPI.initWifi();   // first connect — STA_START triggers esp_wifi_connect()
+        else
+            wirelessAPI.reconnect(); // already up, just reconnect
+        ESP_ERROR_CHECK(esp_timer_start_once(retryTimer, 10000000)); // 10s deadline
+        break;
+    default:
+        break;
     }
 
     return ESP_OK;

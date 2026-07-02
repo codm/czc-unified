@@ -39,7 +39,7 @@ classDiagram
         +getEthIsInitialised() bool
         +getEthIsConnected() bool
         +setEthIsConnected(bool)
-        +logNetDiag(esp_netif_t*)$
+        +getCurrentIp() const char*
     }
 
     class WirelessAPI {
@@ -61,6 +61,7 @@ classDiagram
         +getActiveWirelessMode() ActiveWirelessMode
         +setWifiIsConnected(bool)
         +getWifiIsConnected() bool
+        +getCurrentIp() const char*
     }
 
     class NvsBinding {

@@ -126,6 +126,13 @@ public:
     const char* getPassword();
 
     /**
+     * @brief Gets current Wireless IP Address. Either routed Wifi IP oder SoftAP IP.
+     * 
+     * @return Current IP wireless Address - empty when not initalized.
+     */
+    const char* getCurrentIp();
+
+    /**
      * @brief Update the internal connected state.
      *
      * @note Called by the state machine in response to `IP_EVENT_STA_GOT_IP` /

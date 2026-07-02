@@ -71,14 +71,6 @@ public:
     void closeEthernet();
 
     /**
-     * @brief Log IP address, gateway, netmask and DNS servers for the given netif,
-     *        and perform a test DNS resolution of github.com.
-     *
-     * @param[in] netif The netif whose IP configuration should be logged
-     */
-    static void logNetDiag(esp_netif_t *netif);
-
-    /**
      * @brief Update the internal connected state.
      *
      * @note Called by the state machine in response to `IP_EVENT_ETH_GOT_IP` /
@@ -90,6 +82,13 @@ public:
 
     /** @return True if the Ethernet driver is currently initialised. */
     bool getEthIsInitialised();
+
+    /**
+     * @brief Gets current Wireless IP Address. Either routed Wifi IP oder SoftAP IP.
+     * 
+     * @return Current IP wireless Address - empty when not initalized.
+     */
+    const char* getCurrentIp();
 
     /** @return True if the Ethernet interface currently holds a valid IP address. */
     bool getEthIsConnected();
