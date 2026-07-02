@@ -545,7 +545,7 @@ flowchart TD
     boot --> net --> web --> q1
     q1 -->|yes| flash --> setmode["Write device_mode\nfrom rcp_upd_tgt"] --> q3
     q1 -->|no| q2
-    q2 -->|"no (first boot)"| wait -->|"POST /device/mode"| rb --> boot
+    q2 -->|"no (first boot)"| wait -->|"POST /flash/rcp\n(newest fw url + mode)"| rb --> boot
     q2 -->|yes| q3 --> start --> run
 ```
 
