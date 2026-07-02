@@ -308,7 +308,7 @@ czc_ot_firmware/
 │   │       └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
 │   │
 │   └── sse_events/               SSE event broadcast (queue + sender task)
-│       ├── include/sse_events.hpp      ← Sse_events class + payload enums
+│       ├── include/sse_events.hpp      ← namespace sse_events: init() + post_* API + enums
 │       ├── include/sse_events_init.h   ← C-compatible init, included by esp_br_web.c
 │       └── src/sse_events.cpp, sse_events_init.cpp
 │
@@ -359,7 +359,7 @@ All file handlers in `esp_br_web.c` set the `Content-Encoding: gzip` response he
 
 ##### `sse_events`
 
-Server-Sent Events broadcast component. `Sse_events` (`sse_events.hpp`) owns the connected-client vector, a FreeRTOS queue of `SseEvent` items and a sender task that drains the queue every second and sends a `: ping\n\n` keepalive every 20 seconds. `sse_events_init(server)` (`sse_events_init.h`, called once from `esp_br_web.c` after the HTTP server starts) owns a `static Sse_events` instance and registers the `/events` URI handler. See [SSE Events](#sse-events) for the event catalog (implemented and planned).
+Server-Sent Events broadcast component. Implemented as `namespace sse_events` (`sse_events.hpp`) backed by static file-scope state (`s_clients`, `s_mutex`, `s_queue`). `sse_events_init(server)` (`sse_events_init.h`, called once from `esp_br_web.c`) delegates to `sse_events::init()`, which creates the queue and mutex, registers the `/events` URI handler and spawns the sender task. The sender task drains the queue every second and sends a `: ping\n\n` keepalive every 20 seconds. Producers call `sse_events::post_flash_progress()`, `post_flash_complete()` or `post_device_state()` directly. See [SSE Events](#sse-events) for the event catalog.
 
 ### Flash Partition Layout
 
@@ -498,21 +498,12 @@ classDiagram
         +init() esp_err_t
     }
 
-    class Sse_events {
-        -httpd_handle_t server
-        -vector~httpd_req_t*~ s_clients
-        -SemaphoreHandle_t s_mutex
-        -QueueHandle_t event_queue
-        -TaskHandle_t send_task
-        +init() esp_err_t
-        -sse_handler(req)$ esp_err_t
-        -add_client(async_req) esp_err_t
-        -sse_task(pv_parameters)$ void
-        -send_to_all(buffer, len) esp_err_t
-    }
-    class SseEvent {
-        +char event[32]
-        +char data[256]
+    class sse_events {
+        <<namespace>>
+        +init(server) esp_err_t
+        +post_flash_progress(target, phase, percent) esp_err_t
+        +post_flash_complete(target, success, error) esp_err_t
+        +post_device_state(mode, phase) esp_err_t
     }
     class WebServer {
         <<C component>>
@@ -536,8 +527,7 @@ classDiagram
     NetworkStateMachine *-- EthernetAPI
     NetworkStateMachine *-- WirelessAPI
 
-    WebServer ..> Sse_events : sse_events_init()
-    Sse_events ..> SseEvent : event_queue
+    WebServer ..> sse_events : sse_events_init()
 ```
 
 ### Boot-Decision-Tree
@@ -613,19 +603,19 @@ HTTP handlers parse the JSON body and call the matching function pointer. `AppCo
 
 The `/events` endpoint (`sse_events` component) streams server-push events to the web
 frontend (`EventSource` in JS) as `event: <name>\ndata: <json>\n\n` frames, plus a
-`: ping\n\n` keepalive every 20 s. `Sse_events` itself is transport-only — it has no
-public "post" API yet; producers enqueue an `SseEvent{event, data}` onto its internal
-queue (`event_queue`), which the sender task drains once per second. This section is the
-catalog of event names/payloads producers and the frontend agree on, kept up to date as
-events are added — independent of whether the producer-side enqueue helper already
-exists.
+`: ping\n\n` keepalive every 20 s. Producers call the typed helpers in `namespace
+sse_events` (`sse_events.hpp`) — `post_flash_progress()`, `post_flash_complete()`,
+`post_device_state()` — which serialise the payload and push an `SseEvent` onto the
+internal static queue. The sender task drains that queue once per second and forwards
+each event to all connected clients. This section is the catalog of event
+names/payloads; keep it up to date as new events are added.
 
 #### Pattern: state-change event → frontend re-fetches
 
 The general shape for new events: a component posts a small/empty "something changed"
 event, and the frontend reacts by calling the existing REST GET endpoint for the full,
 current state — the SSE event is a signal, not the payload. This avoids duplicating
-response shapes between SSE and REST, and keeps `SseEvent::data` (256 bytes) from
+response shapes between SSE and REST, and keeps the event data field (256 bytes) from
 becoming a bottleneck for larger payloads.
 
 | Event | Payload | Producer | Frontend reaction |
@@ -636,9 +626,9 @@ becoming a bottleneck for larger payloads.
 | `network_changed` *(planned)* | `{}` | `NetworkStateMachine`, on state transition / IP change / config write | Re-fetch `/network/status` (and `/network/wifi` or `/network/ethernet` if that config view is open) |
 
 `SseFlashTarget`, `SseFlashPhase`, and `SseDeviceMode` in
-[`sse_events.hpp`](components/sse_events/include/sse_events.hpp) already model the
-`flash_progress`/`flash_complete`/`device_state` payloads above (left over from an
-earlier iteration of this component); they currently have no enqueue path wired up.
+[`sse_events.hpp`](components/sse_events/include/sse_events.hpp) are the typed
+parameters of the `post_*` helpers — they map directly to the string values in the
+payloads above.
 
 **Planned: `network_changed`.** The frontend currently polls a network status endpoint
 on an interval. The plan is to remove that polling loop and instead have

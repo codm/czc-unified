@@ -3,7 +3,7 @@ idf_component_register(
     INCLUDE_DIRS include
     REQUIRES
         esp_http_server
-        freertos
     PRIV_REQUIRES
+        freertos
         log
 )
