@@ -12,7 +12,6 @@ as possible (firmware version, steps to reproduce, log output).
 Known Issues:
 
 - Firmware downloads over a Wi-Fi connection are not yet possible (LAN only).
-- Long startup time on first boot, caused by the RCP firmware download and flash process.
 - No visual feedback on the CZC during setup or firmware updates.
 - The web interface is unreachable if the RCP is not configured correctly.
 - SoftAP network scanning does not work.
@@ -65,10 +64,9 @@ build when capturing logs.
 
 3. Open [ESP Webflasher](https://docs.codm.de/en/zigbee/coordinator/web-installer/). Pick the appropriate OTBR Firmware Version.
 
-4. Wait a few minuets until your ESP32 has successfully setup and started its Webinterface (This can take a while depending on your internet connection speed). 
-> NOTE: After the first flash the ESP automatically Downloads the RCP firmware and flashes the Radio-Co-Processor. This does not yet have a visual output besides Debug prints.
+4. Open [http://codm-otbr.local](http://codm-otbr.local). On first boot, the web interface will ask how you want to use your CZC. Select the desired mode — the matching RCP firmware is automatically downloaded and flashed. Progress is shown in the web interface.
 
-5. Open [http://codm-otbr.local](http://codm-otbr.local) and you can start setting up a Thread Network!
+5. Once setup is complete you can start using your CZC!
 
 ## WiFi / SoftAP
 
@@ -182,7 +180,7 @@ Multi-mode coordinator firmware for the cod.m CZC device (ESP32 + CC2652P7 RCP).
 | **Zigbee Coordinator Network** | TCP proxy to a network host application |
 | **Zigbee Router** | Standalone Zigbee router — RCP operates independently |
 
-The active mode is selected on first boot via the web interface. Changing mode re-flashes the RCP with the matching firmware and reboots the device.
+The active mode is selected on first boot via the web interface. Changing mode triggers a reboot, after which the RCP is flashed with the matching firmware and the protocol stack is started.
 
 The OpenThread stack is based on the [Espressif OTBR example](https://github.com/espressif/esp-idf/blob/master/examples/openthread/ot_br/README.md).
 
@@ -379,8 +377,6 @@ The firmware uses a custom partition table ([`partitions.csv`](partitions.csv)) 
 
 **SPIFFS:** Holds the gzip-compressed web GUI files (`index.html`, `restful.js`, `style.css`). The `wifi_configuration.html` is additionally embedded directly into the app binary as a fallback — see [`esp_ot_br_server`](#esp_ot_br_server) above for the build process.
 
-> **Note:** Switching between the OTBR and the CZC Zigbee firmware over-the-air is not yet possible because the two firmwares use different partition layouts. See [Zigbee to OTBR complications](#zigbee-to-otbr-complications) for details.
-
 ---
 
 ### Class Diagram
@@ -539,17 +535,17 @@ flowchart TD
     web["Web server start"]
     q1{"rcp_flash_pending?"}
     flash["update_manager.flashRcp(url)"]
-    rb["esp_restart()"]
     q2{"device_setup?"}
     wait["Block — wait for mode\nselection via web UI"]
+    rb["esp_restart()"]
     q3["Read DeviceMode from NVS"]
     start["firmware_manager.start(mode)"]
     run(["Normal operation"])
 
     boot --> net --> web --> q1
-    q1 -->|yes| flash --> setmode["Write device_mode\nfrom rcp_upd_tgt"] --> rb --> boot
+    q1 -->|yes| flash --> setmode["Write device_mode\nfrom rcp_upd_tgt"] --> q3
     q1 -->|no| q2
-    q2 -->|"no (first boot)"| wait -->|"POST /device/mode"| rb
+    q2 -->|"no (first boot)"| wait -->|"POST /device/mode"| rb --> boot
     q2 -->|yes| q3 --> start --> run
 ```
 
@@ -654,9 +650,10 @@ Both flash endpoints reboot the device once the update has been applied.
   RCP firmware. On the next boot, `AppController::run()` detects the pending flag and:
   1. Calls `UpdateManager::flashRcp()`, which downloads the TI binary over HTTPS into the
      OTA staging partition (`RcpUpdater`) and drives the CC2652 BSL over UART (`RcpHal`):
-     sync → bank-erase → download → send-data → reset.
-  2. On success, reads `rcp_upd_tgt` and writes it to `device_mode`, then reboots.
-  3. On the second reboot, the device starts the protocol stack matching the new mode.
+     sync → bank-erase → download → send-data → reset. The UART driver is released via
+     `RcpHal::close()` after the flash.
+  2. On success, reads `rcp_upd_tgt`, writes it to `device_mode`, and starts the protocol
+     stack directly — **no second reboot required**.
 
   The OTA partition is used as raw byte storage for the RCP binary — the ESP's own
   firmware is never modified during an RCP flash.
@@ -672,24 +669,3 @@ It is also important to keep in mind that GitHub enforces a rate limit of 60 req
 hour. Because of this it is better to host the firmware yourself rather than downloading
 and fetching it from GitHub every time.
 
-### Zigbee to OTBR complications
-
-This OTBR firmware and the existing CZC Zigbee firmware currently use **different
-partition tables**:
-
-- OTBR (this repository): [`partitions.csv`](partitions.csv) — OTA-enabled, with
-  `ota_0`/`ota_1` app partitions, an `ota_data` partition for the boot selector, and a
-  `spiffs` partition for the web GUI.
-- Zigbee firmware: partition table is generated automatically by PlatformIO at build
-  time — no static `.csv` is checked into its repository.
-
-An OTA flash via `/flash/esp` only overwrites the application binary inside the
-*currently running* app partition — it does **not** rewrite the partition table itself.
-Because the two firmwares currently use incompatible partition layouts, a device cannot
-simply be switched between the Zigbee and the OTBR firmware over the air; doing so still
-requires a full reflash via USB/serial.
-
-For a remote, OTA-only switch between the Zigbee and OTBR firmware (without USB/laptop),
-both firmwares need to share the same partition table. **This is work in progress** —
-the Zigbee firmware's partition table will be adapted to match `partitions.csv` in a
-future release.
