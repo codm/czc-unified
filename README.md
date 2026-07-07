@@ -353,7 +353,7 @@ HTTP server providing the OpenThread REST API and the web GUI. Defines two C cal
 | File(s) | Mechanism | Location in flash |
 |---|---|---|
 | `favicon.ico` | `EMBED_FILES` → binary symbol | App binary (`.rodata`) |
-| `index.html`, `wifi_config.html`, `restful.js`, `style.css` (gzipped) | `spiffs_create_partition_image` | SPIFFS partition (`0x3F2000`, 56 KB) |
+| `index.html`, `wifi_config.html`, `restful.js`, `style.css` (gzipped) | `spiffs_create_partition_image` | SPIFFS partition (`0x3D2000`, 184 KB) |
 
 All file handlers in `esp_br_web.c` set the `Content-Encoding: gzip` response header and read with `fopen("rb")` + `httpd_resp_send_chunk` (binary-safe) rather than the string-based `httpd_resp_sendstr_chunk`, since gzip data contains null bytes that would otherwise truncate the response.
 
@@ -369,10 +369,10 @@ The firmware uses a custom partition table ([`partitions.csv`](partitions.csv)) 
 |---|---|---|---|---|---|
 | `nvs` | NVS data | `0x009000` | `0x6000` | 24,576 | 24 KB |
 | `phy_init` | PHY calibration | `0x00F000` | `0x1000` | 4,096 | 4 KB |
-| `ota_0` | App (OTA slot 0) | `0x010000` | `0x1F0000` | 2,031,616 | ~1.94 MB |
-| `ota_1` | App (OTA slot 1) | `0x200000` | `0x1F0000` | 2,031,616 | ~1.94 MB |
-| `ota_data` | OTA boot selector | `0x3F0000` | `0x2000` | 8,192 | 8 KB |
-| `spiffs` | Web GUI assets | `0x3F2000` | `0xE000` | 57,344 | 56 KB |
+| `ota_0` | App (OTA slot 0) | `0x010000` | `0x1E0000` | 1,966,080 | 1920 KB (~1.88 MB) |
+| `ota_1` | App (OTA slot 1) | `0x1F0000` | `0x1E0000` | 1,966,080 | 1920 KB (~1.88 MB) |
+| `ota_data` | OTA boot selector | `0x3D0000` | `0x2000` | 8,192 | 8 KB |
+| `spiffs` | Web GUI assets | `0x3D2000` | `0x2E000` | 188,416 | 184 KB |
 | **Total** | | | | **4,194,304** | **4 MB** |
 
 **OTA update flow:** The ESP-IDF OTA mechanism alternates between `ota_0` and `ota_1`. The `ota_data` partition records which slot is active. A `/flash/esp` OTA update writes the new image into the *inactive* slot and switches the `ota_data` pointer — the previously running firmware remains intact in the other slot until the next update.
