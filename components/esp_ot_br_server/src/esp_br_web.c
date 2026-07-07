@@ -980,7 +980,7 @@ static esp_err_t httpd_resp_send_spiffs_file(httpd_req_t *req, char *path)
  * @brief Provide the index.html for GUI,when the client login the web.
  *
  * @param[in] req is the request from client's browser.
- * @param[in] path points to the index.hrml path.
+ * @param[in] path points to the index.html path.
  * @return
  *      -   ESP_OK : On success
  *      -   ESP_ERR_INVALID_ARG : Null request pointer
@@ -990,6 +990,19 @@ static esp_err_t httpd_resp_send_spiffs_file(httpd_req_t *req, char *path)
  */
 static esp_err_t index_html_get_handler(httpd_req_t *req, char *path)
 {
+    // Check if in accessmode - If yes serve wifi config html
+    network_status_t status = {0};
+    if (s_net_cbs.get_network_status) 
+        s_net_cbs.get_network_status(s_net_cbs.ctx, &status);
+    
+    const uint8_t accesspoint_mode = 3;
+    if (status.mode == accesspoint_mode) {
+        char wifi_config_path[FILEPATH_MAX_SIZE];
+        strcpy(wifi_config_path, ((http_server_data_t *)req->user_ctx)->base_path);
+        strcat(wifi_config_path, "/wifi_config.html");
+        path = wifi_config_path;
+    }
+
     ESP_RETURN_ON_ERROR(httpd_resp_set_hdr(req, "Content-Encoding", "gzip"), WEB_TAG, "Failed to set gzip header");
     ESP_RETURN_ON_ERROR(httpd_resp_send_spiffs_file(req, path), WEB_TAG, "Failed to send index html file");
     ESP_RETURN_ON_ERROR(httpd_resp_send_chunk(req, NULL, 0), WEB_TAG, "Failed to send http string chunk");

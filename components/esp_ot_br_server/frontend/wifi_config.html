@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>CZC — WiFi Setup</title>
+  <link href="/favicon.ico" rel="icon">
+  <link href="/static/style.css" type="text/css" rel="stylesheet">
+  <style>
+    /* Layout for this standalone setup page — not part of the shared stylesheet,
+       since the rest of the app has no use for a single-column captive-portal layout. */
+    body {
+      background: #f4f5f6;
+    }
+
+    .standalone-main {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 40px 20px 60px;
+    }
+
+    .standalone-footer {
+      text-align: center;
+      padding: 10px 20px 30px;
+      font-size: 12px;
+      color: #999;
+    }
+
+    .info-banner {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      padding: 18px 20px;
+      margin: 24px 0;
+      background: rgba(var(--color-primary-rgb), 0.08);
+      border: 1px solid rgba(var(--color-primary-rgb), 0.3);
+      border-radius: 8px;
+    }
+
+    .info-banner-icon {
+      width: 26px;
+      height: 26px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      stroke: var(--color-primary);
+      fill: none;
+    }
+
+    .info-banner-title {
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 4px;
+      color: var(--color-primary-dark);
+    }
+
+    .info-banner p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--color-secondary);
+    }
+
+    .scan-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0 0 10px;
+    }
+
+    .scan-status {
+      font-size: 13px;
+      color: #999;
+    }
+
+    .scan-results {
+      display: none;
+      border: 1px solid rgba(var(--color-secondary-rgb), 0.2);
+      border-radius: 6px;
+      margin-bottom: 16px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .scan-results-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(var(--color-secondary-rgb), 0.12);
+    }
+
+    .scan-results-row:last-child {
+      border-bottom: 0;
+    }
+
+    .scan-results-row:hover {
+      background: rgba(var(--color-primary-rgb), 0.08);
+    }
+
+    .scan-ssid {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .scan-meta {
+      font-size: 12px;
+      color: #999;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+
+<body>
+  <svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <symbol id="icon-softap" viewBox="0 0 16 16"><circle cx="8" cy="8.5" r="1.3" fill="currentColor" stroke="none"/><path d="M5.2 5.8a4 4 0 0 1 5.6 0M2.5 3a7.5 7.5 0 0 1 11 0M8 9.8v4.5M5.5 14.3h5"/></symbol>
+      <symbol id="icon-ethernet" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="7" rx="1"/><path d="M5 3V1.5M8 3V1M11 3V1.5M5 6.5h2M9 6.5h2M8 10v4.5M5 14.5h6"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="app-header">
+    <div class="app-brand">
+      <svg class="app-logo" viewBox="0 0 3999 924" xmlns="http://www.w3.org/2000/svg">
+        <g transform="matrix(16.6667,0,0,16.6667,-2954,-6577)">
+          <g transform="matrix(1,0,0,1,0,15.89)">
+            <path d="M198.156,394C193.027,394 189.486,394.687 187.536,396.059C185.586,397.432 184.129,400.334 183.169,404.769L179.642,421.234C179.213,423.188 179,424.797 179,426.063C179,428.384 179.801,429.954 181.405,430.773C183.007,431.591 185.866,432 189.981,432L212.825,432L214.747,422.93L196.073,422.93C194.362,422.93 193.268,422.85 192.787,422.69C191.558,422.426 190.943,421.682 190.943,420.463C190.943,419.827 191.085,418.873 191.371,417.6L193.34,408.408C193.82,405.966 194.541,404.426 195.504,403.788C196.198,403.311 197.802,403.07 200.314,403.07L218.995,403.07L221,394L198.156,394Z" style="fill:rgb(237,102,27);fill-rule:nonzero;"/>
+          </g>
+          <g transform="matrix(1,0,0,1,0,15.89)">
+            <path d="M240.511,394C235.339,394 231.747,394.687 229.735,396.058C227.721,397.431 226.224,400.334 225.245,404.768L221.653,421.234C221.217,423.188 221,424.797 221,426.063C221,428.384 221.816,429.954 223.449,430.773C225.081,431.591 227.993,432 232.184,432L249.408,432C254.632,432 258.251,431.313 260.265,429.941C262.278,428.569 263.775,425.667 264.755,421.234L268.346,404.767C268.781,402.815 269,401.204 269,399.936C269,397.615 268.169,396.045 266.51,395.227C264.849,394.409 261.925,394 257.736,394L240.511,394ZM235.046,422.69C233.79,422.426 233.163,421.682 233.163,420.463C233.163,419.827 233.308,418.873 233.6,417.6L235.604,408.408C236.148,405.965 236.883,404.425 237.809,403.788C238.57,403.31 240.205,403.071 242.709,403.071L251.61,403.071C253.352,403.071 254.496,403.151 255.04,403.31C256.291,403.63 256.918,404.373 256.918,405.544C256.918,406.182 256.792,407.14 256.54,408.416L254.535,417.606C253.988,420.043 253.293,421.539 252.446,422.094C251.601,422.652 249.895,422.93 247.33,422.93L238.403,422.93C236.656,422.93 235.537,422.85 235.046,422.69Z" style="fill:rgb(237,102,27);fill-rule:nonzero;"/>
+          </g>
+          <g transform="matrix(1,0,0,1,0,1.89)">
+            <path d="M308.14,394L299.133,436.687L286.113,436.687C284.408,436.687 283.289,436.605 282.757,436.442C281.533,436.17 280.921,435.406 280.921,434.154C280.921,433.501 281.063,432.521 281.348,431.214L283.312,421.777C283.846,419.268 284.566,417.687 285.472,417.032C286.219,416.542 287.847,416.296 290.355,416.296L299.56,416.296L301.559,406.982L288.2,406.982C283.08,406.982 279.533,407.688 277.56,409.097C275.586,410.506 274.119,413.486 273.16,418.04L269.64,434.945C269.212,436.951 269,438.604 269,439.903C269,442.288 269.852,443.915 271.56,444.781C273.106,445.594 275.932,446 280.04,446L308.201,446L319,394L308.14,394Z" style="fill:rgb(237,102,27);fill-rule:nonzero;"/>
+          </g>
+          <g transform="matrix(-0.211831,0.977306,0.977306,0.211831,327.813,440.568)">
+            <path d="M1.26,-9.017L9.446,-9.017L7.286,0.95L-0.914,1.017L1.26,-9.017Z" style="fill:rgb(237,102,27);fill-rule:nonzero;"/>
+          </g>
+          <g transform="matrix(1,0,0,1,408.526,409.89)">
+            <path d="M0,38L-10.852,38L-5.728,14.416C-5.479,13.086 -5.354,12.129 -5.354,11.543C-5.354,10.32 -5.969,9.576 -7.193,9.31C-7.727,9.151 -8.846,9.07 -10.55,9.07L-19.261,9.07C-21.712,9.07 -23.31,9.31 -24.056,9.788C-25.015,10.426 -25.734,11.966 -26.214,14.41L-31.328,38L-42.185,38L-36.678,12.273C-36.519,10.725 -37.024,9.764 -38.196,9.391C-38.677,9.178 -39.875,9.07 -41.794,9.07L-50.51,9.07C-53.014,9.07 -54.641,9.31 -55.386,9.788C-56.293,10.426 -57.011,11.966 -57.544,14.41L-62.604,38L-73.526,38L-65.376,0L-54.454,0L-55.464,4.752C-53.387,1.585 -50.643,0 -47.232,0L-35.804,0C-32.128,0 -29.518,0.291 -27.972,0.871C-26.214,1.558 -25.201,2.773 -24.935,4.515C-24.243,2.931 -22.83,1.743 -20.698,0.95C-19.153,0.316 -17.582,0 -15.983,0L-4.555,0C-0.453,0 2.411,0.409 4.035,1.227C5.66,2.045 6.474,3.616 6.474,5.937C6.474,7.204 6.261,8.815 5.834,10.767L0,38" style="fill:white;"/>
+          </g>
+        </g>
+      </svg>
+      <span class="app-title">CZC Thread Border Router</span>
+    </div>
+    <div class="badge-group">
+      <span class="status-badge">
+        <svg class="badge-icon icon-stroke"><use href="#icon-softap"/></svg>
+        <span class="badge-label">Setup Access Point</span>
+      </span>
+    </div>
+  </header>
+
+  <main class="standalone-main">
+    <div class="section-header" style="text-align:left; padding-bottom:0;">
+      <h2 style="font-size:32px; margin-bottom:8px;">WiFi <span class="text-primary">Setup</span></h2>
+      <p style="margin:0;">
+        You're connected to the CZC's temporary setup network. Enter your WiFi
+        credentials below to connect the device to your own network.
+      </p>
+    </div>
+
+    <div class="info-banner">
+      <svg class="info-banner-icon"><use href="#icon-ethernet"/></svg>
+      <div>
+        <p class="info-banner-title">Ethernet is recommended</p>
+        <p>
+          For the most stable connection, connect the device with an Ethernet cable instead.
+          As soon as a cable is plugged in, this setup access point closes automatically and
+          the device switches to the wired connection — this page will then disconnect.
+        </p>
+      </div>
+    </div>
+
+    <div class="content-panel" style="margin-top:0;">
+      <div class="form-card" style="margin-top:0;">
+        <form id="wifi-form" onsubmit="return false">
+
+          <div class="scan-row">
+            <p class="field-label" style="margin:0;">WiFi Network</p>
+            <button type="button" class="btn-sm" id="scan-btn" onclick="scanWifiNetworks()">SCAN</button>
+          </div>
+          <p class="scan-status" id="scan-status"></p>
+          <div class="scan-results" id="scan-results"></div>
+
+          <p class="field-label">SSID</p>
+          <input name="ssid" type="text" class="form-control" placeholder="Network name" autocomplete="off">
+
+          <p class="field-label">Password</p>
+          <input name="password" type="password" class="form-control" placeholder="Password" autocomplete="off">
+
+          <div class="check-row">
+            <input type="checkbox" id="wifi-dhcp" name="dhcp" checked onchange="toggleStaticIpFields()">
+            <label for="wifi-dhcp" class="checkbox-label">Use DHCP</label>
+          </div>
+          <div id="wifi-static-fields">
+            <p class="field-label">Static IP</p>
+            <input name="static_ip" type="text" class="form-control" placeholder="192.168.1.100" disabled>
+            <p class="field-label">Gateway</p>
+            <input name="gateway" type="text" class="form-control" placeholder="192.168.1.1" disabled>
+            <p class="field-label">DNS Primary</p>
+            <input name="dns_primary" type="text" class="form-control" placeholder="8.8.8.8" disabled>
+            <p class="field-label">DNS Secondary</p>
+            <input name="dns_secondary" type="text" class="form-control" placeholder="8.8.4.4" disabled>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-primary" onclick="saveWifiConfig()">Connect</button>
+            <span id="wifi-save-status" class="save-status"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <div class="standalone-footer">&copy; 2026 cod.m GmbH</div>
+
+  <script>
+    function toggleStaticIpFields() {
+      var dhcp = document.getElementById('wifi-dhcp').checked;
+      document.querySelectorAll('#wifi-static-fields input').forEach(function (input) {
+        input.disabled = dhcp;
+      });
+    }
+
+    function loadWifiConfig() {
+      fetch('/network/wifi')
+        .then(function (r) { return r.json(); })
+        .then(function (cfg) {
+          var form = document.getElementById('wifi-form');
+          form.querySelector('[name=ssid]').value            = cfg.ssid || '';
+          form.querySelector('[name=static_ip]').value        = cfg.static_ip     || '';
+          form.querySelector('[name=gateway]').value          = cfg.gateway       || '';
+          form.querySelector('[name=dns_primary]').value      = cfg.dns_primary   || '';
+          form.querySelector('[name=dns_secondary]').value    = cfg.dns_secondary || '';
+          document.getElementById('wifi-dhcp').checked = cfg.dhcp !== false;
+          toggleStaticIpFields();
+        })
+        .catch(function () { /* no config saved yet — keep the form empty */ });
+    }
+
+    function renderScanResults(networks) {
+      var container = document.getElementById('scan-results');
+      container.innerHTML = '';
+
+      if (!networks.length) {
+        document.getElementById('scan-status').innerText = 'No networks found.';
+        return;
+      }
+
+      networks
+        .slice()
+        .sort(function (a, b) { return (b.rssi || -100) - (a.rssi || -100); })
+        .forEach(function (net) {
+          var row = document.createElement('div');
+          row.className = 'scan-results-row';
+
+          var ssid = document.createElement('span');
+          ssid.className = 'scan-ssid';
+          ssid.textContent = net.ssid || '(hidden network)';
+
+          var meta = document.createElement('span');
+          meta.className = 'scan-meta';
+          meta.textContent = (net.auth && net.auth !== 'OPEN' ? '🔒 ' : '') + (net.rssi || '—') + ' dBm';
+
+          row.appendChild(ssid);
+          row.appendChild(meta);
+          row.addEventListener('click', function () {
+            document.querySelector('#wifi-form [name=ssid]').value = net.ssid || '';
+            document.querySelector('#wifi-form [name=password]').focus();
+            container.style.display = 'none';
+          });
+          container.appendChild(row);
+        });
+
+      container.style.display = 'block';
+    }
+
+    function scanWifiNetworks() {
+      var btn     = document.getElementById('scan-btn');
+      var status  = document.getElementById('scan-status');
+      var results = document.getElementById('scan-results');
+
+      btn.disabled = true;
+      results.style.display = 'none';
+      status.innerText = 'Scanning…';
+
+      fetch('/network/wifi/scan')
+        .then(function (r) {
+          if (!r.ok) throw new Error('scan failed');
+          return r.json();
+        })
+        .then(function (data) {
+          status.innerText = '';
+          renderScanResults(data.result || []);
+        })
+        .catch(function () {
+          status.innerText = 'Scan unavailable — enter the network name manually below.';
+        })
+        .then(function () { btn.disabled = false; });
+    }
+
+    function saveWifiConfig() {
+      var form     = document.getElementById('wifi-form');
+      var statusEl = document.getElementById('wifi-save-status');
+      var ssid     = form.querySelector('[name=ssid]').value;
+
+      if (!ssid) {
+        statusEl.style.display = 'inline';
+        statusEl.style.color   = 'red';
+        statusEl.innerText     = 'Please enter or select a network name.';
+        return;
+      }
+
+      var payload = {
+        ssid:          ssid,
+        password:      form.querySelector('[name=password]').value,
+        dhcp:          document.getElementById('wifi-dhcp').checked,
+        static_ip:     form.querySelector('[name=static_ip]').value,
+        gateway:       form.querySelector('[name=gateway]').value,
+        dns_primary:   form.querySelector('[name=dns_primary]').value,
+        dns_secondary: form.querySelector('[name=dns_secondary]').value
+      };
+
+      statusEl.style.display = 'inline';
+      statusEl.style.color   = 'gray';
+      statusEl.innerText     = 'Saving…';
+
+      /* A dropped connection right after saving is expected: if the credentials are
+         correct, the device joins the new network and shuts down this access point,
+         disconnecting this browser along with it — so success and network failure
+         are handled the same way here. The device itself serves the normal UI again
+         once it is back online (see index_html_get_handler in esp_br_web.c). */
+      fetch('/network/wifi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+        .then(function () { onWifiSaved(statusEl, ssid); })
+        .catch(function () { onWifiSaved(statusEl, ssid); });
+    }
+
+    function onWifiSaved(statusEl, ssid) {
+      statusEl.style.color = 'green';
+      statusEl.innerText   =
+        'Saved. The device is attempting to connect to "' + ssid + '". ' +
+        'If this access point disappears, reconnect your device to your normal WiFi ' +
+        'network and look for the CZC there.';
+    }
+
+    loadWifiConfig();
+  </script>
+</body>
+</html>
