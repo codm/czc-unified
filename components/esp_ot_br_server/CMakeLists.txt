@@ -13,8 +13,6 @@ if(NOT GZIP_RESULT EQUAL 0)
     message(FATAL_ERROR "Failed to gzip frontend files")
 endif()
 
-set(requires spiffs freertos openthread esp_http_server)
-
 # For IDF < 6.0, use IDF's built-in json component; for IDF >= 6.0 use managed cJSON component through idf_component.yml
 if("${IDF_VERSION_MAJOR}" VERSION_LESS "6")
     list(APPEND requires json)
@@ -24,8 +22,18 @@ idf_component_register(
     SRC_DIRS src
     INCLUDE_DIRS include
     PRIV_INCLUDE_DIRS private_include
-    REQUIRES network firmware_manager
-    PRIV_REQUIRES ${requires}
+    REQUIRES 
+        esp_http_server
+        json
+    
+    PRIV_REQUIRES 
+        sse_events
+        network 
+        firmware_manager
+        spiffs
+        freertos
+        openthread
+
     EMBED_FILES "favicon.ico"
 )
 

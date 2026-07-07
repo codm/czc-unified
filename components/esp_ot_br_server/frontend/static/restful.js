@@ -10,17 +10,17 @@ const MODES = [
 ];
 
 const NET_STATE = {
-  0: {label: 'Initializing', icon: 'icon-softap'},
-  1: {label: 'Ethernet',     icon: 'icon-ethernet'},
-  2: {label: 'WiFi',         icon: 'icon-wifi'},
-  3: {label: 'SoftAP',       icon: 'icon-softap'},
-  4: {label: 'ETH Retry',    icon: 'icon-ethernet'},
-  5: {label: 'WiFi Retry',   icon: 'icon-wifi'}
+  0: {label: 'Initializing', icon: 'icon-softap',   isAccessPoint: false},
+  1: {label: 'Ethernet',     icon: 'icon-ethernet', isAccessPoint: false},
+  2: {label: 'WiFi',         icon: 'icon-wifi',     isAccessPoint: false},
+  3: {label: 'SoftAP',       icon: 'icon-softap',   isAccessPoint: true},
+  4: {label: 'ETH Retry',    icon: 'icon-ethernet', isAccessPoint: false},
+  5: {label: 'WiFi Retry',   icon: 'icon-wifi',     isAccessPoint: false}
 };
 
 $(document).ready(function() {
-  initFirstBootCheck();
-  initAppState();
+  initFrontend();
+  initEventSource();
 });
 
 /**
@@ -29,23 +29,48 @@ $(document).ready(function() {
  *        Displays relevant Sections and hides the rest
  *        Builds Sidebar Navigation Links
  */
-function initAppState() 
+function initFrontend()
 {
   $.ajax({
-    url: '/device/mode', type: 'GET', dataType: 'json',
-    success: 
-      function(data) 
-      { 
-        applyDeviceMode(data.mode); 
+    url: '/device/mode',
+    type: 'GET',
+    dataType: 'json',
+    success:
+      function(data)
+      {
+        applyDeviceMode(data.mode);
+        networkSetupCheck();
+
+        if (!data.device_setup)
+          document.getElementById('mode-selection-modal').style.display = 'flex';
       },
-    error:   
-      function()     
-      { 
-        applyDeviceMode(0); 
+    error:
+      function()
+      {
+        applyDeviceMode(0);
       }
   });
-  
-  pollNetworkStatus();
+}
+
+/* Always fetches network status once to populate the header badge / overview.
+  Live updates afterwards come from the 'network_state_change' SSE event. */
+function networkSetupCheck()
+{
+  $.ajax({
+    url: '/network/status',
+    type: 'GET',
+    dataType: 'json',
+    success: function(status)
+    {
+      setHeaderNetworkBadge(status);
+      setOverviewNetwork(status);
+    },
+    error: function()
+    {
+      if (firstBoot)
+        setTimeout(function() { networkSetupCheck(true); }, 3000);
+    }
+  });
 }
 
 function applyDeviceMode(mode)
@@ -146,41 +171,10 @@ function buildSidebar(currentMode) {
   });
 }
 
-const POLL_INTERVAL_MS = {
-  disconnected: 2000,
-  connected:    10000,
-};
-
-/**
- * @brief Polls ESP32 network status and updates the UI.
- *        Polls fast while disconnected, slow once connected.
- *
- * @note API returns `network_status_t`
-*/
-function pollNetworkStatus() {
-  $.ajax({
-    url: '/network/status',
-    type: 'GET',
-    dataType: 'json',
-    success: function(network_status)
-    {
-      setHeaderNetworkBadge(network_status);
-      setOverviewNetwork(network_status);
-      const interval = network_status.connected ? POLL_INTERVAL_MS.connected
-                                                : POLL_INTERVAL_MS.disconnected;
-      setTimeout(pollNetworkStatus, interval);
-    },
-    error: function()
-    {
-      setTimeout(pollNetworkStatus, POLL_INTERVAL_MS.disconnected);
-    }
-  });
-}
-
 function buildNetworkStatusString(network_status) 
 {
   let overViewText = "Unknown";
-  if (network_status.ip && network_status.connected) 
+  if (network_status.ip && !NET_STATE[network_status.mode].isAccessPoint)
   {
     networkState = NET_STATE[network_status.mode];
     overViewText = networkState.label + ' · ' +  network_status.ip;
@@ -345,7 +339,7 @@ function pollWifiConnection(statusEl, attempts)
       url: '/network/status', type: 'GET', dataType: 'json',
       success: function(status) 
       {
-        if (status.connected && status.ip) 
+        if (!NET_STATE[status.mode].isAccessPoint && status.ip)
         {
           statusEl.style.color = 'green';
           statusEl.innerText   = 'Connected! Redirecting to ' + status.ip + '…';
@@ -369,54 +363,8 @@ function pollWifiConnection(statusEl, attempts)
 /* --------------------------------------------------------------------
                    First Boot — Mode Selection
 -------------------------------------------------------------------- */
-var g_selected_mode = -1;
-var g_mode_names    = ['Thread OTBR', 'Zigbee Coordinator USB', 'Zigbee Coordinator Network', 'Zigbee Router'];
 
 const numberOfModeBoxes = 4;
-
-/* Checks if ESP was setup (NVS) 
-If not Web interface setup is started:
-1. Internet connection setup
-2. RCP Mode and according flash */
-function initFirstBootCheck() {
-  $.ajax({
-    url: '/device/mode', 
-    type: 'GET', 
-    dataType: 'json',
-    success: function(data) 
-    {
-      if (!data.device_setup) {
-        document.getElementById('internet-waiting-overlay').style.display = 'flex';
-        pollInternetForModePopup();
-      }
-    },
-    error: function() { /* device not yet reachable — ignore */ }
-  });
-}
-
-function pollInternetForModePopup() {
-  $.ajax({
-    url: '/network/status', 
-    type: 'GET', 
-    dataType: 'json',
-    success: function(status)
-    {
-      if (status.connected) {
-        document.getElementById('internet-waiting-overlay').style.display = 'none';
-        document.getElementById('mode-selection-modal').style.display     = 'flex';
-      } 
-      else 
-      {
-        document.getElementById('waiting-status-text').innerText = 'Waiting for Ethernet or WiFi connection...';
-        setTimeout(pollInternetForModePopup, 2000);
-      }
-    },
-    error: function() {
-      document.getElementById('waiting-status-text').innerText = 'Waiting for device...';
-      setTimeout(pollInternetForModePopup, 3000);
-    }
-  });
-}
 
 function selectMode(mode) 
 {
@@ -489,6 +437,106 @@ function confirmModeSelection() {
       }
     });
   });
+}
+
+/* --------------------------------------------------------------------
+               Server-Sent Events
+-------------------------------------------------------------------- */
+
+function initEventSource()
+{
+  const es = new EventSource('/events');
+
+  es.addEventListener('device_state', function(e) {
+    const data = JSON.parse(e.data);
+    if (data.mode === 'flashing') {
+      showFlashModal(data.phase);
+    } else {
+      hideFlashModal();
+    }
+  });
+
+  es.addEventListener('flash_progress', function(e) {
+    const data = JSON.parse(e.data);
+    updateFlashProgress(data.target, data.phase, data.percent);
+  });
+
+  es.addEventListener('flash_complete', function(e) {
+    const data = JSON.parse(e.data);
+    onFlashComplete(data.target, data.success, data.error);
+  });
+
+  // network
+  es.addEventListener('network_state_change', function(e) {
+    const status = JSON.parse(e.data);
+
+    setHeaderNetworkBadge(status);
+    setOverviewNetwork(status);
+  });
+}
+
+/* --------------------------------------------------------------------
+                     Flash Status Modal
+-------------------------------------------------------------------- */
+
+function _isFlashStatusActive() {
+  return !!document.querySelector('#flash_status .flash-status-view');
+}
+
+function showFlashModal(phase) {
+  if (!_isFlashStatusActive()) {
+    const statusEl = document.getElementById('flash_status');
+    const tpl = document.getElementById('flash-status-tpl').content.cloneNode(true);
+    statusEl.replaceChildren(tpl);
+    document.getElementById('flash_firmware_list').style.display = 'none';
+    document.getElementById('flash_rcp_tabs').style.display = 'none';
+    document.getElementById('flash_window_close').style.display = 'none';
+    document.getElementById('flash_window_title').innerText = 'Flashing…';
+  }
+  document.getElementById('flash_status').querySelector('.flash-status-phase').textContent =
+    _flashPhaseLabel(phase);
+  document.getElementById('flash_window').style.display = 'flex';
+}
+
+function hideFlashModal() {
+  document.getElementById('flash_window').style.display = 'none';
+  _resetFlashStatus();
+}
+
+function updateFlashProgress(target, phase, percent) {
+  if (!_isFlashStatusActive()) showFlashModal(phase);
+  const statusEl = document.getElementById('flash_status');
+  statusEl.querySelector('.flash-status-phase').textContent = _flashPhaseLabel(phase);
+  statusEl.querySelector('.flash-progress-bar-fill').style.width = percent.toFixed(1) + '%';
+  statusEl.querySelector('.flash-progress-label').textContent = percent.toFixed(1) + '%';
+}
+
+function onFlashComplete(target, success, error) {
+  if (_isFlashStatusActive()) {
+    const statusEl = document.getElementById('flash_status');
+    statusEl.querySelector('.flash-progress-bar-fill').style.width = '100%';
+    statusEl.querySelector('.flash-progress-label').textContent = '100%';
+    statusEl.querySelector('.flash-status-phase').textContent =
+      success ? 'Flash complete!' : 'Flash failed: ' + (error || 'Unknown error');
+  }
+  if (success) setTimeout(hideFlashModal, 2000);
+}
+
+function _flashPhaseLabel(phase) {
+  switch (phase) {
+    case 'downloading': return 'Downloading firmware…';
+    case 'writing':     return 'Writing to device…';
+    case 'verifying':   return 'Verifying…';
+    case 'rebooting':   return 'Rebooting…';
+    default:            return 'Flashing…';
+  }
+}
+
+function _resetFlashStatus() {
+  document.getElementById('flash_status').replaceChildren();
+  document.getElementById('flash_firmware_list').style.display = '';
+  document.getElementById('flash_window_close').style.display = '';
+  document.getElementById('flash_window_title').innerText = 'Select Firmware';
 }
 
 /* --------------------------------------------------------------------
@@ -792,6 +840,17 @@ function do_esp_flash_with_url(url)
   });
 }
 
+function pollUntilOnline(onReady) {
+  fetch(window.location.href, { cache: 'no-store', signal: AbortSignal.timeout(2000) })
+    .then(function(r) {
+      if (r.ok) onReady();
+      else setTimeout(function() { pollUntilOnline(onReady); }, 2000);
+    })
+    .catch(function() {
+      setTimeout(function() { pollUntilOnline(onReady); }, 2000);
+    });
+}
+
 function do_rcp_flash_with_url(url, mode) {
   document.getElementById('flash_window').style.display = 'none';
 
@@ -813,21 +872,25 @@ function do_rcp_flash_with_url(url, mode) {
       if (arg.reboot) {
         log.error = 0;
         log.content = 'Flash scheduled. Device is rebooting...';
+        frontend_log_show(title, log);
+        pollUntilOnline(function() { window.location.reload(); });
       } else if (arg.status === 'flashing' || arg.status === 'started') {
         log.error = 0;
         log.content = arg.message || 'Flashing firmware...';
+        frontend_log_show(title, log);
       } else {
         console_show_response_result(arg);
         log.error = arg.error;
         log.content = arg.message || 'Unknown response';
+        frontend_log_show(title, log);
       }
-      frontend_log_show(title, log);
     },
-    error: function(arg) {
+    error: function() {
       // Connection drop is expected: ESP reboots immediately after scheduling the flash
       log.error = 0;
       log.content = 'Flash scheduled. Device is rebooting...';
       frontend_log_show(title, log);
+      pollUntilOnline(function() { window.location.reload(); });
     }
   });
 }

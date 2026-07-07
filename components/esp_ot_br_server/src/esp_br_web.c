@@ -34,6 +34,8 @@
 #include "openthread/thread.h"
 #include "openthread/thread_ftd.h"
 
+#include "sse_events_init.h"
+
 #define MAX_FILE_SIZE (200 * 1024) // 200 KB
 #define MAX_FILE_SIZE_STR "200KB"
 #define SCRATCH_BUFSIZE 1024 /* Scratch buffer size */
@@ -978,7 +980,7 @@ static esp_err_t httpd_resp_send_spiffs_file(httpd_req_t *req, char *path)
  * @brief Provide the index.html for GUI,when the client login the web.
  *
  * @param[in] req is the request from client's browser.
- * @param[in] path points to the index.hrml path.
+ * @param[in] path points to the index.html path.
  * @return
  *      -   ESP_OK : On success
  *      -   ESP_ERR_INVALID_ARG : Null request pointer
@@ -988,6 +990,19 @@ static esp_err_t httpd_resp_send_spiffs_file(httpd_req_t *req, char *path)
  */
 static esp_err_t index_html_get_handler(httpd_req_t *req, char *path)
 {
+    // Check if in accessmode - If yes serve wifi config html
+    network_status_t status = {0};
+    if (s_net_cbs.get_network_status) 
+        s_net_cbs.get_network_status(s_net_cbs.ctx, &status);
+    
+    const uint8_t accesspoint_mode = 3;
+    if (status.mode == accesspoint_mode) {
+        char wifi_config_path[FILEPATH_MAX_SIZE];
+        strcpy(wifi_config_path, ((http_server_data_t *)req->user_ctx)->base_path);
+        strcat(wifi_config_path, "/wifi_config.html");
+        path = wifi_config_path;
+    }
+
     ESP_RETURN_ON_ERROR(httpd_resp_set_hdr(req, "Content-Encoding", "gzip"), WEB_TAG, "Failed to set gzip header");
     ESP_RETURN_ON_ERROR(httpd_resp_send_spiffs_file(req, path), WEB_TAG, "Failed to send index html file");
     ESP_RETURN_ON_ERROR(httpd_resp_send_chunk(req, NULL, 0), WEB_TAG, "Failed to send http string chunk");
@@ -1306,7 +1321,6 @@ static esp_err_t network_status_get_handler(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "mode",      status.mode);
     cJSON_AddStringToObject(root, "ip",        status.ip);
-    cJSON_AddBoolToObject  (root, "connected", status.connected);
     esp_err_t ret = httpd_send_packet(req, root);
     cJSON_Delete(root);
     return ret;
@@ -1350,8 +1364,8 @@ static httpd_handle_t *start_esp_br_http_server(const char *base_path)
     strlcpy(s_server.data.base_path, base_path, ESP_VFS_PATH_MAX + 1);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 2;
-    config.max_resp_headers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 2;
+    config.max_uri_handlers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 3;
+    config.max_resp_headers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 3;
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.stack_size = 8 * 1024;
     s_server.port = config.server_port;
@@ -1366,6 +1380,9 @@ static httpd_handle_t *start_esp_br_http_server(const char *base_path)
     httpd_server_register_http_uri(&s_server, s_resource_handlers, sizeof(s_resource_handlers) / sizeof(httpd_uri_t));
     httpd_server_register_http_uri(&s_server, s_web_gui_handlers, sizeof(s_web_gui_handlers) / sizeof(httpd_uri_t));
     httpd_server_register_http_uri(&s_server, s_device_handlers, sizeof(s_device_handlers) / sizeof(httpd_uri_t));
+
+    sse_events_init(s_server.handle);
+
     httpd_register_uri_handler(s_server.handle, &default_uris_get);
 
     ESP_LOGI(WEB_TAG, "Web server started on port %d (all interfaces)", s_server.port);

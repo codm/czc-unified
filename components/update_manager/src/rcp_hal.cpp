@@ -193,6 +193,11 @@ esp_err_t RcpHal::reset()
     return ESP_OK;
 }
 
+esp_err_t RcpHal::close()
+{
+    return uart_driver_delete(uartPort);
+}
+
 // --- private ---
 
 esp_err_t RcpHal::sendPacket(const uint8_t* cmdAndData, size_t length)

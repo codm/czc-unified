@@ -11,4 +11,5 @@ idf_component_register(
     PRIV_REQUIRES
         nvs_flash
         espressif__mdns
+        sse_events
 )

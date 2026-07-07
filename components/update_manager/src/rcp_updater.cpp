@@ -10,12 +10,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "sse_events.hpp"
+
 static const char* TAG = "RcpUpdater";
 
-constexpr size_t   HTTP_BUF_SIZE    {1024};
-constexpr size_t   BSL_BLOCK_SIZE   {252};
+constexpr size_t HTTP_BUF_SIZE {1024};
+constexpr size_t BSL_BLOCK_SIZE {252};
 constexpr uint32_t FLASH_START_ADDR {0x00000000};
-constexpr int      MAX_REDIRECTS    {5};
+constexpr int MAX_REDIRECTS {5};
+
+constexpr float PERCENT_PRINT_DELTA {0.5};
 
 RcpUpdater::RcpUpdater()
     : hal{}, downloadedSize{0}
@@ -23,9 +27,22 @@ RcpUpdater::RcpUpdater()
 
 esp_err_t RcpUpdater::flash(const char* url)
 {
+    Sse_events::flash::post_device_state(SseDeviceMode::FLASHING, nullptr);
+
     ESP_RETURN_ON_ERROR(hal.init(Board::RCP_UART), TAG, "HAL init failed");
     ESP_RETURN_ON_ERROR(downloadToStaging(url),    TAG, "Download failed");
-    ESP_RETURN_ON_ERROR(flashFromStaging(),        TAG, "Flash failed");
+    esp_err_t ret = flashFromStaging();
+    hal.close();
+
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Flash failed during RCP write!");
+        Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, false, "Flash failed during write!");
+        return ESP_FAIL;
+    }
+    Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, true);
+    Sse_events::flash::post_device_state(SseDeviceMode::NORMAL, nullptr);
+
     return ESP_OK;
 }
 
@@ -105,8 +122,9 @@ esp_err_t RcpUpdater::downloadToStaging(const char* url)
 
     uint8_t readBuf[HTTP_BUF_SIZE]{};
     int64_t remaining{contentLength};
-    size_t  offset{0};
-    bool    downloadOk{true};
+    size_t offset{0};
+    bool downloadOk{true};
+    float lastLoggedPercent {0};
 
     while (remaining != 0) {
         int toRead{(remaining > 0 && remaining < static_cast<int64_t>(HTTP_BUF_SIZE))
@@ -121,7 +139,16 @@ esp_err_t RcpUpdater::downloadToStaging(const char* url)
         if (err != ESP_OK) { downloadOk = false; break; }
 
         offset += static_cast<size_t>(bytesRead);
-        if (remaining > 0) remaining -= bytesRead;
+        if (remaining > 0) 
+            remaining -= bytesRead;
+
+        float progressPercent {(static_cast<float>(offset) / contentLength) * 100};
+        if ((progressPercent - lastLoggedPercent) > PERCENT_PRINT_DELTA) 
+        {
+            Sse_events::flash::post_flash_progress(SseFlashTarget::RCP, SseFlashPhase::DOWNLOADING, progressPercent);
+            ESP_LOGD(TAG, "RCP Flash in progress: %.2f%% Done!", progressPercent);
+            lastLoggedPercent = progressPercent;
+        }
         vTaskDelay(1);
     }
 
@@ -186,10 +213,10 @@ esp_err_t RcpUpdater::flashFromStaging()
         offset += toRead;
         vTaskDelay(1);
         
-        constexpr float percentPrintDelta {0.5};
         float progressPercent {(static_cast<float>(offset) / totalSize) * 100};
-        if ((progressPercent - lastLoggedPercent) > percentPrintDelta) 
+        if ((progressPercent - lastLoggedPercent) > PERCENT_PRINT_DELTA) 
         {
+            Sse_events::flash::post_flash_progress(SseFlashTarget::RCP, SseFlashPhase::WRITING, progressPercent);
             ESP_LOGD(TAG, "RCP Flash in progress: %.2f%% Done!", progressPercent);
             lastLoggedPercent = progressPercent;
         }

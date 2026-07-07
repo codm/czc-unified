@@ -112,35 +112,21 @@ bool EthernetAPI::getEthIsInitialised()
     return this->ethIsInitialised;
 }
 
+void EthernetAPI::getCurrentIp(char* out, size_t out_size)
+{
+    out[0] = '\0';
+
+    if (ethNetif)
+    {
+        esp_netif_ip_info_t info{};
+        if (esp_netif_get_ip_info(ethNetif, &info) == ESP_OK)
+        {
+            snprintf(out, out_size, IPSTR, IP2STR(&info.ip));
+        }
+    }
+}
+
 bool EthernetAPI::getEthIsConnected()
 {
     return this->ethIsConnected;
-}
-
-// -----------------------------------------------------------------------------
-// Network diagnostics
-// -----------------------------------------------------------------------------
-
-void EthernetAPI::logNetDiag(esp_netif_t *netif)
-{
-    esp_netif_ip_info_t ip;
-    esp_netif_get_ip_info(netif, &ip);
-    ESP_LOGI("NETDIAG", "IP:" IPSTR "  GW:" IPSTR "  MASK:" IPSTR,
-             IP2STR(&ip.ip), IP2STR(&ip.gw), IP2STR(&ip.netmask));
-
-    esp_netif_dns_info_t d_main, d_backup;
-    esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN,   &d_main);
-    esp_netif_get_dns_info(netif, ESP_NETIF_DNS_BACKUP, &d_backup);
-    ESP_LOGI("NETDIAG", "DNS main:" IPSTR "  backup:" IPSTR,
-             IP2STR(&d_main.ip.u_addr.ip4), IP2STR(&d_backup.ip.u_addr.ip4));
-
-    struct addrinfo hints = { .ai_family = AF_INET, .ai_socktype = SOCK_STREAM };
-    struct addrinfo *res = NULL;
-    int err = getaddrinfo("github.com", "443", &hints, &res);
-    ESP_LOGI("NETDIAG", "getaddrinfo(github.com) = %d", err);
-    if (err == 0 && res) {
-        struct in_addr a = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
-        ESP_LOGI("NETDIAG", "resolved -> %s", inet_ntoa(a));
-        freeaddrinfo(res);
-    }
 }

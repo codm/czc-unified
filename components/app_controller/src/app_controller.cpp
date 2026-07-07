@@ -46,7 +46,6 @@ void AppController::run()
             }
 
             vTaskDelay(pdMS_TO_TICKS(500));
-            esp_restart();
         }
     }
 

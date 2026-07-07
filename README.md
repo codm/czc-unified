@@ -12,7 +12,6 @@ as possible (firmware version, steps to reproduce, log output).
 Known Issues:
 
 - Firmware downloads over a Wi-Fi connection are not yet possible (LAN only).
-- Long startup time on first boot, caused by the RCP firmware download and flash process.
 - No visual feedback on the CZC during setup or firmware updates.
 - The web interface is unreachable if the RCP is not configured correctly.
 - SoftAP network scanning does not work.
@@ -65,18 +64,17 @@ build when capturing logs.
 
 3. Open [ESP Webflasher](https://docs.codm.de/en/zigbee/coordinator/web-installer/). Pick the appropriate OTBR Firmware Version.
 
-4. Wait a few minuets until your ESP32 has successfully setup and started its Webinterface (This can take a while depending on your internet connection speed). 
-> NOTE: After the first flash the ESP automatically Downloads the RCP firmware and flashes the Radio-Co-Processor. This does not yet have a visual output besides Debug prints.
+4. Open [http://codm-otbr.local](http://codm-otbr.local). On first boot, the web interface will ask how you want to use your CZC. Select the desired mode — the matching RCP firmware is automatically downloaded and flashed. Progress is shown in the web interface.
 
-5. Open [http://codm-otbr.local](http://codm-otbr.local) and you can start setting up a Thread Network!
+5. Once setup is complete you can start using your CZC!
 
 ## WiFi / SoftAP
 
 When no WiFi is configured and no Ethernet connection is available, the CZC opens an Access Point named `otbr-codm` with password `codmcodm`.
 
-Connect to the AP and open **[http://192.168.4.1](http://192.168.4.1)** — the full web interface is served directly (no separate captive portal). Go to the **Network** section to configure WiFi credentials or a static Ethernet IP.
+Connect to the AP and open **[http://192.168.4.1](http://192.168.4.1)** — a dedicated WiFi setup page is served (see [`esp_ot_br_server`](#esp_ot_br_server) below), where you can configure WiFi credentials or a static IP. Using Ethernet instead is recommended.
 
-Once internet connectivity is established, the device switches to normal operation mode automatically.
+Once a connection is established, the device switches to normal operation mode automatically and the full web interface becomes available.
 
 ## Home Assistant Integration (Thread Border Router & Matter)
 
@@ -182,7 +180,7 @@ Multi-mode coordinator firmware for the cod.m CZC device (ESP32 + CC2652P7 RCP).
 | **Zigbee Coordinator Network** | TCP proxy to a network host application |
 | **Zigbee Router** | Standalone Zigbee router — RCP operates independently |
 
-The active mode is selected on first boot via the web interface. Changing mode re-flashes the RCP with the matching firmware and reboots the device.
+The active mode is selected on first boot via the web interface. Changing mode triggers a reboot, after which the RCP is flashed with the matching firmware and the protocol stack is started.
 
 The OpenThread stack is based on the [Espressif OTBR example](https://github.com/espressif/esp-idf/blob/master/examples/openthread/ot_br/README.md).
 
@@ -302,10 +300,16 @@ czc_ot_firmware/
 │   ├── network/                  Ethernet + WiFi state machine
 │   │   └── include/NetworkStateMachine.h, network_config.h, nvs_bind.h
 │   │
-│   └── esp_ot_br_server/         HTTP server + web frontend (C)
-│       ├── include/esp_br_web.h  ← web callback structs + esp_br_web_start()
-│       └── frontend/             HTML/JS/CSS (gzip-compressed into SPIFFS)
-│           └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
+│   ├── esp_ot_br_server/         HTTP server + web frontend (C)
+│   │   ├── include/esp_br_web.h  ← web callback structs + esp_br_web_start()
+│   │   └── frontend/             HTML/JS/CSS (gzip-compressed into SPIFFS)
+│   │       ├── wifi_config.html  ← served instead of index.html while in Access Point mode
+│   │       └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
+│   │
+│   └── sse_events/               SSE event broadcast (queue + sender task)
+│       ├── include/sse_events.hpp      ← namespace sse_events: init() + post_* API + enums
+│       ├── include/sse_events_init.h   ← C-compatible init, included by esp_br_web.c
+│       └── src/sse_events.cpp, sse_events_init.cpp
 │
 └── partitions.csv                Flash partition table
 ```
@@ -336,11 +340,26 @@ Event-driven LED manager. Other components post `LedState` events; the manager a
 
 ##### `network`
 
-Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWifiConfig()`, `getEthernetConfig()`, `setEthernetConfig()`, `getNetworkStatus()` and `fillNetworkCallbacks()`. NVS bindings in `NvsBinding` namespace support full IP configuration (DHCP / static IP / gateway / DNS).
+Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWifiConfig()`, `getEthernetConfig()`, `setEthernetConfig()`, `getNetworkStatus()` and `fillNetworkCallbacks()`. NVS bindings in `NvsBinding` namespace support full IP configuration (DHCP / static IP / gateway / DNS). See [`components/network/README.md`](components/network/README.md) for the full state diagram and NVS layout.
 
 ##### `esp_ot_br_server`
 
-HTTP server providing the OpenThread REST API and the web GUI. Defines two C callback structs (`web_firmware_callbacks_t` in `esp_br_web.h`, `web_network_callbacks_t` in `network_config.h`) that decouple it from the C++ application layer.
+HTTP server providing the OpenThread REST API and the web GUI. Defines two C callback structs (`web_firmware_callbacks_t` in `esp_br_web.h`, `web_network_callbacks_t` in `network_config.h`) that decouple it from the C++ application layer. Calls `sse_events_init()` after the HTTP server is started to register the `/events` endpoint.
+
+**Access Point setup page.** `index_html_get_handler` checks the current mode via `get_network_status()`; while the device is in Access Point mode, it serves `frontend/wifi_config.html` instead of `index.html`. That page is fully self-contained (inline `<style>`/`<script>`, no `static/restful.js`, no CDN-hosted jQuery/D3) because a client connected to the SoftAP has no internet access to fetch external resources with.
+
+**Frontend build process.** All assets under `frontend/` (`index.html`, `wifi_config.html`, `static/restful.js`, `static/style.css`) are compressed with **gzip level 9** at build time via [`gzip_frontend.py`](components/esp_ot_br_server/gzip_frontend.py), invoked from `CMakeLists.txt` both at configure time (so `EMBED_FILES` has the compressed assets available) and at build time (re-runs when a `frontend/` source file changes, tracked via the `build/frontend_gz/.stamp` file). Typical compression ratio is ~20-23% of original size.
+
+| File(s) | Mechanism | Location in flash |
+|---|---|---|
+| `favicon.ico` | `EMBED_FILES` → binary symbol | App binary (`.rodata`) |
+| `index.html`, `wifi_config.html`, `restful.js`, `style.css` (gzipped) | `spiffs_create_partition_image` | SPIFFS partition (`0x3D2000`, 184 KB) |
+
+All file handlers in `esp_br_web.c` set the `Content-Encoding: gzip` response header and read with `fopen("rb")` + `httpd_resp_send_chunk` (binary-safe) rather than the string-based `httpd_resp_sendstr_chunk`, since gzip data contains null bytes that would otherwise truncate the response.
+
+##### `sse_events`
+
+Server-Sent Events broadcast component. Implemented as `namespace sse_events` (`sse_events.hpp`) backed by static file-scope state (`s_clients`, `s_mutex`, `s_queue`). `sse_events_init(server)` (`sse_events_init.h`, called once from `esp_br_web.c`) delegates to `sse_events::init()`, which creates the queue and mutex, registers the `/events` URI handler and spawns the sender task. The sender task drains the queue every second and sends a `: ping\n\n` keepalive every 20 seconds. Producers call `sse_events::post_flash_progress()`, `post_flash_complete()` or `post_device_state()` directly. See [SSE Events](#sse-events) for the event catalog.
 
 ### Flash Partition Layout
 
@@ -350,17 +369,15 @@ The firmware uses a custom partition table ([`partitions.csv`](partitions.csv)) 
 |---|---|---|---|---|---|
 | `nvs` | NVS data | `0x009000` | `0x6000` | 24,576 | 24 KB |
 | `phy_init` | PHY calibration | `0x00F000` | `0x1000` | 4,096 | 4 KB |
-| `ota_0` | App (OTA slot 0) | `0x010000` | `0x1F0000` | 2,031,616 | ~1.94 MB |
-| `ota_1` | App (OTA slot 1) | `0x200000` | `0x1F0000` | 2,031,616 | ~1.94 MB |
-| `ota_data` | OTA boot selector | `0x3F0000` | `0x2000` | 8,192 | 8 KB |
-| `spiffs` | Web GUI assets | `0x3F2000` | `0xE000` | 57,344 | 56 KB |
+| `ota_0` | App (OTA slot 0) | `0x010000` | `0x1E0000` | 1,966,080 | 1920 KB (~1.88 MB) |
+| `ota_1` | App (OTA slot 1) | `0x1F0000` | `0x1E0000` | 1,966,080 | 1920 KB (~1.88 MB) |
+| `ota_data` | OTA boot selector | `0x3D0000` | `0x2000` | 8,192 | 8 KB |
+| `spiffs` | Web GUI assets | `0x3D2000` | `0x2E000` | 188,416 | 184 KB |
 | **Total** | | | | **4,194,304** | **4 MB** |
 
 **OTA update flow:** The ESP-IDF OTA mechanism alternates between `ota_0` and `ota_1`. The `ota_data` partition records which slot is active. A `/flash/esp` OTA update writes the new image into the *inactive* slot and switches the `ota_data` pointer — the previously running firmware remains intact in the other slot until the next update.
 
-**SPIFFS:** Holds the gzip-compressed web GUI files (`index.html`, `restful.js`, `style.css`). The `wifi_configuration.html` is additionally embedded directly into the app binary as a fallback. See [`components/esp_ot_br_server/README.md`](components/esp_ot_br_server/README.md) for details on the build process.
-
-> **Note:** Switching between the OTBR and the CZC Zigbee firmware over-the-air is not yet possible because the two firmwares use different partition layouts. See [Zigbee to OTBR complications](#zigbee-to-otbr-complications) for details.
+**SPIFFS:** Holds the gzip-compressed web GUI files (`index.html`, `wifi_config.html`, `restful.js`, `style.css`) — see [`esp_ot_br_server`](#esp_ot_br_server) above for the build process.
 
 ---
 
@@ -463,9 +480,32 @@ classDiagram
         +getNetworkStatus(out) esp_err_t
         +fillNetworkCallbacks(cbs) void
     }
+    class EthernetAPI {
+        +initEthernet() void
+        +closeEthernet() void
+    }
+    class WirelessAPI {
+        +initWifi() void
+        +closeWifi() void
+        +initAccessPoint() void
+        +closeAccessPoint() void
+        +reconnect() void
+    }
 
     class StatusLightManager {
         +init() esp_err_t
+    }
+
+    class sse_events {
+        <<namespace>>
+        +init(server) esp_err_t
+        +post_flash_progress(target, phase, percent) esp_err_t
+        +post_flash_complete(target, success, error) esp_err_t
+        +post_device_state(mode, phase) esp_err_t
+    }
+    class WebServer {
+        <<C component>>
+        +esp_br_web_start() void
     }
 
     AppController o-- UpdateManager
@@ -481,6 +521,11 @@ classDiagram
     ZigbeeProxyController *-- IProxyTransport
     IProxyTransport <|.. UartTransport
     IProxyTransport <|.. TcpTransport
+
+    NetworkStateMachine *-- EthernetAPI
+    NetworkStateMachine *-- WirelessAPI
+
+    WebServer ..> sse_events : sse_events_init()
 ```
 
 ### Boot-Decision-Tree
@@ -492,17 +537,17 @@ flowchart TD
     web["Web server start"]
     q1{"rcp_flash_pending?"}
     flash["update_manager.flashRcp(url)"]
-    rb["esp_restart()"]
     q2{"device_setup?"}
     wait["Block — wait for mode\nselection via web UI"]
+    rb["esp_restart()"]
     q3["Read DeviceMode from NVS"]
     start["firmware_manager.start(mode)"]
     run(["Normal operation"])
 
     boot --> net --> web --> q1
-    q1 -->|yes| flash --> setmode["Write device_mode\nfrom rcp_upd_tgt"] --> rb --> boot
+    q1 -->|yes| flash --> setmode["Write device_mode\nfrom rcp_upd_tgt"] --> q3
     q1 -->|no| q2
-    q2 -->|"no (first boot)"| wait -->|"POST /device/mode"| rb
+    q2 -->|"no (first boot)"| wait -->|"POST /flash/rcp\n(newest fw url + mode)"| rb --> boot
     q2 -->|yes| q3 --> start --> run
 ```
 
@@ -552,6 +597,44 @@ esp_br_web_start("/spiffs", &fwCbs, &netCbs);
 
 HTTP handlers parse the JSON body and call the matching function pointer. `AppController` and `NetworkStateMachine` remain invisible to the web server.
 
+### SSE Events
+
+The `/events` endpoint (`sse_events` component) streams server-push events to the web
+frontend (`EventSource` in JS) as `event: <name>\ndata: <json>\n\n` frames, plus a
+`: ping\n\n` keepalive every 20 s. Producers call the typed helpers in `namespace
+sse_events` (`sse_events.hpp`) — `post_flash_progress()`, `post_flash_complete()`,
+`post_device_state()` — which serialise the payload and push an `SseEvent` onto the
+internal static queue. The sender task drains that queue once per second and forwards
+each event to all connected clients. This section is the catalog of event
+names/payloads; keep it up to date as new events are added.
+
+#### Pattern: state-change event → frontend re-fetches
+
+The general shape for new events: a component posts a small/empty "something changed"
+event, and the frontend reacts by calling the existing REST GET endpoint for the full,
+current state — the SSE event is a signal, not the payload. This avoids duplicating
+response shapes between SSE and REST, and keeps the event data field (256 bytes) from
+becoming a bottleneck for larger payloads.
+
+| Event | Payload | Producer | Frontend reaction |
+|---|---|---|---|
+| `device_state` | `{"mode": "<normal\|setup\|flashing>", "phase": "<str, optional>"}` | `app_controller` / `firmware_manager` (boot + mode transitions) | Update device status banner |
+| `flash_progress` | `{"percent": <int>, "phase": "<downloading\|writing\|rebooting\|verifying>", "target": "<esp\|rcp>"}` | `update_manager` (`OtaUpdater` / `RcpUpdater`) during `/flash/esp`, `/flash/rcp` | Update flash progress bar |
+| `flash_complete` | `{"target": "<esp\|rcp>", "success": <bool>, "error": "<str, optional>"}` | `update_manager`, end of flash | Close flash dialog / show error |
+| `network_changed` *(planned)* | `{}` | `NetworkStateMachine`, on state transition / IP change / config write | Re-fetch `/network/status` (and `/network/wifi` or `/network/ethernet` if that config view is open) |
+
+`SseFlashTarget`, `SseFlashPhase`, and `SseDeviceMode` in
+[`sse_events.hpp`](components/sse_events/include/sse_events.hpp) are the typed
+parameters of the `post_*` helpers — they map directly to the string values in the
+payloads above.
+
+**Planned: `network_changed`.** The frontend currently polls a network status endpoint
+on an interval. The plan is to remove that polling loop and instead have
+`NetworkStateMachine` push a `network_changed` event whenever connectivity state, IP, or
+stored config changes; the frontend listens on `/events` and re-fetches the relevant
+`/network/*` endpoint only when notified. The event payload itself stays minimal (or
+empty) — the point is cutting polling traffic, not duplicating `NetworkStatus` over SSE.
+
 ### Firmware Flash
 
 Both flash endpoints reboot the device once the update has been applied.
@@ -569,9 +652,10 @@ Both flash endpoints reboot the device once the update has been applied.
   RCP firmware. On the next boot, `AppController::run()` detects the pending flag and:
   1. Calls `UpdateManager::flashRcp()`, which downloads the TI binary over HTTPS into the
      OTA staging partition (`RcpUpdater`) and drives the CC2652 BSL over UART (`RcpHal`):
-     sync → bank-erase → download → send-data → reset.
-  2. On success, reads `rcp_upd_tgt` and writes it to `device_mode`, then reboots.
-  3. On the second reboot, the device starts the protocol stack matching the new mode.
+     sync → bank-erase → download → send-data → reset. The UART driver is released via
+     `RcpHal::close()` after the flash.
+  2. On success, reads `rcp_upd_tgt`, writes it to `device_mode`, and starts the protocol
+     stack directly — **no second reboot required**.
 
   The OTA partition is used as raw byte storage for the RCP binary — the ESP's own
   firmware is never modified during an RCP flash.
@@ -587,24 +671,3 @@ It is also important to keep in mind that GitHub enforces a rate limit of 60 req
 hour. Because of this it is better to host the firmware yourself rather than downloading
 and fetching it from GitHub every time.
 
-### Zigbee to OTBR complications
-
-This OTBR firmware and the existing CZC Zigbee firmware currently use **different
-partition tables**:
-
-- OTBR (this repository): [`partitions.csv`](partitions.csv) — OTA-enabled, with
-  `ota_0`/`ota_1` app partitions, an `ota_data` partition for the boot selector, and a
-  `spiffs` partition for the web GUI.
-- Zigbee firmware: partition table is generated automatically by PlatformIO at build
-  time — no static `.csv` is checked into its repository.
-
-An OTA flash via `/flash/esp` only overwrites the application binary inside the
-*currently running* app partition — it does **not** rewrite the partition table itself.
-Because the two firmwares currently use incompatible partition layouts, a device cannot
-simply be switched between the Zigbee and the OTBR firmware over the air; doing so still
-requires a full reflash via USB/serial.
-
-For a remote, OTA-only switch between the Zigbee and OTBR firmware (without USB/laptop),
-both firmwares need to share the same partition table. **This is work in progress** —
-the Zigbee firmware's partition table will be adapted to match `partitions.csv` in a
-future release.

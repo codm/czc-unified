@@ -79,6 +79,13 @@ public:
      */
     esp_err_t reset();
 
+    /**
+     * @brief Release the UART driver so other consumers (e.g. OpenThread) can use the port.
+     *
+     * @return `ESP_OK` on success, forwarded error from `uart_driver_delete` otherwise
+     */
+    esp_err_t close();
+
 private:
     uart_port_t uartPort;
     bool        bslMode;

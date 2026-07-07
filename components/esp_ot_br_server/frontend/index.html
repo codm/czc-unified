@@ -642,6 +642,7 @@
         </div>
         <div id="flash_window" class="dialog">
           <div class="dialog-content dialog-content--lg">
+            <button type="button" id="flash_window_close" class="dialog-close" onclick="frontend_cancel_flash()" aria-label="Close">&times;</button>
             <h2 id="flash_window_title">Select Firmware</h2>
             <div class="dialog-divider"></div>
             <div id="flash_rcp_tabs" style="display:none;">
@@ -657,8 +658,17 @@
               </tr>
             </template>
             <div id="flash_firmware_list"><p>Loading...</p></div>
+            <template id="flash-status-tpl">
+              <div class="flash-status-view">
+                <p class="flash-status-phase"></p>
+                <div class="flash-progress-bar-track">
+                  <div class="flash-progress-bar-fill"></div>
+                </div>
+                <p class="flash-progress-label">0%</p>
+              </div>
+            </template>
             <div id="flash_status"></div>
-            <button type="button" class="btn-dialog-cancel" onclick="frontend_cancel_flash()">Cancel</button>
+            <!-- <button type="button" class="btn-dialog-cancel" onclick="frontend_cancel_flash()">Cancel</button> -->
           </div>
         </div>
       </section>
@@ -694,20 +704,6 @@
             <p id="log_window_content">Known</p>
           </div>
           <button type="button" class="btn-dialog-confirm" onclick="frontend_log_close(this)">Okay</button>
-        </div>
-      </div>
-
-      <!-- Internet-waiting overlay (first boot) -->
-      <div id="internet-waiting-overlay" class="dialog dialog--overlay" style="display:none;">
-        <div class="dialog-content" style="text-align:center; padding:48px 40px; max-width:480px;">
-          <h2>Setting up your CZC</h2>
-          <p>Waiting for an internet connection before device mode can be selected...</p>
-          <p class="note">Connect via Ethernet or configure WiFi below, then return here.</p>
-          <p id="waiting-status-text" class="note"></p>
-          <div class="form-actions">
-            <a href="#Network" onclick="document.getElementById('internet-waiting-overlay').style.display='none';"
-               class="btn btn-default">Configure Network</a>
-          </div>
         </div>
       </div>
 

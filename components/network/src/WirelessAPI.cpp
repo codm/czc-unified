@@ -184,6 +184,21 @@ const char* WirelessAPI::getPassword()
     return this->password;
 }
 
+void WirelessAPI::getCurrentIp(char* out, size_t out_size)
+{
+    out[0] = '\0';
+    esp_netif_t* netif {(activeWirelessMode == ActiveWirelessMode::ACCESSPOINT ? apNetif : wifiNetif)};
+
+    if (netif)
+    {
+        esp_netif_ip_info_t info{};
+        if (esp_netif_get_ip_info(netif, &info) == ESP_OK)
+        {
+            snprintf(out, out_size, IPSTR, IP2STR(&info.ip));
+        }
+    }
+}
+
 void WirelessAPI::setWifiIsConnected(bool connected)
 {
     this->wifiIsConnected = connected;
