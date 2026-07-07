@@ -490,6 +490,7 @@ function showFlashModal(phase) {
     statusEl.replaceChildren(tpl);
     document.getElementById('flash_firmware_list').style.display = 'none';
     document.getElementById('flash_rcp_tabs').style.display = 'none';
+    document.getElementById('flash_window_close').style.display = 'none';
     document.getElementById('flash_window_title').innerText = 'Flashing…';
   }
   document.getElementById('flash_status').querySelector('.flash-status-phase').textContent =
@@ -534,6 +535,7 @@ function _flashPhaseLabel(phase) {
 function _resetFlashStatus() {
   document.getElementById('flash_status').replaceChildren();
   document.getElementById('flash_firmware_list').style.display = '';
+  document.getElementById('flash_window_close').style.display = '';
   document.getElementById('flash_window_title').innerText = 'Select Firmware';
 }
 

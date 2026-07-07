@@ -683,6 +683,7 @@ section {
 }
 
 .dialog-content {
+    position: relative;
     background-color: #fefefe;
     margin: auto;
     padding: 20px;
@@ -690,6 +691,24 @@ section {
     border-radius: 12px;
     width: 600px;
     max-width: 94vw;
+}
+
+/* "X" close button in the top-right corner of a dialog */
+.dialog-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: none;
+    border: none;
+    font-size: 1.6rem;
+    line-height: 1;
+    color: var(--color-secondary);
+    cursor: pointer;
+    padding: 4px;
+}
+
+.dialog-close:hover {
+    color: var(--color-default);
 }
 
 /* Narrow dialog (notifications, log) */
