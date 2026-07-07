@@ -72,9 +72,9 @@ build when capturing logs.
 
 When no WiFi is configured and no Ethernet connection is available, the CZC opens an Access Point named `otbr-codm` with password `codmcodm`.
 
-Connect to the AP and open **[http://192.168.4.1](http://192.168.4.1)** — the full web interface is served directly (no separate captive portal). Go to the **Network** section to configure WiFi credentials or a static Ethernet IP.
+Connect to the AP and open **[http://192.168.4.1](http://192.168.4.1)** — a dedicated WiFi setup page is served (see [`esp_ot_br_server`](#esp_ot_br_server) below), where you can configure WiFi credentials or a static IP. Using Ethernet instead is recommended.
 
-Once internet connectivity is established, the device switches to normal operation mode automatically.
+Once a connection is established, the device switches to normal operation mode automatically and the full web interface becomes available.
 
 ## Home Assistant Integration (Thread Border Router & Matter)
 
@@ -303,6 +303,7 @@ czc_ot_firmware/
 │   ├── esp_ot_br_server/         HTTP server + web frontend (C)
 │   │   ├── include/esp_br_web.h  ← web callback structs + esp_br_web_start()
 │   │   └── frontend/             HTML/JS/CSS (gzip-compressed into SPIFFS)
+│   │       ├── wifi_config.html  ← served instead of index.html while in Access Point mode
 │   │       └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
 │   │
 │   └── sse_events/               SSE event broadcast (queue + sender task)
@@ -345,13 +346,14 @@ Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWif
 
 HTTP server providing the OpenThread REST API and the web GUI. Defines two C callback structs (`web_firmware_callbacks_t` in `esp_br_web.h`, `web_network_callbacks_t` in `network_config.h`) that decouple it from the C++ application layer. Calls `sse_events_init()` after the HTTP server is started to register the `/events` endpoint.
 
-**Frontend build process.** All assets under `frontend/` (`index.html`, `static/restful.js`, `static/style.css`, `wifi_configuration.html`) are compressed with **gzip level 9** at build time via [`gzip_frontend.py`](components/esp_ot_br_server/gzip_frontend.py), invoked from `CMakeLists.txt` both at configure time (so `EMBED_FILES` has the compressed `wifi_configuration.html` available) and at build time (re-runs when a `frontend/` source file changes, tracked via the `build/frontend_gz/.stamp` file). Typical compression ratio is ~20-23% of original size.
+**Access Point setup page.** `index_html_get_handler` checks the current mode via `get_network_status()`; while the device is in Access Point mode, it serves `frontend/wifi_config.html` instead of `index.html`. That page is fully self-contained (inline `<style>`/`<script>`, no `static/restful.js`, no CDN-hosted jQuery/D3) because a client connected to the SoftAP has no internet access to fetch external resources with.
+
+**Frontend build process.** All assets under `frontend/` (`index.html`, `wifi_config.html`, `static/restful.js`, `static/style.css`) are compressed with **gzip level 9** at build time via [`gzip_frontend.py`](components/esp_ot_br_server/gzip_frontend.py), invoked from `CMakeLists.txt` both at configure time (so `EMBED_FILES` has the compressed assets available) and at build time (re-runs when a `frontend/` source file changes, tracked via the `build/frontend_gz/.stamp` file). Typical compression ratio is ~20-23% of original size.
 
 | File(s) | Mechanism | Location in flash |
 |---|---|---|
 | `favicon.ico` | `EMBED_FILES` → binary symbol | App binary (`.rodata`) |
-| `wifi_configuration.html` (gzipped) | `EMBED_FILES` → binary symbol | App binary (`.rodata`) — fallback if SPIFFS is unavailable |
-| `index.html`, `restful.js`, `style.css` (gzipped) | `spiffs_create_partition_image` | SPIFFS partition (`0x3F2000`, 56 KB) |
+| `index.html`, `wifi_config.html`, `restful.js`, `style.css` (gzipped) | `spiffs_create_partition_image` | SPIFFS partition (`0x3F2000`, 56 KB) |
 
 All file handlers in `esp_br_web.c` set the `Content-Encoding: gzip` response header and read with `fopen("rb")` + `httpd_resp_send_chunk` (binary-safe) rather than the string-based `httpd_resp_sendstr_chunk`, since gzip data contains null bytes that would otherwise truncate the response.
 
@@ -375,7 +377,7 @@ The firmware uses a custom partition table ([`partitions.csv`](partitions.csv)) 
 
 **OTA update flow:** The ESP-IDF OTA mechanism alternates between `ota_0` and `ota_1`. The `ota_data` partition records which slot is active. A `/flash/esp` OTA update writes the new image into the *inactive* slot and switches the `ota_data` pointer — the previously running firmware remains intact in the other slot until the next update.
 
-**SPIFFS:** Holds the gzip-compressed web GUI files (`index.html`, `restful.js`, `style.css`). The `wifi_configuration.html` is additionally embedded directly into the app binary as a fallback — see [`esp_ot_br_server`](#esp_ot_br_server) above for the build process.
+**SPIFFS:** Holds the gzip-compressed web GUI files (`index.html`, `wifi_config.html`, `restful.js`, `style.css`) — see [`esp_ot_br_server`](#esp_ot_br_server) above for the build process.
 
 ---
 

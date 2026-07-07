@@ -39,7 +39,10 @@ function initFrontend()
       function(data)
       {
         applyDeviceMode(data.mode);
-        networkSetupCheck(!data.device_setup);
+        networkSetupCheck();
+
+        if (!data.device_setup)
+          document.getElementById('mode-selection-modal').style.display = 'flex';
       },
     error:
       function()
@@ -50,11 +53,8 @@ function initFrontend()
 }
 
 /* Always fetches network status once to populate the header badge / overview.
-   When firstBoot is true (device_setup === false) it additionally drives the
-   SoftAP overlay + RCP mode wizard, polling only while stuck in AP mode
-   (AP-to-STA transitions drop the connection outright, so SSE can't be relied
-   on there). Live updates afterwards come from the 'network_state_change' SSE event. */
-function networkSetupCheck(firstBoot)
+  Live updates afterwards come from the 'network_state_change' SSE event. */
+function networkSetupCheck()
 {
   $.ajax({
     url: '/network/status',
@@ -64,19 +64,6 @@ function networkSetupCheck(firstBoot)
     {
       setHeaderNetworkBadge(status);
       setOverviewNetwork(status);
-
-      if (!firstBoot)
-        return;
-
-      if (NET_STATE[status.mode].isAccessPoint) {
-        document.getElementById('internet-waiting-overlay').style.display = 'flex';
-        setTimeout(function() { networkSetupCheck(true); }, 2000);
-      }
-      else
-      {
-        document.getElementById('internet-waiting-overlay').style.display = 'none';
-        document.getElementById('mode-selection-modal').style.display     = 'flex';
-      }
     },
     error: function()
     {
