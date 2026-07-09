@@ -563,6 +563,7 @@ flowchart TD
 | `POST` | `/network/wifi` | Write WiFi config + trigger reconnect |
 | `GET` | `/network/ethernet` | Read Ethernet config from NVS |
 | `POST` | `/network/ethernet` | Write Ethernet config + trigger reinit |
+| `POST` | `/network/mdns` | Set mDNS hostname — `{"hostname": "<str>"}` |
 | `GET` | `/network/status` | Returns `{"mode": <int>, "ip": "<str>", "connected": <bool>}` |
 | `GET` | `/get_properties` | OpenThread network properties |
 | `GET/DELETE` | `/node` | OpenThread node info |
@@ -596,6 +597,56 @@ esp_br_web_start("/spiffs", &fwCbs, &netCbs);
 ```
 
 HTTP handlers parse the JSON body and call the matching function pointer. `AppController` and `NetworkStateMachine` remain invisible to the web server.
+
+#### Response pattern: `pack_response` → Log Box
+
+**What happens:** almost every REST endpoint replies with the same small JSON envelope, and
+the frontend has one central place — not one per form — that turns that envelope into visible
+user feedback (the `log_window` modal, referred to here as the Log Box).
+
+**Backend.** `pack_response(error, result, message)` in `esp_br_web.c` builds the envelope,
+`httpd_send_packet()` sends it, HTTP status is **always 200**:
+
+```json
+{ "error": 0, "result": "successful", "message": "WiFi config saved" }
+```
+
+`error` (`0` = ok, non-zero = failed) is the only field that decides success/failure;
+`message` is a human-readable string for display. `httpd_resp_send_err()` (real HTTP error
+codes, plain HTML body) is only used for hard transport failures that never reach this stage
+(e.g. request body too large) — everything that's a normal request/response cycle goes
+through `pack_response`, including validation failures like a missing field.
+
+**Frontend.** Two global jQuery hooks in `restful.js` — not per-`$.ajax`-call code — inspect
+every response that passes through:
+
+- `ajaxSuccess` shows the Log Box for any response that has an `error` field **and** a
+  non-empty `message`.
+- `ajaxError` shows a generic Log Box ("Request failed (HTTP …)") for any failed request
+  that didn't register its own local `error` handler.
+
+The Log Box title is derived from the URL (`/network/mdns` → "Mdns"). A `$.ajax` call only
+needs its own `success`/`error` handler for actual side effects — table refresh, redirect,
+polling — not to display anything; the two global hooks own all the logging.
+
+**What gets logged, and what doesn't:**
+
+| Endpoint kind | Example | Success | Failure |
+|---|---|---|---|
+| Action (POST, changes state) | `/network/wifi`, `/join_network`, `/add_prefix` | Logged — real message from the backend | Logged — real message from the backend |
+| Read-only diagnostic (GET) | `/topology`, `/get_properties`, `/available_network` | **Not logged** — backend sends `message: ""` on success, since `error == 0` already says it worked | Logged — backend still sends a real failure message |
+| Flash (`/flash/esp`, `/flash/rcp`) | — | Not auto-logged — different envelope (`{status, message}`, no `error` field), handler shows its own Log Box manually | same |
+| Calls with a local `error` handler | `saveNetworkConfig()` (WiFi/Ethernet) | n/a | Not auto-logged — the global `ajaxError` fallback skips it so the caller's own handling (e.g. the WiFi reconnect case below) isn't overwritten |
+
+**WiFi reconnect exception.** After a WiFi save the AP may shut down mid-response
+(`jqXHR.status === 0`). `saveNetworkConfig()` handles that itself instead of relying on the
+global hooks: it shows a "reconnecting" Log Box and hands off to a separate inline element
+(`#wifi-save-status`) that polls `/network/status` and reports `Connecting… (n)` / `Timeout`
+/ `Connected!` — a multi-step client-side process, not a single backend response.
+
+**mDNS redirect.** `network_mdns_post_handler` uses the same `pack_response` envelope as any
+other action endpoint; the frontend's only extra step is redirecting the browser to
+`http://<hostname>.local/` once the Log Box has shown a successful save.
 
 ### SSE Events
 
