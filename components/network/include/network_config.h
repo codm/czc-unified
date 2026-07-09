@@ -50,6 +50,7 @@ typedef struct {
     esp_err_t (*get_ethernet_config)(void *ctx, ethernet_config_data_t *out);
     esp_err_t (*set_ethernet_config)(void *ctx, const ethernet_config_data_t *cfg);
     esp_err_t (*get_network_status) (void *ctx, network_status_t *out);
+    esp_err_t (*set_mdns_hostname) (void *ctx, const char* hostname);
     void *ctx;
 } web_network_callbacks_t;
 

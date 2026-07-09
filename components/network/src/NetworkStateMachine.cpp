@@ -448,6 +448,11 @@ esp_err_t NetworkStateMachine::getNetworkStatus(network_status_t* out)
     return ESP_OK;
 }
 
+esp_err_t NetworkStateMachine::setMdnsHostname(const char *hostname)
+{
+    return mdns_hostname_set(hostname);
+}
+
 void NetworkStateMachine::fillNetworkCallbacks(web_network_callbacks_t* cbs)
 {
     cbs->get_wifi_config = [](void* ctx, wifi_config_data_t* out)
@@ -469,6 +474,10 @@ void NetworkStateMachine::fillNetworkCallbacks(web_network_callbacks_t* cbs)
     cbs->get_network_status = [](void* ctx, network_status_t* out)
     {
         return static_cast<NetworkStateMachine*>(ctx)->getNetworkStatus(out);
+    };
+    cbs->set_mdns_hostname = [](void* ctx, const char* hostname)
+    {
+        return static_cast<NetworkStateMachine*>(ctx)->setMdnsHostname(hostname);
     };
     cbs->ctx = this;
 }
