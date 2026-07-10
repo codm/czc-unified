@@ -280,6 +280,24 @@ static httpd_uri_t s_web_gui_handlers[] = {
 /*-----------------------------------------------------
  Note：Http Tools
 -----------------------------------------------------*/
+/**
+ * @brief Builds the standard JSON response envelope shared by REST endpoints.
+ *
+ *        Wraps @p error, @p result and @p message into one cJSON object of the
+ *        form `{"error": <num>, "result": <str/obj>, "message": <str>}`. The
+ *        HTTP status of the response stays 200 regardless of @p error —
+ *        success/failure is signalled purely through the `error` field, which
+ *        the frontend reads to drive the Log Box (red/green). Takes ownership
+ *        of all three cJSON items: on success they are attached to the
+ *        returned object, on failure every non-NULL argument is freed.
+ *
+ * @param[in] error   Numeric status code (0 = success, non-zero = failure)
+ * @param[in] result  Result payload — either a short status string (e.g. "successful"/"failed") or a cJSON object/array
+ * @param[in] message Human-readable message describing the outcome
+ * @return
+ *      -   cJSON*  : Newly allocated response object (caller owns; free with cJSON_Delete)
+ *      -   NULL    : One of the arguments was NULL — the others were freed
+ */
 static cJSON *pack_response(cJSON *error, cJSON *result, cJSON *message)
 {
     if (!error || !result || !message) {
@@ -654,7 +672,7 @@ static esp_err_t esp_otbr_network_properties_get_handler(httpd_req_t *req)
     esp_err_t ret = ESP_OK;
     cJSON *result = handle_openthread_network_properties_request(); /* encode json package */
     cJSON *error = result ? cJSON_CreateNumber((double)OT_ERROR_NONE) : cJSON_CreateNumber((double)OT_ERROR_FAILED);
-    cJSON *message = result ? cJSON_CreateString("Properties: Success") : cJSON_CreateString("Properties: Failure");
+    cJSON *message = result ? cJSON_CreateString("") : cJSON_CreateString("Properties: Failure");
     cJSON *response = pack_response(error, result, message);
     ESP_GOTO_ON_ERROR(httpd_send_packet(req, response), exit, WEB_TAG, "Failed to response %s", req->uri);
     ESP_GOTO_ON_FALSE(result, ESP_FAIL, exit, WEB_TAG, "Failed to Get Thread network properties");
@@ -683,7 +701,7 @@ static esp_err_t esp_otbr_available_networks_get_handler(httpd_req_t *req)
     esp_err_t ret = ESP_OK;
     cJSON *result = handle_openthread_available_network_request();
     cJSON *error = result ? cJSON_CreateNumber((double)OT_ERROR_NONE) : cJSON_CreateNumber((double)OT_ERROR_FAILED);
-    cJSON *message = result ? cJSON_CreateString("Networks: Success") : cJSON_CreateString("Networks: Failure");
+    cJSON *message = result ? cJSON_CreateString("") : cJSON_CreateString("Networks: Failure");
     cJSON *response = pack_response(error, result, message);
     ESP_GOTO_ON_ERROR(httpd_send_packet(req, response), exit, WEB_TAG, "Failed to response %s", req->uri);
     ESP_GOTO_ON_FALSE(result, ESP_FAIL, exit, WEB_TAG, "Failed to Discover Thread available networks");
@@ -869,7 +887,7 @@ static esp_err_t esp_otbr_network_topology_get_handler(httpd_req_t *req)
     esp_err_t ret = ESP_OK;
     cJSON *result = handle_ot_resource_network_diagnostics_request();
     cJSON *error = result ? cJSON_CreateNumber((double)OT_ERROR_NONE) : cJSON_CreateNumber((double)OT_ERROR_FAILED);
-    cJSON *message = result ? cJSON_CreateString("Topology: Success") : cJSON_CreateString("Topology: Failure");
+    cJSON *message = result ? cJSON_CreateString("") : cJSON_CreateString("Topology: Failure");
     cJSON *response = pack_response(error, result, message);
     ESP_GOTO_ON_ERROR(httpd_send_packet(req, response), exit, WEB_TAG, "Failed to response %s", req->uri);
     ESP_GOTO_ON_FALSE(result, ESP_FAIL, exit, WEB_TAG, "Failed to get Thread Network Topology");
@@ -898,7 +916,7 @@ static esp_err_t esp_otbr_current_node_get_handler(httpd_req_t *req)
     esp_err_t ret = ESP_OK;
     cJSON *result = handle_ot_resource_node_information_request();
     cJSON *error = result ? cJSON_CreateNumber((double)OT_ERROR_NONE) : cJSON_CreateNumber((double)OT_ERROR_FAILED);
-    cJSON *message = result ? cJSON_CreateString("Get Node: Success") : cJSON_CreateString("Get Node: Failure");
+    cJSON *message = result ? cJSON_CreateString("") : cJSON_CreateString("Get Node: Failure");
     cJSON *response = pack_response(error, result, message);
     ESP_GOTO_ON_ERROR(httpd_send_packet(req, response), exit, WEB_TAG, "Failed to response %s", req->uri);
     ESP_GOTO_ON_FALSE(result, ESP_FAIL, exit, WEB_TAG, "Failed to get current thread node information");
@@ -1261,11 +1279,14 @@ static esp_err_t network_wifi_post_handler(httpd_req_t *req)
     if (s_net_cbs.set_wifi_config) {
         ret = s_net_cbs.set_wifi_config(s_net_cbs.ctx, &cfg);
     }
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, ret == ESP_OK
-        ? "{\"status\":\"ok\"}"
-        : "{\"status\":\"error\"}");
-    return ret;
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? "WiFi config saved" : "Failed to save WiFi config");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+    return send_ret;
 }
 
 static esp_err_t network_eth_get_handler(httpd_req_t *req)
@@ -1305,11 +1326,14 @@ static esp_err_t network_eth_post_handler(httpd_req_t *req)
     if (s_net_cbs.set_ethernet_config) {
         ret = s_net_cbs.set_ethernet_config(s_net_cbs.ctx, &cfg);
     }
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, ret == ESP_OK
-        ? "{\"status\":\"ok\"}"
-        : "{\"status\":\"error\"}");
-    return ret;
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? "Ethernet config saved" : "Failed to save Ethernet config");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+    return send_ret;
 }
 
 static esp_err_t network_status_get_handler(httpd_req_t *req)
@@ -1326,7 +1350,37 @@ static esp_err_t network_status_get_handler(httpd_req_t *req)
     return ret;
 }
 
+static esp_err_t network_mdns_post_handler(httpd_req_t *req)
+{
+    if (!s_net_cbs.set_mdns_hostname)
+        return ESP_FAIL;
+
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /network/mdns body");
+
+    cJSON *hostname_item = cJSON_GetObjectItem(body, "hostname");
+    cJSON_bool has_hostname = cJSON_IsString(hostname_item);
+
+    esp_err_t ret = ESP_FAIL;
+    if (has_hostname) {
+        ret = s_net_cbs.set_mdns_hostname(s_net_cbs.ctx, cJSON_GetStringValue(hostname_item));
+    }
+    cJSON_Delete(body);
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(!has_hostname ? "Missing 'hostname' field"
+                                        : ret == ESP_OK ? "mDNS hostname updated"
+                                                         : "Failed to set mDNS hostname");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+    return send_ret;
+}
+
 static httpd_uri_t s_device_handlers[] = {
+    { .uri = ESP_OT_REST_API_FLASH_ESP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_esp_post_handler, .user_ctx = &s_server.data },
+    { .uri = ESP_OT_REST_API_FLASH_RCP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_rcp_post_handler, .user_ctx = &s_server.data },
     { .uri = "/device/mode",      .method = HTTP_GET,  .handler = device_mode_get_handler,   .user_ctx = &s_server.data },
     { .uri = "/device/mode",      .method = HTTP_POST, .handler = device_mode_post_handler,  .user_ctx = &s_server.data },
     { .uri = "/network/wifi",     .method = HTTP_GET,  .handler = network_wifi_get_handler,  .user_ctx = &s_server.data },
@@ -1334,8 +1388,7 @@ static httpd_uri_t s_device_handlers[] = {
     { .uri = "/network/ethernet", .method = HTTP_GET,  .handler = network_eth_get_handler,   .user_ctx = &s_server.data },
     { .uri = "/network/ethernet", .method = HTTP_POST, .handler = network_eth_post_handler,  .user_ctx = &s_server.data },
     { .uri = "/network/status",   .method = HTTP_GET,  .handler = network_status_get_handler,.user_ctx = &s_server.data },
-    { .uri = ESP_OT_REST_API_FLASH_ESP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_esp_post_handler, .user_ctx = &s_server.data },
-    { .uri = ESP_OT_REST_API_FLASH_RCP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_rcp_post_handler, .user_ctx = &s_server.data },
+    { .uri = "/network/mdns",     .method = HTTP_POST, .handler = network_mdns_post_handler, .user_ctx = &s_server.data },
 };
 
 /*-----------------------------------------------------

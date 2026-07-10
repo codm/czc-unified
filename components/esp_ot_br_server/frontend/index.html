@@ -568,7 +568,6 @@
                     </div>
                     <div class="form-actions">
                       <button type="button" class="btn btn-primary" onclick="saveNetworkConfig('ethernet')">Save</button>
-                      <span id="eth-save-status" class="save-status"></span>
                     </div>
                   </form>
                 </div>
@@ -603,6 +602,19 @@
                 </div>
 
               </div>
+
+              <!-- mDNS -->
+              <div class="card">
+                <p class="card-title">mDNS</p>
+                <form id="mdns-config-form">
+                  <p class="field-label">Hostname</p>
+                  <input name="hostname" type="text" class="form-control" placeholder="codm-otbr">
+                  <div class="form-actions">
+                    <button type="button" class="btn btn-primary" onclick="saveMdnsHostname()">Save</button>
+                  </div>
+                </form>
+              </div>
+
             </div>
           </div>
         </div>

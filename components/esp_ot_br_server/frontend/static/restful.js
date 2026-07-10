@@ -265,14 +265,14 @@ function toggleStaticIpFields(prefix)
   });
 }
 
-function saveNetworkConfig(type) 
+function saveNetworkConfig(type)
 {
-  let prefix   = type === 'wifi' ? 'wifi' : 'eth';
-  let url      = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
-  let form     = document.getElementById(prefix + '-config-form');
-  let statusEl = document.getElementById(prefix + '-save-status');
+  let prefix = type === 'wifi' ? 'wifi' : 'eth';
+  let url    = type === 'wifi' ? '/network/wifi' : '/network/ethernet';
+  let title  = type === 'wifi' ? 'WiFi' : 'Ethernet';
+  let form   = document.getElementById(prefix + '-config-form');
 
-  let payload = 
+  let payload =
   {
     dhcp:          document.getElementById(prefix + '-dhcp').checked,
     static_ip:     form.querySelector('[name=static_ip]').value,
@@ -280,49 +280,68 @@ function saveNetworkConfig(type)
     dns_primary:   form.querySelector('[name=dns_primary]').value,
     dns_secondary: form.querySelector('[name=dns_secondary]').value
   };
-  if (type === 'wifi') 
+  if (type === 'wifi')
   {
     payload.ssid     = form.querySelector('[name=ssid]').value;
     payload.password = form.querySelector('[name=password]').value;
   }
 
-  statusEl.style.display = 'inline';
-  statusEl.style.color   = 'gray';
-  statusEl.innerText     = 'Saving…';
-
   $.ajax({
-    url: url, 
+    url: url,
     type: 'POST',
     contentType: 'application/json',
+    dataType: 'json',
     data: JSON.stringify(payload),
-    complete: function(jqXHR) {
-      /* status 0 = connection dropped (expected when AP shuts down to reconnect) */
-      let ok = jqXHR.status === 200 || jqXHR.status === 0;
-      if (!ok) 
+    success: function(arg)
+    {
+      if (type === 'wifi' && !arg.error)
+        startWifiConnectionPoll();
+    },
+    error: function(jqXHR)
+    {
+      /* status 0 = connection dropped (expected when the interface reconfigures
+        mid-response, e.g. AP shuts down to reconnect on WiFi) */
+      if (jqXHR.status === 0)
       {
-        statusEl.style.color = 'red';
-        statusEl.innerText   = 'Error saving config (HTTP ' + jqXHR.status + ').';
+        frontend_log_show(title, {error: 0, content: 'Config saved. Device is reconnecting…'});
+        if (type === 'wifi')
+          startWifiConnectionPoll();
         return;
       }
-
-      if (type === 'wifi') 
-      {
-        statusEl.style.color = 'darkorange';
-        statusEl.innerText   = 'Connecting…';
-        pollWifiConnection(statusEl);
-      } 
-      else 
-      {
-        statusEl.style.color = 'green';
-        statusEl.innerText   = 'Saved.';
-        setTimeout
-        (function() { statusEl.style.display = 'none'; }, 4000);
-      }
+      frontend_log_show(title, {error: 1, content: 'Error saving config (HTTP ' + jqXHR.status + ').'});
     }
   });
 }
 
-/* Polls ESP API and checks if Wifi got a valid IP address. 
+function startWifiConnectionPoll()
+{
+  let statusEl = document.getElementById('wifi-save-status');
+  statusEl.style.display = 'inline';
+  statusEl.style.color   = 'darkorange';
+  statusEl.innerText     = 'Connecting…';
+  pollWifiConnection(statusEl);
+}
+
+function saveMdnsHostname()
+{
+  let form     = document.getElementById('mdns-config-form');
+  let hostname = form.querySelector('[name=hostname]').value;
+
+  $.ajax({
+    url: '/network/mdns',
+    type: 'POST',
+    contentType: 'application/json',
+    dataType: 'json',
+    data: JSON.stringify({ hostname: hostname }),
+    success: function(arg)
+    {
+      if (!arg.error)
+        setTimeout(function() { window.location.href = 'http://' + hostname + '.local/'; }, 1500);
+    }
+  });
+}
+
+/* Polls ESP API and checks if Wifi got a valid IP address.
 Redirects to new IP or prints error message */
 function pollWifiConnection(statusEl, attempts) 
 {
@@ -825,7 +844,6 @@ function do_esp_flash_with_url(url)
         log.error = 0;
         log.content = arg.message || 'Flashing firmware...';
       } else {
-        console_show_response_result(arg);
         log.error = arg.error;
         log.content = arg.message || 'Unknown response';
       }
@@ -877,11 +895,6 @@ function do_rcp_flash_with_url(url, mode) {
       } else if (arg.status === 'flashing' || arg.status === 'started') {
         log.error = 0;
         log.content = arg.message || 'Flashing firmware...';
-        frontend_log_show(title, log);
-      } else {
-        console_show_response_result(arg);
-        log.error = arg.error;
-        log.content = arg.message || 'Unknown response';
         frontend_log_show(title, log);
       }
     },
@@ -982,11 +995,29 @@ function frontend_log_close() {
   document.getElementById("log_window").style.display = "none";
 }
 
-function console_show_response_result(arg) {
-  console.log("Error: ", arg.error);
-  console.log("Result: ", arg.result);
-  console.log("Message: ", arg.message);
+/* Auto-shows the Log Box for pack_response()-shaped replies with a non-empty message.
+   GET diagnostic endpoints send "" on success (error == 0 already says it worked) but
+   keep a real message on failure. Flash responses have no `error` field, so they never
+   match here and keep showing their own manually-built box. */
+$(document).ajaxSuccess(function(event, xhr, settings) {
+  var data = xhr.responseJSON;
+  if (!data || !data.hasOwnProperty('error') || !data.message)
+    return;
+  frontend_log_show(titleFromUrl(settings.url), {error: data.error, content: data.message});
+});
+
+/* Generic fallback Log Box for callers without their own `error` handler. */
+$(document).ajaxError(function(event, xhr, settings) {
+  if (settings.error || xhr.status === 0)
+    return;
+  frontend_log_show(titleFromUrl(settings.url), {error: 1, content: 'Request failed (HTTP ' + xhr.status + ').'});
+});
+
+function titleFromUrl(url) {
+  var segment = url.split('?')[0].split('/').filter(Boolean).pop() || 'Response';
+  return segment.replace(/[_-]+/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
 }
+
 /* --------------------------------------------------------------------
                             Discover
 -------------------------------------------------------------------- */
@@ -1032,14 +1063,9 @@ function fill_thread_available_network_table(data) {
 }
 
 function http_server_scan_thread_network() {
-  var log = {error : 0, content : ""};
-  var title = "Available Network";
-
   document.getElementById("available_networks_table").caption.innerText =
       "Available Thread Networks: Waiting ..."
-
-  log.content = "Waiting...";
-  frontend_log_show(title, log);
+  frontend_log_show("Available Network", {error: 0, content: "Waiting..."});
 
   $.ajax({
     url : '/available_network',
@@ -1049,17 +1075,7 @@ function http_server_scan_thread_network() {
     dataType : "json",
     data : "",
     success : function(arg) {
-      console_show_response_result(arg);
       fill_thread_available_network_table(arg);
-      log.error = arg.error;
-      log.content = arg.message;
-      frontend_log_show(title, log);
-    },
-    error : function(arg) {
-      log.error = "Error: ";
-      log.content = "Unknown: ";
-      frontend_log_show(title, log);
-      console.log(arg);
     }
   })
 }
@@ -1069,27 +1085,13 @@ function http_server_scan_thread_network() {
 -------------------------------------------------------------------- */
 var g_available_networks_row;
 function http_server_join_thread_network(root) {
-  var log = {error : 0, content : ""};
-  var title = "Join"
   $.ajax({
     url : '/join_network',
     async : true,
     contentType : 'application/json;charset=utf-8',
     type : 'POST',
     dataType : "json",
-    data : JSON.stringify(root),
-    success : function(arg) {
-      console_show_response_result(arg);
-      log.error = arg.error;
-      log.content = arg.message;
-      frontend_log_show(title, log);
-    },
-    error : function(arg) {
-      log.error = "Error";
-      log.content = "Unknown";
-      frontend_log_show(title, log);
-      console.log(arg)
-    }
+    data : JSON.stringify(root)
   })
 }
 
@@ -1175,15 +1177,12 @@ function http_server_upload_form_network_table() {
   item.style.display = 'block';
 
   var root = $("#network_form").serializeJson();
-  var title = "Form";
   if (root.hasOwnProperty("defaultRoute") && root.defaultRoute == "on")
     root.defaultRoute = 1;
   else
     root.defaultRoute = 0;
   if (root.hasOwnProperty("defaultRoute") && root.defaultRoute != "")
     root.channel = parseInt(root.channel);
-
-  var log = {error : 0, content : ""};
 
   $.ajax({
     url : '/form_network',
@@ -1193,18 +1192,8 @@ function http_server_upload_form_network_table() {
     dataType : "json",
     data : JSON.stringify(root),
     success : function(arg) {
-      console_show_response_result(arg);
       if (arg != {})
         handle_form_response_message(arg, "form_tip");
-      log.error = arg.error;
-      log.content = arg.message;
-      frontend_log_show(title, log);
-    },
-    error : function(arg) {
-      log.error = "Error: ";
-      log.content = "Unknown: ";
-      frontend_log_show(title, log);
-      console.log(arg)
     }
   })
 }
@@ -1298,8 +1287,6 @@ function decode_thread_status_package(package) {
 }
 
 function http_server_get_thread_network_properties() {
-  var log = {error : 0, content : ""};
-  var title = "Properties";
   $.ajax({
     url : '/get_properties',
     async : true,
@@ -1308,17 +1295,7 @@ function http_server_get_thread_network_properties() {
     dataType : "json",
     data : "",
     success : function(arg) {
-      console_show_response_result(arg);
       decode_thread_status_package(arg);
-      log.error = arg.error;
-      log.content = arg.message;
-      frontend_log_show(title, log);
-    },
-    error : function(arg) {
-      log.error = "Error: ";
-      log.content = "Unknown: ";
-      frontend_log_show(title, log);
-      console.log(arg)
     }
   })
 }
@@ -1328,8 +1305,6 @@ function http_server_get_thread_network_properties() {
 -------------------------------------------------------------------- */
 function http_server_add_prefix_to_thread_network() {
   var root = $("#network_setting").serializeJson();
-  var log = {error : 0, content : ""};
-  var title = "Add Prefix";
   if (root.hasOwnProperty("defaultRoute") && root.defaultRoute == "on")
     root.defaultRoute = 1;
   else
@@ -1341,45 +1316,19 @@ function http_server_add_prefix_to_thread_network() {
     contentType : 'application/json;charset=utf-8',
     type : 'POST',
     dataType : "json",
-    data : JSON.stringify(root),
-    success : function(arg) {
-      console_show_response_result(arg);
-      log.error = arg.error;
-      log.content = arg.message;
-      frontend_log_show(title, log);
-    },
-    error : function(arg) {
-      log.error = "Error: ";
-      log.content = "Unknown: ";
-      frontend_log_show(title, log);
-      console.log(arg)
-    }
+    data : JSON.stringify(root)
   })
 }
 
 function http_server_delete_prefix_from_thread_network() {
   var root = $("#network_setting").serializeJson();
-  var log = {error : 0, content : ""};
-  var title = "Delete Prefix";
   $.ajax({
     url : '/delete_prefix',
     async : true,
     contentType : 'application/json;charset=utf-8',
     type : 'POST',
     dataType : "json",
-    data : JSON.stringify(root),
-    success : function(arg) {
-      console_show_response_result(arg);
-      log.error = arg.error;
-      log.content = arg.message;
-      frontend_log_show(title, log);
-    },
-    error : function(arg) {
-      log.error = "Error: ";
-      log.content = "Unknown: ";
-      frontend_log_show(title, log);
-      console.log(arg)
-    }
+    data : JSON.stringify(root)
   })
 }
 
@@ -1398,9 +1347,7 @@ function http_server_thread_network_commissioner() {
     contentType : 'application/json;charset=utf-8',
     type : 'POST',
     dataType : "json",
-    data : JSON.stringify(root),
-    success : function(arg) { console_show_response_result(arg); },
-    error : function(arg) { console.log(arg) }
+    data : JSON.stringify(root)
   })
 }
 
@@ -1420,7 +1367,6 @@ function ctrl_thread_network_topology(arg) {
       dataType : "json",
       data : "",
       success : function(msg) {
-        console_show_response_result(msg);
         node_info = msg;
         if (node_info != undefined && topology_info != undefined) {
           handle_thread_networks_topology_package(node_info, topology_info);
@@ -1436,7 +1382,6 @@ function ctrl_thread_network_topology(arg) {
       dataType : "json",
       data : "",
       success : function(msg) {
-        console_show_response_result(msg);
         topology_info = msg;
         if (node_info != undefined && topology_info != undefined) {
           handle_thread_networks_topology_package(node_info, topology_info);

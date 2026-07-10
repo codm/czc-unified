@@ -226,6 +226,15 @@ public:
     esp_err_t getNetworkStatus(network_status_t* out);
 
     /**
+     * @brief Set Mdns hostname of ESP32
+     * 
+     * @param[in] hostname 
+     * 
+     * @return `ESP_OK` success - `ESP_ERR_INVALID_ARG` Parameter error - `ESP_ERR_NO_MEM` memory error
+     */
+    esp_err_t setMdnsHostname(const char* hostname);
+
+    /**
      * @brief Fill a `web_network_callbacks_t` struct with static C shims
      *        that forward network config requests to this NetworkStateMachine instance.
      *
