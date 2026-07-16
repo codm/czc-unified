@@ -235,6 +235,13 @@ public:
     esp_err_t setMdnsHostname(const char* hostname);
 
     /**
+     * @brief Scan wifi and get Information of discovered wifi ap's
+     * 
+     *        Wrapper - more detailed description in WirelessAPI.h
+     */
+    esp_err_t scanWifi(scan_shortend_record_t** scan_records, uint16_t* count);
+
+    /**
      * @brief Fill a `web_network_callbacks_t` struct with static C shims
      *        that forward network config requests to this NetworkStateMachine instance.
      *
