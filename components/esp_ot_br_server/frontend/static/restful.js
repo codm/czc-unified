@@ -777,7 +777,7 @@ function fetch_github_firmwares(url) {
     releases.forEach(function(release) {
       if (release.draft) return;
       release.assets.forEach(function(asset) {
-        if (!asset.name.endsWith('.bin')) return;
+        if (!asset.name.endsWith('ota.bin')) return;
         result.push({
           version:    release.tag_name,
           link:       asset.browser_download_url,
