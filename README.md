@@ -14,7 +14,6 @@ Known Issues:
 - Firmware downloads over a Wi-Fi connection are not yet possible (LAN only).
 - No visual feedback on the CZC during setup or firmware updates.
 - The web interface is unreachable if the RCP is not configured correctly.
-- SoftAP network scanning does not work.
 - SoftAP closes after invalid or non-existent network credentials are submitted.
 - Feedback messages in the SoftAP configuration flow are unclear.
 
@@ -340,7 +339,7 @@ Event-driven LED manager. Other components post `LedState` events; the manager a
 
 ##### `network`
 
-Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWifiConfig()`, `getEthernetConfig()`, `setEthernetConfig()`, `getNetworkStatus()` and `fillNetworkCallbacks()`. NVS bindings in `NvsBinding` namespace support full IP configuration (DHCP / static IP / gateway / DNS). See [`components/network/README.md`](components/network/README.md) for the full state diagram and NVS layout.
+Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWifiConfig()`, `getEthernetConfig()`, `setEthernetConfig()`, `getNetworkStatus()`, `scanWifi()` and `fillNetworkCallbacks()`. NVS bindings in `NvsBinding` namespace support full IP configuration (DHCP / static IP / gateway / DNS). See [`components/network/README.md`](components/network/README.md) for the full state diagram and NVS layout.
 
 ##### `esp_ot_br_server`
 
@@ -490,6 +489,7 @@ classDiagram
         +initAccessPoint() void
         +closeAccessPoint() void
         +reconnect() void
+        +scan(records, count) esp_err_t
     }
 
     class StatusLightManager {
@@ -565,6 +565,7 @@ flowchart TD
 | `POST` | `/network/ethernet` | Write Ethernet config + trigger reinit |
 | `POST` | `/network/mdns` | Set mDNS hostname — `{"hostname": "<str>"}` |
 | `GET` | `/network/status` | Returns `{"mode": <int>, "ip": "<str>", "connected": <bool>}` |
+| `GET` | `/network/wifi/scan` | Scan for nearby WiFi networks — returns `[{"ssid", "rssi", "authmode", "channel"}, ...]` |
 | `GET` | `/get_properties` | OpenThread network properties |
 | `GET/DELETE` | `/node` | OpenThread node info |
 | `GET/PUT` | `/node/dataset/active` | Active Thread dataset |
@@ -597,6 +598,16 @@ esp_br_web_start("/spiffs", &fwCbs, &netCbs);
 ```
 
 HTTP handlers parse the JSON body and call the matching function pointer. `AppController` and `NetworkStateMachine` remain invisible to the web server.
+
+**WiFi scan example.** `scan_shortend_record_t` (`network_config.h`) is a slimmed-down
+projection of ESP-IDF's `wifi_ap_record_t` — only the fields the frontend needs (`ssid`,
+`rssi`, `authmode`, `primary_channel`) — kept separate so the web layer never has to
+include `esp_wifi.h`. `WirelessAPI::scan()` allocates the result array with `malloc()`
+and hands ownership to the caller through an out-parameter
+(`scan_shortend_record_t **scan_records`) plus a `uint16_t *count`; the call chain is
+`network_wifi_scan_get_handler` (`esp_br_web.c`) → `get_wifi_scan_results` callback →
+`NetworkStateMachine::scanWifi()` → `WirelessAPI::scan()`. The HTTP handler is
+responsible for `free()`-ing the array once the JSON response has been built.
 
 #### Response pattern: `pack_response` → Log Box
 

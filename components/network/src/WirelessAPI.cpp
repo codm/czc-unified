@@ -1,5 +1,7 @@
 #include "WirelessAPI.h"
 
+#include "esp_check.h"
+
 const char* WirelessAPI::TAG = "wireless";
 
 WirelessAPI::WirelessAPI()
@@ -207,6 +209,61 @@ void WirelessAPI::setWifiIsConnected(bool connected)
 bool WirelessAPI::getWifiIsConnected()
 {
     return this->wifiIsConnected;
+}
+
+esp_err_t WirelessAPI::scan(scan_shortend_record_t **scan_records, uint16_t *count)
+{
+    esp_err_t ret = ESP_OK;
+    bool temporary_init = !wifiNetif && !apNetif;
+    if (temporary_init) {
+        wifiNetif = esp_netif_create_default_wifi_sta();
+        wifi_init_config_t init_cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_RETURN_ON_ERROR(esp_wifi_init(&init_cfg), TAG, "Error initializing Wifi driver for scan");
+        ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "Error setting Wifi mode for scan");
+        ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "Error starting Wifi driver for scan");
+    }
+
+    constexpr wifi_country_t country_settings{
+        .cc = "DE",
+        .schan = 1,
+        .nchan = 13,
+        .max_tx_power = 20,
+        .policy = WIFI_COUNTRY_POLICY_AUTO,
+    };
+    wifi_scan_config_t scan_config {}; // default settings
+    constexpr bool blocking_scan {true};
+    uint16_t aps_found {0};
+    wifi_ap_record_t* found_aps {nullptr};
+
+    ESP_GOTO_ON_ERROR(esp_wifi_set_country(&country_settings), cleanup, TAG, "Error configuring Wifi country settings");
+    ESP_GOTO_ON_ERROR(esp_wifi_scan_start(&scan_config, blocking_scan), cleanup, TAG, "Error during Wifi scan");
+
+    ESP_GOTO_ON_ERROR(esp_wifi_scan_get_ap_num(&aps_found), cleanup, TAG, "Error retrieving found AP num");
+
+    found_aps = (wifi_ap_record_t*)malloc(aps_found * sizeof(wifi_ap_record_t));
+    ESP_GOTO_ON_ERROR(esp_wifi_scan_get_ap_records(&aps_found, found_aps), cleanup, TAG, "Error getting AP records");
+
+    *scan_records = (scan_shortend_record_t*)malloc(aps_found * sizeof(scan_shortend_record_t));
+    for (size_t index = 0; index < aps_found; index++)
+    {
+        strncpy((char*)(*scan_records)[index].ssid, (const char*)found_aps[index].ssid, sizeof((*scan_records)[index].ssid) - 1);
+        (*scan_records)[index].ssid[sizeof((*scan_records)[index].ssid) - 1] = '\0';
+        (*scan_records)[index].rssi            = found_aps[index].rssi;
+        (*scan_records)[index].primary_channel = found_aps[index].primary;
+        (*scan_records)[index].authmode        = static_cast<uint8_t>(found_aps[index].authmode);
+    }
+    free(found_aps);
+    *count = aps_found;
+
+cleanup:
+    if (temporary_init) 
+    {
+        esp_wifi_stop();
+        esp_wifi_deinit();
+        esp_netif_destroy_default_wifi(wifiNetif);
+        wifiNetif = nullptr;
+    }
+    return ret;
 }
 
 ActiveWirelessMode WirelessAPI::getActiveWirelessMode()

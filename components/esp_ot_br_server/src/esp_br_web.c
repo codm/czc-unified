@@ -1378,6 +1378,34 @@ static esp_err_t network_mdns_post_handler(httpd_req_t *req)
     return send_ret;
 }
 
+static esp_err_t network_wifi_scan_get_handler(httpd_req_t *req)
+{
+    if (!s_net_cbs.get_wifi_scan_results)
+        return ESP_FAIL;
+
+    scan_shortend_record_t *records = NULL;
+    uint16_t count = 0;
+    esp_err_t ret = s_net_cbs.get_wifi_scan_results(s_net_cbs.ctx, &records, &count);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    cJSON *root = cJSON_CreateArray();
+    for (uint16_t i = 0; i < count; i++) {
+        cJSON *ap = cJSON_CreateObject();
+        cJSON_AddStringToObject(ap, "ssid",     (const char*)records[i].ssid);
+        cJSON_AddNumberToObject(ap, "rssi",     records[i].rssi);
+        cJSON_AddNumberToObject(ap, "authmode", records[i].authmode);
+        cJSON_AddNumberToObject(ap, "channel",  records[i].primary_channel);
+        cJSON_AddItemToArray(root, ap);
+    }
+    free(records);
+
+    esp_err_t send_ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return send_ret;
+}
+
 static httpd_uri_t s_device_handlers[] = {
     { .uri = ESP_OT_REST_API_FLASH_ESP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_esp_post_handler, .user_ctx = &s_server.data },
     { .uri = ESP_OT_REST_API_FLASH_RCP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_rcp_post_handler, .user_ctx = &s_server.data },
@@ -1389,6 +1417,7 @@ static httpd_uri_t s_device_handlers[] = {
     { .uri = "/network/ethernet", .method = HTTP_POST, .handler = network_eth_post_handler,  .user_ctx = &s_server.data },
     { .uri = "/network/status",   .method = HTTP_GET,  .handler = network_status_get_handler,.user_ctx = &s_server.data },
     { .uri = "/network/mdns",     .method = HTTP_POST, .handler = network_mdns_post_handler, .user_ctx = &s_server.data },
+    { .uri = "/network/wifi/scan",.method = HTTP_GET,  .handler = network_wifi_scan_get_handler, .user_ctx = &s_server.data },
 };
 
 /*-----------------------------------------------------

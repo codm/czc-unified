@@ -453,7 +453,12 @@ esp_err_t NetworkStateMachine::setMdnsHostname(const char *hostname)
     return mdns_hostname_set(hostname);
 }
 
-void NetworkStateMachine::fillNetworkCallbacks(web_network_callbacks_t* cbs)
+esp_err_t NetworkStateMachine::scanWifi(scan_shortend_record_t **scan_records, uint16_t *count)
+{
+    return wirelessAPI.scan(scan_records, count);
+}
+
+void NetworkStateMachine::fillNetworkCallbacks(web_network_callbacks_t *cbs)
 {
     cbs->get_wifi_config = [](void* ctx, wifi_config_data_t* out)
     {
@@ -478,6 +483,10 @@ void NetworkStateMachine::fillNetworkCallbacks(web_network_callbacks_t* cbs)
     cbs->set_mdns_hostname = [](void* ctx, const char* hostname)
     {
         return static_cast<NetworkStateMachine*>(ctx)->setMdnsHostname(hostname);
+    };
+    cbs->get_wifi_scan_results = [](void* ctx, scan_shortend_record_t** out, uint16_t* count)
+    {
+        return static_cast<NetworkStateMachine*>(ctx)->scanWifi(out, count);
     };
     cbs->ctx = this;
 }

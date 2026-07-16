@@ -256,6 +256,76 @@ function loadNetworkConfig(type)
   });
 }
 
+function scanWifiNetworks()
+{
+  let btn     = document.getElementById('wifi-scan-btn');
+  let status  = document.getElementById('wifi-scan-status');
+  let results = document.getElementById('wifi-scan-results');
+
+  btn.disabled = true;
+  results.style.display = 'none';
+  status.innerText = 'Scanning…';
+
+  $.ajax({
+    url: '/network/wifi/scan',
+    type: 'GET',
+    dataType: 'json',
+    success: function(networks)
+    {
+      status.innerText = '';
+      renderWifiScanResults(networks || []);
+    },
+    error: function()
+    {
+      status.innerText = 'Scan unavailable — enter the network name manually below.';
+    },
+    complete: function()
+    {
+      btn.disabled = false;
+    }
+  });
+}
+
+function renderWifiScanResults(networks)
+{
+  let container = document.getElementById('wifi-scan-results');
+  container.innerHTML = '';
+
+  if (!networks.length) {
+    document.getElementById('wifi-scan-status').innerText = 'No networks found.';
+    return;
+  }
+
+  networks
+    .slice()
+    .sort(function(a, b) { return (b.rssi || -100) - (a.rssi || -100); })
+    .forEach(function(net)
+    {
+      let row = document.createElement('div');
+      row.className = 'scan-results-row';
+
+      let ssid = document.createElement('span');
+      ssid.className = 'scan-ssid';
+      ssid.textContent = net.ssid || '(hidden network)';
+
+      let meta = document.createElement('span');
+      meta.className = 'scan-meta';
+      meta.textContent = (net.authmode ? 'Secured · ' : 'Open · ') + (net.rssi || '—') + ' dBm';
+
+      row.appendChild(ssid);
+      row.appendChild(meta);
+      row.addEventListener('click', function()
+      {
+        document.querySelector('#wifi-config-form [name=ssid]').value = net.ssid || '';
+        document.querySelector('#wifi-config-form [name=password]').focus();
+        container.style.display = 'none';
+      });
+      container.appendChild(row);
+    });
+
+  container.style.display = 'block';
+}
+
 /* Toggle Input fields of Networkconfig depending on the dhcp checkbox */
 function toggleStaticIpFields(prefix) 
 {

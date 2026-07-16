@@ -41,6 +41,17 @@ typedef struct {
 } network_status_t;
 
 /**
+ * @brief shortend version of wifi_ap_record_t with data for frontend display
+ */
+typedef struct 
+{
+    uint8_t ssid[33];
+    int8_t rssi;        // Signal strength of AP - dbm between -100 to 10
+    uint8_t authmode;   // wifi_auth_mode_t as plain uint8_t
+    uint8_t primary_channel; 
+}scan_shortend_record_t;
+
+/**
  * @brief Network config callbacks — filled by NetworkStateMachine.
  *        ctx is a NetworkStateMachine* cast to void*.
  */
@@ -51,6 +62,7 @@ typedef struct {
     esp_err_t (*set_ethernet_config)(void *ctx, const ethernet_config_data_t *cfg);
     esp_err_t (*get_network_status) (void *ctx, network_status_t *out);
     esp_err_t (*set_mdns_hostname) (void *ctx, const char* hostname);
+    esp_err_t (*get_wifi_scan_results)(void *ctx, scan_shortend_record_t **out, uint16_t *count);
     void *ctx;
 } web_network_callbacks_t;
 

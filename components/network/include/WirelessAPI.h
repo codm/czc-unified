@@ -7,6 +7,7 @@
 #include "esp_mac.h"
 #include "esp_log.h"
 #include "network_event.h"
+#include "network_config.h"
 
 enum class ActiveWirelessMode {
     OFF,
@@ -145,6 +146,23 @@ public:
 
     /** @return True if the STA interface currently holds a valid IP address. */
     bool getWifiIsConnected();
+
+    /**
+     * @brief Scan wifi and get Information of discovered wifi ap's
+     *
+     * @param[out] scan_records Receives a heap-allocated array of found AP's. Caller takes
+     *                          ownership and must `free()` it once done.
+     * @param[out] count        Receives the number of entries written to `scan_records`.
+     *
+     * @return `ESP_OK` succeed -
+     * @return `ESP_ERR_WIFI_NOT_INIT` WiFi is not initialized by esp_wifi_init -
+     * @return `ESP_ERR_WIFI_NOT_STARTED` WiFi is not started by esp_wifi_start -
+     * @return `ESP_ERR_INVALID_ARG` invalid argument -
+     * @return `ESP_ERR_NO_MEM` out of memory
+     * 
+     * @warning scan_records has to be freed after usage!
+     */
+    esp_err_t scan(scan_shortend_record_t** scan_records, uint16_t* count);
 
     /** @return The currently active wireless mode (`OFF` / `WIFI` / `ACCESSPOINT`). */
     ActiveWirelessMode getActiveWirelessMode();

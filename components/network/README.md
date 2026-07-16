@@ -25,6 +25,7 @@ classDiagram
         +getEthernetConfig(out) esp_err_t
         +setEthernetConfig(cfg) esp_err_t
         +getNetworkStatus(out) esp_err_t
+        +scanWifi(scan_records, count) esp_err_t
         +fillNetworkCallbacks(cbs) void
     }
 
@@ -55,6 +56,7 @@ classDiagram
         +initAccessPoint()
         +closeAccessPoint()
         +reconnect()
+        +scan(scan_records, count) esp_err_t
         +setWirelessConfig(ssid, password)
         +getSsid() const char*
         +getPassword() const char*
@@ -100,6 +102,14 @@ classDiagram
         +bool connected
     }
 
+    class scan_shortend_record_t {
+        <<C struct>>
+        +uint8_t ssid[33]
+        +int8_t rssi
+        +uint8_t authmode
+        +uint8_t primary_channel
+    }
+
     class web_network_callbacks_t {
         <<C struct>>
         +get_wifi_config(ctx, out) esp_err_t
@@ -107,6 +117,7 @@ classDiagram
         +get_ethernet_config(ctx, out) esp_err_t
         +set_ethernet_config(ctx, cfg) esp_err_t
         +get_network_status(ctx, out) esp_err_t
+        +get_wifi_scan_results(ctx, out, count) esp_err_t
         +void* ctx
     }
 
@@ -147,6 +158,7 @@ classDiagram
     NetworkStateMachine ..> wifi_config_data_t : reads / writes
     NetworkStateMachine ..> ethernet_config_data_t : reads / writes
     NetworkStateMachine ..> network_status_t : produces
+    NetworkStateMachine ..> scan_shortend_record_t : scanWifi() produces (array, caller frees)
     NetworkStateMachine ..> web_network_callbacks_t : fillNetworkCallbacks()
     NetworkStateMachine -- NetworkState : currentState
     WirelessAPI *-- SoftapConfig : owns
@@ -160,8 +172,14 @@ classDiagram
 > `web_network_callbacks_t` with static lambdas closing over `this` (passed as `ctx`),
 > handed to `esp_br_web_start()` before the HTTP server starts (see main
 > [README → Bridging the C web server and the C++ application](../../README.md#bridging-the-c-web-server-and-the-c-application)).
-> The REST endpoints this backs (`/network/wifi`, `/network/ethernet`, `/network/status`)
-> are listed in the main [README → API Endpoints](../../README.md#api-endpoints).
+> The REST endpoints this backs (`/network/wifi`, `/network/ethernet`, `/network/status`,
+> `/network/wifi/scan`) are listed in the main
+> [README → API Endpoints](../../README.md#api-endpoints). `scan_shortend_record_t` is a
+> minimal projection of ESP-IDF's `wifi_ap_record_t` kept in `network_config.h` so the
+> C web server never has to include `esp_wifi.h` — see main
+> [README → Bridging the C web server and the C++ application](../../README.md#bridging-the-c-web-server-and-the-c-application)
+> for the ownership contract (`WirelessAPI::scan()` allocates with `malloc()`, the HTTP
+> handler `free()`s after building the response).
 
 ---
 

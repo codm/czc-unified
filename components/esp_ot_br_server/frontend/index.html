@@ -576,7 +576,12 @@
                 <div class="card">
                   <p class="card-title">WiFi</p>
                   <form id="wifi-config-form">
-                    <p class="field-label">SSID</p>
+                    <div class="scan-row">
+                      <p class="field-label" style="margin:0;">SSID</p>
+                      <button type="button" class="btn-sm" id="wifi-scan-btn" onclick="scanWifiNetworks()">SCAN</button>
+                    </div>
+                    <p class="scan-status" id="wifi-scan-status"></p>
+                    <div class="scan-results" id="wifi-scan-results"></div>
                     <input name="ssid" type="text" class="form-control" placeholder="Network name">
                     <p class="field-label">Password</p>
                     <input name="password" type="password" class="form-control" placeholder="Password">
