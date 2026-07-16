@@ -29,57 +29,6 @@ bool readDeviceSetup();
 esp_err_t writeDeviceSetup(bool value);
 
 /**
- * @brief Read whether an RCP flash has been scheduled.
- *
- * @return true if rcp_pending flag is set, false otherwise
- */
-bool readRcpPending();
-
-/**
- * @brief Write the rcp_pending flag to NVS.
- *
- * @param[in] pending  true = flash pending on next boot
- *
- * @return `ESP_OK` on success
- */
-esp_err_t writeRcpPending(bool pending);
-
-/**
- * @brief Read the pending RCP firmware URL from NVS.
- *
- * @param[out] outBuf  Buffer to receive the URL string
- * @param[in]  bufLen  Size of outBuf
- *
- * @return `ESP_OK` on success, `ESP_ERR_NVS_NOT_FOUND` if no URL stored
- */
-esp_err_t readRcpUrl(char* outBuf, size_t bufLen);
-
-/**
- * @brief Write the RCP firmware URL to NVS.
- *
- * @param[in] url  HTTPS URL of the TI firmware binary
- *
- * @return `ESP_OK` on success
- */
-esp_err_t writeRcpUrl(const char* url);
-
-/**
- * @brief Read the target mode saved alongside a pending RCP flash.
- *
- * @return Stored `DeviceMode`, defaults to `DeviceMode::THREAD` if not set
- */
-DeviceMode readRcpUpdateTarget();
-
-/**
- * @brief Write the target mode for the pending RCP flash to NVS.
- *
- * @param[in] mode  Mode to activate once the flash completes
- *
- * @return `ESP_OK` on success
- */
-esp_err_t writeRcpUpdateTarget(DeviceMode mode);
-
-/**
  * @brief Read the stored device mode from NVS.
  *
  * @return Stored `DeviceMode`, defaults to `DeviceMode::THREAD` if not set

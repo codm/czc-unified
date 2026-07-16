@@ -9,9 +9,6 @@ static const char* TAG = "AppNvs";
 
 constexpr const char* NVS_NAMESPACE    = "sys_cfg";
 constexpr const char* KEY_DEVICE_SETUP  = "device_setup";
-constexpr const char* KEY_RCP_PENDING   = "rcp_pending";
-constexpr const char* KEY_RCP_URL       = "rcp_url";
-constexpr const char* KEY_RCP_UPD_TGT  = "rcp_upd_tgt";
 constexpr const char* KEY_DEVICE_MODE   = "device_mode";
 
 namespace AppNvs {
@@ -34,72 +31,6 @@ esp_err_t writeDeviceSetup(bool value)
     ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle),
                         TAG, "NVS open failed");
     esp_err_t ret{nvs_set_u8(handle, KEY_DEVICE_SETUP, static_cast<uint8_t>(value))};
-    if (ret == ESP_OK) ret = nvs_commit(handle);
-    nvs_close(handle);
-    return ret;
-}
-
-bool readRcpPending()
-{
-    nvs_handle_t handle;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
-        return false;
-    }
-    uint8_t val{0};
-    nvs_get_u8(handle, KEY_RCP_PENDING, &val);
-    nvs_close(handle);
-    return static_cast<bool>(val);
-}
-
-esp_err_t writeRcpPending(bool pending)
-{
-    nvs_handle_t handle;
-    ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle),
-                        TAG, "NVS open failed");
-    esp_err_t ret{nvs_set_u8(handle, KEY_RCP_PENDING, static_cast<uint8_t>(pending))};
-    if (ret == ESP_OK) ret = nvs_commit(handle);
-    nvs_close(handle);
-    return ret;
-}
-
-esp_err_t readRcpUrl(char* outBuf, size_t bufLen)
-{
-    nvs_handle_t handle;
-    ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle),
-                        TAG, "NVS open failed");
-    esp_err_t ret{nvs_get_str(handle, KEY_RCP_URL, outBuf, &bufLen)};
-    nvs_close(handle);
-    return ret;
-}
-
-esp_err_t writeRcpUrl(const char* url)
-{
-    nvs_handle_t handle;
-    ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle),
-                        TAG, "NVS open failed");
-    esp_err_t ret{nvs_set_str(handle, KEY_RCP_URL, url)};
-    if (ret == ESP_OK) ret = nvs_commit(handle);
-    nvs_close(handle);
-    return ret;
-}
-
-DeviceMode readRcpUpdateTarget()
-{
-    nvs_handle_t handle;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK)
-        return DeviceMode::THREAD;
-    int32_t val{static_cast<int32_t>(DeviceMode::THREAD)};
-    nvs_get_i32(handle, KEY_RCP_UPD_TGT, &val);
-    nvs_close(handle);
-    return static_cast<DeviceMode>(val);
-}
-
-esp_err_t writeRcpUpdateTarget(DeviceMode mode)
-{
-    nvs_handle_t handle;
-    ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle),
-                        TAG, "NVS open failed");
-    esp_err_t ret{nvs_set_i32(handle, KEY_RCP_UPD_TGT, static_cast<int32_t>(mode))};
     if (ret == ESP_OK) ret = nvs_commit(handle);
     nvs_close(handle);
     return ret;

@@ -179,7 +179,7 @@ Multi-mode coordinator firmware for the cod.m CZC device (ESP32 + CC2652P7 RCP).
 | **Zigbee Coordinator Network** | TCP proxy to a network host application |
 | **Zigbee Router** | Standalone Zigbee router — RCP operates independently |
 
-The active mode is selected on first boot via the web interface. Changing mode triggers a reboot, after which the RCP is flashed with the matching firmware and the protocol stack is started.
+The active mode is selected on first boot via the web interface, or changed later from the same UI. Any transition that needs new RCP firmware (i.e. involves Thread) flashes the CC2652 **live**: the active protocol controller is stopped to free the UART, the RCP is reflashed, and the new mode is started — no ESP reboot required.
 
 The OpenThread stack is based on the [Espressif OTBR example](https://github.com/espressif/esp-idf/blob/master/examples/openthread/ot_br/README.md).
 
@@ -317,13 +317,13 @@ czc_ot_firmware/
 
 ##### `app_controller`
 
-Composition root. Runs the boot-decision-tree on every boot and routes web API requests to the appropriate sub-manager. Owns all NVS keys for boot state (`device_setup`, `rcp_pending`, `rcp_url`, `rcp_upd_tgt`, `device_mode`) via the private `AppNvs` namespace.
+Composition root. Runs the boot-decision-tree on every boot and routes web API requests to the appropriate sub-manager. Owns all NVS keys for boot state (`device_setup`, `device_mode`) via the private `AppNvs` namespace.
 
 ##### `update_manager`
 
-Wraps two updaters with different execution models:
-- **`RcpUpdater`** — downloads TI binary into the OTA staging partition, then drives the CC2652 BSL over UART (`RcpHal`). Runs at boot-time only.
-- **`OtaUpdater`** — thin `esp_https_ota` wrapper for live ESP firmware updates.
+Wraps two updaters, both non-blocking (spawn an internal FreeRTOS task and signal completion via a binary semaphore / reboot):
+- **`RcpUpdater`** — downloads TI binary into the OTA staging partition, then drives the CC2652 BSL over UART (`RcpHal`). `UpdateManager::flashRcp()` spawns the task; `UpdateManager::waitForRcpFlash()` blocks the caller until it's done and returns the result — used by `AppController` both at boot and for live re-flashes.
+- **`OtaUpdater`** — thin `esp_https_ota` wrapper for live ESP firmware updates; reboots on success.
 
 Both use the same OTA partition; a `busy` flag prevents simultaneous access.
 
@@ -400,6 +400,7 @@ classDiagram
     class UpdateManager {
         -bool busy
         +flashRcp(url) esp_err_t
+        +waitForRcpFlash(timeout) esp_err_t
         +flashEsp(url) esp_err_t
     }
     class RcpUpdater {
@@ -535,27 +536,27 @@ flowchart TD
     boot(["Boot"])
     net["Network up\n(NetworkStateMachine)"]
     web["Web server start"]
-    q1{"rcp_flash_pending?"}
-    flash["update_manager.flashRcp(url)"]
     q2{"device_setup?"}
     wait["Block — wait for mode\nselection via web UI"]
-    rb["esp_restart()"]
+    flash["requestRcpFlash():\nstop() active controller (if any)\n→ flashRcp() + waitForRcpFlash()\n→ write device_mode/device_setup\n→ firmware_manager.start(mode)"]
     q3["Read DeviceMode from NVS"]
     start["firmware_manager.start(mode)"]
     run(["Normal operation"])
 
-    boot --> net --> web --> q1
-    q1 -->|yes| flash --> setmode["Write device_mode\nfrom rcp_upd_tgt"] --> q3
-    q1 -->|no| q2
-    q2 -->|"no (first boot)"| wait -->|"POST /flash/rcp\n(newest fw url + mode)"| rb --> boot
+    boot --> net --> web --> q2
+    q2 -->|"no (first boot)"| wait -->|"POST /flash/rcp\n(newest fw url + mode)"| flash --> run
     q2 -->|yes| q3 --> start --> run
 ```
+
+`requestRcpFlash()` is the same live-flash path used both for first-boot setup and for
+any later re-flash (e.g. switching into/out of Thread mode) — there is no NVS-intent /
+reboot mechanism anymore; see [Firmware Flash](#firmware-flash).
 
 ### API Endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/flash/rcp` | Schedule RCP firmware update (NVS intent + reboot) — mode applied after flash |
+| `POST` | `/flash/rcp` | Flash RCP firmware live and activate the given mode — no reboot |
 | `POST` | `/flash/esp` | Start live ESP OTA update |
 | `GET` | `/device/mode` | Returns `{"mode": <int>, "device_setup": <bool>}` |
 | `POST` | `/device/mode` | Set device mode — `{"mode": <int>}` |
@@ -699,8 +700,6 @@ empty) — the point is cutting polling traffic, not duplicating `NetworkStatus`
 
 ### Firmware Flash
 
-Both flash endpoints reboot the device once the update has been applied.
-
 - **ESP firmware (`/flash/esp`)** — A standard ESP-IDF **OTA update**: the new image is
   streamed directly into the inactive `ota_0`/`ota_1` partition via `esp_https_ota_*`,
   the boot partition is switched, and the device reboots into the new firmware.
@@ -708,16 +707,18 @@ Both flash endpoints reboot the device once the update has been applied.
 
 - **RCP firmware (`/flash/rcp`)** — The CC2652P7 cannot be updated over HTTP directly.
   The request body is `{ "url": "<rcp_firmware.bin>", "type": <DeviceMode int> }`.
-  `AppController::requestRcpFlash(url, mode)` writes URL, target mode (`rcp_upd_tgt`),
-  and a pending flag atomically to NVS, then reboots — **no live firmware-manager restart
-  is performed**, so there is no risk of trying to start a protocol stack with the wrong
-  RCP firmware. On the next boot, `AppController::run()` detects the pending flag and:
-  1. Calls `UpdateManager::flashRcp()`, which downloads the TI binary over HTTPS into the
-     OTA staging partition (`RcpUpdater`) and drives the CC2652 BSL over UART (`RcpHal`):
-     sync → bank-erase → download → send-data → reset. The UART driver is released via
-     `RcpHal::close()` after the flash.
-  2. On success, reads `rcp_upd_tgt`, writes it to `device_mode`, and starts the protocol
-     stack directly — **no second reboot required**.
+  `AppController::requestRcpFlash(url, mode)` flashes **live — no ESP reboot**:
+  1. If a protocol controller is already running (i.e. `device_setup` is already true —
+     this isn't the first-boot setup case), it's stopped first via
+     `FirmwareManager::stop()` to free the RCP UART.
+  2. `UpdateManager::flashRcp()` spawns a background task that downloads the TI binary
+     over HTTPS into the OTA staging partition (`RcpUpdater`) and drives the CC2652 BSL
+     over UART (`RcpHal`): sync → bank-erase → download → send-data → reset. The UART
+     driver is released via `RcpHal::close()` after the flash.
+  3. `requestRcpFlash()` blocks on `UpdateManager::waitForRcpFlash()`, which waits on a
+     binary semaphore signaled by that task — no polling, no fixed delay.
+  4. On success, writes `mode` to `device_mode` and sets `device_setup`, then calls
+     `firmware_manager.start(mode)` directly, in the same boot session.
 
   The OTA partition is used as raw byte storage for the RCP binary — the ESP's own
   firmware is never modified during an RCP flash.

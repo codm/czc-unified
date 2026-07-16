@@ -496,17 +496,18 @@ function getSelectedMode()
 
 function confirmModeSelection() {
   let selectedMode = getSelectedMode();
-  if (selectedMode < 0) 
+  if (selectedMode < 0)
     return;
 
   let btn = document.getElementById('mode-confirm-btn');
   btn.disabled = true;
-  btn.innerText = 'Flashing RCP & rebooting...';
+  btn.innerText = 'Flashing RCP...';
 
-  fetchNewestRcpRelease(selectedMode).then(function(rcpUrl) 
+  fetchNewestRcpRelease(selectedMode).then(function(rcpUrl)
   {
-    console.log(selectedMode);
-    console.log(rcpUrl);
+    let modal = document.getElementById('mode-selection-modal');
+    modal.dataset.flashing = 'true';
+    modal.style.display = 'none';
 
     $.ajax({
       url: '/flash/rcp',
@@ -517,13 +518,7 @@ function confirmModeSelection() {
       data: JSON.stringify({
         url: rcpUrl,
         type: selectedMode
-      }),
-      complete: function() {
-        // Connection drop expected on reboot — always treat as success
-        document.getElementById('mode-select-view').style.display = 'none';
-        document.getElementById('mode-flash-view').style.display = 'block';
-        setTimeout(function() { location.reload(); }, 20000);
-      }
+      })
     });
   });
 }
@@ -608,6 +603,14 @@ function onFlashComplete(target, success, error) {
     statusEl.querySelector('.flash-status-phase').textContent =
       success ? 'Flash complete!' : 'Flash failed: ' + (error || 'Unknown error');
   }
+
+  let modal = document.getElementById('mode-selection-modal');
+  if (success && modal.dataset.flashing === 'true') {
+    delete modal.dataset.flashing;
+    setTimeout(function() { location.reload(); }, 1500);
+    return;
+  }
+
   if (success) setTimeout(hideFlashModal, 2000);
 }
 
@@ -777,7 +780,8 @@ function fetch_github_firmwares(url) {
     releases.forEach(function(release) {
       if (release.draft) return;
       release.assets.forEach(function(asset) {
-        if (!asset.name.endsWith('ota.bin')) return;
+        if (!asset.name.endsWith('bin')) return;
+        if (asset.name.endsWith('.full.bin')) return;
         result.push({
           version:    release.tag_name,
           link:       asset.browser_download_url,
@@ -907,17 +911,18 @@ function do_esp_flash_with_url(url)
     }),
 
     success: function(arg) {
-      if (arg.reboot) {
+      if (arg.status === 'flashing' || arg.status === 'started') {
+        // ESP OTA still reboots for real once the image is written — poll
+        // until the device answers again, then reload to pick it back up.
         log.error = 0;
-        log.content = 'Flash scheduled. Device is rebooting...';
-      } else if (arg.status === 'flashing' || arg.status === 'started') {
-        log.error = 0;
-        log.content = arg.message || 'Flashing firmware...';
+        log.content = (arg.message || 'Flashing firmware...') + ' Reloading once back online...';
+        frontend_log_show(title, log);
+        pollUntilOnline(function() { window.location.reload(); });
       } else {
         log.error = arg.error;
         log.content = arg.message || 'Unknown response';
+        frontend_log_show(title, log);
       }
-      frontend_log_show(title, log);
     },
     error: function(arg) {
       log.error = 1;
@@ -942,9 +947,6 @@ function pollUntilOnline(onReady) {
 function do_rcp_flash_with_url(url, mode) {
   document.getElementById('flash_window').style.display = 'none';
 
-  let log = {error: 0, content: ''};
-  let title = "Flash RCP";
-  document.getElementById('flash_status').innerText = 'Flashing...';
   $.ajax({
     url: '/flash/rcp',
     async: true,
@@ -954,27 +956,7 @@ function do_rcp_flash_with_url(url, mode) {
     data: JSON.stringify({
       url,
       type: mode
-    }),
-
-    success: function(arg) {
-      if (arg.reboot) {
-        log.error = 0;
-        log.content = 'Flash scheduled. Device is rebooting...';
-        frontend_log_show(title, log);
-        pollUntilOnline(function() { window.location.reload(); });
-      } else if (arg.status === 'flashing' || arg.status === 'started') {
-        log.error = 0;
-        log.content = arg.message || 'Flashing firmware...';
-        frontend_log_show(title, log);
-      }
-    },
-    error: function() {
-      // Connection drop is expected: ESP reboots immediately after scheduling the flash
-      log.error = 0;
-      log.content = 'Flash scheduled. Device is rebooting...';
-      frontend_log_show(title, log);
-      pollUntilOnline(function() { window.location.reload(); });
-    }
+    })
   });
 }
 

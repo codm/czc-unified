@@ -86,12 +86,17 @@ GET /device/mode
 
 The mode selection modal shows four cards (one per mode). Clicking a card calls `selectMode(n)` which highlights it and shows a confirm bar at the bottom.
 
-`confirmModeSelection()` sends:
+`confirmModeSelection()` resolves the newest RCP firmware URL for the selected mode, marks the modal as flashing (`dataset.flashing = 'true'`) and hides it, then sends:
 ```
-POST /device/mode  { "mode": n }
+POST /flash/rcp  { "url": "<rcp_firmware.bin>", "type": n }
 ```
 
-The backend flashes the matching RCP firmware and reboots. The page waits 20 seconds then reloads.
+The RCP is flashed **live — no ESP reboot**. Progress and completion are reported via the
+SSE `device_state` / `flash_progress` / `flash_complete` events (see [SSE
+Events](../../../README.md#sse-events) in the top-level README), which drive the same
+`flash_window` modal used for manual re-flashes. `onFlashComplete()` checks the modal's
+`flashing` marker and reloads the page ~1.5s after a successful setup flash so the UI
+picks up the newly active mode.
 
 ---
 
@@ -178,10 +183,17 @@ When the Coordinator tab is active, a sub-row appears with two buttons: **USB / 
 
 ### Flash flow
 
-`do_flash_with_url(url)` performs two requests in order:
+Each firmware-list row's button calls either `do_esp_flash_with_url(url)` or
+`do_rcp_flash_with_url(url, mode)`, depending on which chip the row is for.
 
-1. `POST /device/mode  { "mode": n }` — saves the mode to NVS before reboot
-2. `POST /flash/rcp   { "url": "..." }` — downloads and flashes the RCP binary, then reboots
+- **RCP** — sends `POST /flash/rcp { "url": "...", "type": mode }` and hides the picker.
+  Flashing is live (no ESP reboot); the SSE-driven `flash_window` modal
+  (`device_state`/`flash_progress`/`flash_complete`) shows progress and the result, then
+  hides itself again — see [First Boot](#first-boot--mode-selection-dialog) above for the
+  same mechanism.
+- **ESP** — sends `POST /flash/esp { "url": "..." }`. This *does* still reboot the device
+  (a real ESP-IDF OTA update), so on a successful response `do_esp_flash_with_url()` calls
+  `pollUntilOnline()` to wait for the device to come back, then reloads the page.
 
 ---
 
@@ -303,14 +315,14 @@ Visible only in coordinator mode (modes 1 and 2). Shows two buttons: **USB / UAR
 | Method | Path | Used for |
 |---|---|---|
 | `GET` | `/device/mode` | First boot check, current mode display |
-| `POST` | `/device/mode` | First boot setup, Zigbee transport switch, pre-flash mode save |
+| `POST` | `/device/mode` | Zigbee transport switch (coordinator USB &lt;-&gt; Net) |
 | `GET` | `/network/status` | Polling for internet connectivity (first boot) |
 | `GET` | `/network/wifi` | Load WiFi config form |
 | `POST` | `/network/wifi` | Save WiFi config |
 | `GET` | `/network/ethernet` | Load Ethernet config form |
 | `POST` | `/network/ethernet` | Save Ethernet config |
-| `POST` | `/flash/rcp` | Flash CC2652 RCP with a specific firmware URL |
-| `POST` | `/flash/esp` | OTA update of the ESP32 |
+| `POST` | `/flash/rcp` | Flash CC2652 RCP live with a specific firmware URL + mode — no reboot; used for first-boot setup and manual re-flash |
+| `POST` | `/flash/esp` | OTA update of the ESP32 — reboots on success |
 | `GET` | `/get_properties` | OpenThread network properties (Thread mode) |
 | `GET` | `/node` | OpenThread node info |
 | `GET` | `/topology` | Thread network topology graph |
