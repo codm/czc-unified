@@ -261,7 +261,7 @@
 
           var meta = document.createElement('span');
           meta.className = 'scan-meta';
-          meta.textContent = (net.auth && net.auth !== 'OPEN' ? '🔒 ' : '') + (net.rssi || '—') + ' dBm';
+          meta.textContent = (net.authmode ? 'Secured · ' : 'Open · ') + (net.rssi || '—') + ' dBm';
 
           row.appendChild(ssid);
           row.appendChild(meta);
@@ -292,7 +292,7 @@
         })
         .then(function (data) {
           status.innerText = '';
-          renderScanResults(data.result || []);
+          renderScanResults(data || []);
         })
         .catch(function () {
           status.innerText = 'Scan unavailable — enter the network name manually below.';
