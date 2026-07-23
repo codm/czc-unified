@@ -333,6 +333,36 @@ Selects and starts the correct `ProtocolController` implementation based on `Dev
 - `ThreadController` — OTBR stack (Spinel over UART).
 - `ZigbeeProxyController` — transparent serial proxy (USB or TCP). Pumps bytes between the RCP UART and an `IProxyTransport` implementation (`UartTransport` for USB, `TcpTransport` for TCP) using two FreeRTOS tasks.
 
+**`ThreadController::stop()` drain barrier.** Disabling the OpenThread stack triggers
+address-removal / multicast-leave-group notifications that are handled asynchronously —
+first as OpenThread tasklets, then as `esp_event` events on the **default event loop**
+task, which drive lwIP calls into the netif glue. `esp_openthread_stop()` frees the netif
+glue's packet queue, so if it runs before those events have been processed, the still
+in-flight leave-group send hits a freed (`NULL`) queue and crashes
+(`xQueueGenericSend` assert). `stop()` avoids this with a two-stage drain before calling
+`esp_openthread_stop()`: process OpenThread tasklets until idle (so the notifier's
+`esp_event_post()` calls are actually issued), then post a private barrier event and block
+until it comes back out the other end of the same FIFO queue — proof that everything
+posted before it has been handled.
+
+```mermaid
+sequenceDiagram
+    participant S as ThreadController::stop()
+    participant OT as OpenThread (lock held)
+    participant Loop as Default event loop
+    participant Glue as netif glue (packet queue)
+
+    S->>OT: otThreadSetEnabled(false) / otIp6SetEnabled(false)
+    OT-->>OT: notifier fires (address removed / multicast group left)
+    S->>OT: otTaskletsProcess() until idle
+    OT->>Loop: esp_event_post(leave_ip6_multicast_group / remove_ip6_address)
+    S->>Loop: esp_event_post(DRAIN_BARRIER)
+    Loop->>Glue: handle leave/remove events (blocking lwIP calls)
+    Loop->>S: handle DRAIN_BARRIER → xSemaphoreGive(drainDone)
+    S->>S: xSemaphoreTake(drainDone) returns
+    S->>Glue: esp_openthread_stop() — safe to free the packet queue now
+```
+
 ##### `status_light`
 
 Event-driven LED manager. Other components post `LedState` events; the manager applies priority arbitration and drives the GPIO LEDs via a 100 ms `esp_timer` tick. See [`components/status_light/README.md`](components/status_light/README.md).
