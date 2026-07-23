@@ -183,13 +183,14 @@ esp_err_t ThreadController::stop()
     } 
     else {
         esp_event_post(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId, nullptr, 0, portMAX_DELAY);
-        if (xSemaphoreTake(drainDone, pdMS_TO_TICKS(2000)) != pdTRUE) {
+        if (xSemaphoreTake(drainDone, pdMS_TO_TICKS(5000)) != pdTRUE) {
             ESP_LOGW(TAG, "Netif teardown drain timed out — proceeding anyway");
         }
         esp_event_handler_unregister(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId, handleDrainBarrier);
         vSemaphoreDelete(drainDone);
     }
 
+    vTaskDelay(pdMS_TO_TICKS(500));
     esp_err_t err = esp_openthread_stop();
     
     if (err != ESP_OK) {
