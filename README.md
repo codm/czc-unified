@@ -349,16 +349,16 @@ posted before it has been handled.
 sequenceDiagram
     participant S as ThreadController::stop()
     participant OT as OpenThread (lock held)
-    participant Loop as Default event loop
+    participant EvtLoop as Default event loop
     participant Glue as netif glue (packet queue)
 
     S->>OT: otThreadSetEnabled(false) / otIp6SetEnabled(false)
     OT-->>OT: notifier fires (address removed / multicast group left)
     S->>OT: otTaskletsProcess() until idle
-    OT->>Loop: esp_event_post(leave_ip6_multicast_group / remove_ip6_address)
-    S->>Loop: esp_event_post(DRAIN_BARRIER)
-    Loop->>Glue: handle leave/remove events (blocking lwIP calls)
-    Loop->>S: handle DRAIN_BARRIER → xSemaphoreGive(drainDone)
+    OT->>EvtLoop: esp_event_post(leave_ip6_multicast_group / remove_ip6_address)
+    S->>EvtLoop: esp_event_post(DRAIN_BARRIER)
+    EvtLoop->>Glue: handle leave/remove events (blocking lwIP calls)
+    EvtLoop->>S: handle DRAIN_BARRIER → xSemaphoreGive(drainDone)
     S->>S: xSemaphoreTake(drainDone) returns
     S->>Glue: esp_openthread_stop() — safe to free the packet queue now
 ```
