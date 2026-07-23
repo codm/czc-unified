@@ -30,8 +30,11 @@ esp_err_t RcpUpdater::flash(const char* url)
     Sse_events::flash::post_device_state(SseDeviceMode::FLASHING, nullptr);
 
     ESP_RETURN_ON_ERROR(hal.init(Board::RCP_UART), TAG, "HAL init failed");
-    ESP_RETURN_ON_ERROR(downloadToStaging(url),    TAG, "Download failed");
-    esp_err_t ret = flashFromStaging();
+
+    esp_err_t ret = downloadToStaging(url);
+    if (ret == ESP_OK) {
+        ret = flashFromStaging();
+    }
     hal.close();
 
     if (ret != ESP_OK)

@@ -30,6 +30,11 @@ esp_err_t RcpHal::init(uart_port_t uartNum)
 {
     uartPort = uartNum;
 
+    if (uart_is_driver_installed(uartPort)) {
+        ESP_LOGW(TAG, "UART%d driver already installed at init: deleting stale instance!", uartPort);
+        uart_driver_delete(uartPort);
+    }
+
     gpio_config_t rstConf{};
     rstConf.pin_bit_mask = (1ULL << Board::CC_RST_PIN);
     rstConf.mode         = GPIO_MODE_OUTPUT;
