@@ -55,16 +55,17 @@ public:
     void fillFirmwareCallbacks(web_firmware_callbacks_t* cbs);
 
     /**
-     * @brief Schedule an RCP firmware update: write intent to NVS and reboot.
+     * @brief Flash RCP firmware live and activate `mode` — no reboot.
      *
-     *        Writes URL, target mode, and pending flag atomically to NVS, then reboots.
-     *        The actual flashing and mode switch happen on the next boot via the
-     *        boot-decision-tree — no live firmware-manager restart is performed.
+     *        Stops the currently active protocol controller (if any) to free the
+     *        RCP UART, flashes via UpdateManager, then writes device_mode and
+     *        device_setup to NVS and starts the firmware manager in `mode`.
+     *        Blocks the calling task until the flash finishes.
      *
      * @param[in] url   HTTPS URL of the TI firmware binary
-     * @param[in] mode  DeviceMode to activate after the flash completes
+     * @param[in] mode  DeviceMode to activate once the flash completes
      *
-     * @return `ESP_OK` if the intent was written successfully
+     * @return `ESP_OK` on success
      */
     esp_err_t requestRcpFlash(const char* url, DeviceMode mode);
 

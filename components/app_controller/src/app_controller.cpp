@@ -15,43 +15,9 @@ AppController::AppController(UpdateManager& updateMgr, FirmwareManager& firmware
 
 void AppController::run()
 {
-    // 1. Pending RCP flash from a prior web request or provisioning
-    if (AppNvs::readRcpPending())
-    {
-        char rcpUrl[256]{};
-        esp_err_t err{AppNvs::readRcpUrl(rcpUrl, sizeof(rcpUrl))};
-
-        if (err != ESP_OK)
-        {
-            ESP_LOGE(TAG, "rcp_pending set but URL unreadable (%s) — clearing",
-                     esp_err_to_name(err));
-            AppNvs::writeRcpPending(false);
-        }
-        else
-        {
-            ESP_LOGI(TAG, "RCP flash pending: %s", rcpUrl);
-            err = updateManager.flashRcp(rcpUrl);
-
-            if (err == ESP_OK)
-            {
-                DeviceMode targetMode{AppNvs::readRcpUpdateTarget()};
-                AppNvs::writeDeviceMode(targetMode);
-                AppNvs::writeRcpPending(false);
-                ESP_LOGI(TAG, "RCP flash done, mode set to %d — rebooting",
-                         static_cast<int>(targetMode));
-            }
-            else
-            {
-                ESP_LOGE(TAG, "RCP flash failed (%s) — rebooting", esp_err_to_name(err));
-            }
-
-            vTaskDelay(pdMS_TO_TICKS(500));
-        }
-    }
-
-    // 2. First boot — wait for the user to select a mode via the web UI.
-    //    requestModeChange() will write device_setup, RCP URL and pending flag,
-    //    then reboot — this loop never exits on its own.
+    // First boot — wait for the user to select a mode via the web UI.
+    // requestRcpFlash() completes setup live (flash + start the firmware
+    // manager) without ever returning here — this loop just parks the task.
     if (!AppNvs::readDeviceSetup())
     {
         ESP_LOGI(TAG, "First boot — waiting for mode selection via web UI");
@@ -61,7 +27,7 @@ void AppController::run()
         }
     }
 
-    // 3. Normal boot — start the configured protocol stack
+    // Normal boot — start the configured protocol stack
     DeviceMode mode{AppNvs::readDeviceMode()};
     ESP_LOGI(TAG, "Starting firmware manager in mode %d", static_cast<int>(mode));
     ESP_ERROR_CHECK(firmwareManager.start(mode));
@@ -69,14 +35,27 @@ void AppController::run()
 
 esp_err_t AppController::requestRcpFlash(const char* url, DeviceMode mode)
 {
-    ESP_RETURN_ON_ERROR(AppNvs::writeDeviceSetup(true),       TAG, "Write device setup failed");
-    ESP_RETURN_ON_ERROR(AppNvs::writeRcpUrl(url),             TAG, "Write RCP URL failed");
-    ESP_RETURN_ON_ERROR(AppNvs::writeRcpUpdateTarget(mode),   TAG, "Write RCP update target failed");
-    ESP_RETURN_ON_ERROR(AppNvs::writeRcpPending(true),        TAG, "Write RCP pending failed");
-    ESP_LOGI(TAG, "RCP flash scheduled (mode %d) — rebooting", static_cast<int>(mode));
-    vTaskDelay(pdMS_TO_TICKS(200));
-    esp_restart();
-    return ESP_OK;
+    if (AppNvs::readDeviceSetup())
+    {
+        firmwareManager.stop();
+    }
+
+    esp_err_t err{updateManager.flashRcp(url)};
+    if (err == ESP_OK)
+    {
+        err = updateManager.waitForRcpFlash();
+    }
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "RCP flash failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    AppNvs::writeDeviceMode(mode);
+    AppNvs::writeDeviceSetup(true);
+    ESP_LOGI(TAG, "RCP flash done — starting firmware manager in mode %d", static_cast<int>(mode));
+
+    return firmwareManager.start(mode);
 }
 
 esp_err_t AppController::requestEspFlash(const char* url)
@@ -90,7 +69,7 @@ esp_err_t AppController::requestModeChange(DeviceMode mode)
     ESP_LOGI(TAG, "Mode change to %d", static_cast<int>(mode));
 
     // Live switch only for coordinator-to-coordinator transitions (e.g. USB <-> Net).
-    // Any transition involving Thread always goes through flash_rcp + reboot.
+    // Any transition involving Thread needs a fresh RCP flash — use requestRcpFlash().
     if (firmwareManager.getActiveMode() != DeviceMode::THREAD && mode != DeviceMode::THREAD)
     {
         firmwareManager.stop();
@@ -103,8 +82,6 @@ esp_err_t AppController::requestModeChange(DeviceMode mode)
 
 DeviceMode AppController::getCurrentMode()
 {
-    if (AppNvs::readRcpPending())
-        return AppNvs::readRcpUpdateTarget();
     return firmwareManager.getActiveMode();
 }
 

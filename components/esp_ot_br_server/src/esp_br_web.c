@@ -1184,9 +1184,10 @@ static esp_err_t esp_otbr_flash_rcp_post_handler(httpd_req_t *req)
     int mode = cJSON_IsNumber(type_item) ? (int)cJSON_GetNumberValue(type_item) : 0;
     cJSON_Delete(request);
 
-    // Send response before flash_rcp — it triggers immediate reboot, connection would die otherwise
+    // Send response before flash_rcp — it blocks the caller for the whole (live,
+    // no-reboot) flash duration; progress/completion is reported via SSE instead.
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"scheduled\",\"reboot\":true}");
+    httpd_resp_sendstr(req, "{\"status\":\"flashing\",\"reboot\":false}");
 
     if (s_fw_cbs.flash_rcp) {
         s_fw_cbs.flash_rcp(s_fw_cbs.ctx, url, mode);

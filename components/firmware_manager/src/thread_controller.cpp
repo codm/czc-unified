@@ -2,6 +2,7 @@
 
 #include "board_config.h"
 #include "esp_check.h"
+#include "esp_event.h"
 #include "esp_log.h"
 #include "esp_openthread.h"
 #include "esp_openthread_lock.h"
@@ -13,10 +14,21 @@
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "openthread/dataset.h"
+#include "openthread/tasklet.h"
 #include <string.h>
 
 static const char* TAG = "ThreadController";
+
+// Drain teardown queue event - see readme
+ESP_EVENT_DEFINE_BASE(THREAD_CONTROLLER_DRAIN_EVENT);
+static constexpr int32_t kDrainBarrierEventId = 0;
+
+static void handleDrainBarrier(void* handlerArg, esp_event_base_t, int32_t, void*)
+{
+    xSemaphoreGive(static_cast<SemaphoreHandle_t>(handlerArg));
+}
 
 #define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()                   \
     {                                                           \
@@ -62,6 +74,7 @@ esp_err_t ThreadController::start()
                         TAG, "eventfd register failed");
 
     esp_openthread_register_rcp_failure_handler(rcpFailureHandler);
+    esp_openthread_set_coprocessor_reset_failure_callback(rcpFailureHandler);
 
     esp_openthread_config_t config{};
     config.netif_config    = ESP_NETIF_DEFAULT_OPENTHREAD();
@@ -79,7 +92,7 @@ esp_err_t ThreadController::start()
     if (backboneNetif != nullptr) {
         esp_openthread_set_backbone_netif(backboneNetif);
     } else {
-        ESP_LOGE(TAG, "No backbone netif found — border routing will not work");
+        ESP_LOGE(TAG, "No backbone netif found: border routing will not work!");
     }
 
     ESP_RETURN_ON_ERROR(esp_openthread_start(&config), TAG, "openthread start failed");
@@ -104,16 +117,92 @@ esp_err_t ThreadController::stop()
 {
     esp_openthread_register_rcp_failure_handler(nullptr);
 
-    otInstance* ins{esp_openthread_get_instance()};
-    ESP_ERROR_CHECK(otThreadDetachGracefully(ins, nullptr, nullptr));
-
     esp_openthread_lock_acquire(portMAX_DELAY);
-    ESP_ERROR_CHECK(otIp6SetEnabled(ins, false));
+    esp_openthread_border_router_deinit();
     esp_openthread_lock_release();
+    
+    otInstance *instance = esp_openthread_get_instance();
+    if (!esp_openthread_lock_acquire(portMAX_DELAY)) {
+        ESP_LOGE(TAG, "Could not acquire OpenThread lock");
+        return ESP_ERR_TIMEOUT;
+    }
+    
+    otError ot_error = OT_ERROR_NONE;
+    
+    if (otThreadGetDeviceRole(instance) != OT_DEVICE_ROLE_DISABLED) {
+        ot_error = otThreadSetEnabled(instance, false);
+        
+        if (ot_error != OT_ERROR_NONE) {
+            ESP_LOGE(
+                TAG,
+                "otThreadSetEnabled(false) failed: %s",
+                otThreadErrorToString(ot_error)
+            );
+        }
+    }
+    
+    if (ot_error == OT_ERROR_NONE && otIp6IsEnabled(instance)) {
+        ot_error = otIp6SetEnabled(instance, false);
+        
+        if (ot_error != OT_ERROR_NONE) {
+            ESP_LOGE(
+                TAG,
+                "otIp6SetEnabled(false) failed: %s",
+                otThreadErrorToString(ot_error)
+            );
+        }
+    }
 
-    esp_err_t ret{esp_openthread_stop()};
-    threadActive = false;
-    return ret;
+    while (otTaskletsArePending(instance)) {
+        otTaskletsProcess(instance);
+    }
+
+    bool is_stopped {otThreadGetDeviceRole(instance) == OT_DEVICE_ROLE_DISABLED && !otIp6IsEnabled(instance)};
+    
+    esp_openthread_lock_release();
+    
+    if (ot_error != OT_ERROR_NONE) {
+        return ESP_FAIL;
+    }
+    
+    if (!is_stopped) {
+        ESP_LOGE(TAG, "Thread or IPv6 interface is still active");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    SemaphoreHandle_t drainDone{xSemaphoreCreateBinary()};
+    if (drainDone == nullptr) {
+        ESP_LOGW(TAG, "Failed to create drain semaphore! Falling back to a fixed delay.");
+        vTaskDelay(pdMS_TO_TICKS(500));
+    } 
+    else if (esp_event_handler_register(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId,
+                                          handleDrainBarrier, drainDone) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to register drain handler — falling back to a fixed delay");
+        vSemaphoreDelete(drainDone);
+        vTaskDelay(pdMS_TO_TICKS(500));
+    } 
+    else {
+        esp_event_post(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId, nullptr, 0, portMAX_DELAY);
+        if (xSemaphoreTake(drainDone, pdMS_TO_TICKS(2000)) != pdTRUE) {
+            ESP_LOGW(TAG, "Netif teardown drain timed out — proceeding anyway");
+        }
+        esp_event_handler_unregister(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId, handleDrainBarrier);
+        vSemaphoreDelete(drainDone);
+    }
+
+    esp_err_t err = esp_openthread_stop();
+    
+    if (err != ESP_OK) {
+        ESP_LOGE(
+            TAG,
+            "esp_openthread_stop() failed: %s",
+            esp_err_to_name(err)
+        );
+        return err;
+    }
+    
+    ESP_LOGI(TAG, "OpenThread stopped successfully");
+    return ESP_OK;
 }
 
 bool ThreadController::isRunning()

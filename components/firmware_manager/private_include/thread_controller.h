@@ -49,6 +49,9 @@ private:
 
     /** @brief Hardware-resets the CC2652 via the RST pin on RCP failure. */
     static void rcpFailureHandler();
+
+    /** @brief Signals `aContext` (a SemaphoreHandle_t) once otThreadDetachGracefully() completes. */
+    static void handleDetachGracefully(void* aContext);
 };
 
 #endif // CZC_THREAD_CONTROLLER_H_
