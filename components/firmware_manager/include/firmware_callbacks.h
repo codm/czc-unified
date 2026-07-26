@@ -32,6 +32,10 @@ typedef struct {
     /** Returns 1 if device has been provisioned, 0 on first boot. */
     esp_err_t (*get_device_setup) (void *ctx, int *setup_out);
 
+    void (*esp_reboot) (void *ctx);
+
+    esp_err_t (*esp_erase_nvs) (void *ctx);
+
     void *ctx;
 } web_firmware_callbacks_t;
 

@@ -6,6 +6,7 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs_flash.h"
 
 static const char* TAG = "AppController";
 
@@ -85,6 +86,17 @@ DeviceMode AppController::getCurrentMode()
     return firmwareManager.getActiveMode();
 }
 
+void AppController::espReboot()
+{
+    firmwareManager.stop();
+    esp_restart();
+}
+
+esp_err_t AppController::espEraseNvs()
+{
+    return nvs_flash_erase();
+}
+
 void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
 {
     cbs->flash_rcp = [](void* ctx, const char* url, int mode)
@@ -108,6 +120,14 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     {
         *setup_out = AppNvs::readDeviceSetup() ? 1 : 0;
         return ESP_OK;
+    };
+    cbs->esp_reboot = [](void* ctx)
+    {
+        return static_cast<AppController*>(ctx)->espReboot();
+    };
+    cbs->esp_erase_nvs = [](void* ctx)
+    {
+        return static_cast<AppController*>(ctx)->espEraseNvs();
     };
     cbs->ctx = this;
 }
