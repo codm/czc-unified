@@ -699,11 +699,26 @@
           </div>
           <div class="content-panel">
             <div class="form-card">
-              <div class="btn-row">
-                <button type="button" class="btn btn-default" disabled>Clear NVRAM</button>
-                <button type="button" class="btn btn-default" disabled>Factory Reset</button>
-                <button type="button" class="btn btn-default" disabled>Export Logs</button>
-                <button type="button" class="btn btn-default" disabled>Restart Device</button>
+              <div class="split-grid">
+
+                <!-- ESP32 -->
+                <div class="card">
+                  <p class="card-title">ESP32</p>
+                  <div class="btn-row">
+                    <button type="button" class="btn btn-default" onclick="esp_restart_device()">Restart Device</button>
+                    <button type="button" class="btn btn-default" onclick="esp_erase_nvs()">Factory Reset (Erase NVS)</button>
+                  </div>
+                </div>
+
+                <!-- RCP -->
+                <div class="card">
+                  <p class="card-title">RCP</p>
+                  <div class="btn-row">
+                    <button type="button" class="btn btn-default" disabled">Restart Device</button>
+                    <button type="button" class="btn btn-default" disabled">Clear NVRAM</button>
+                  </div>
+                </div>
+
               </div>
               <p class="note">Debug actions will be enabled in a future release.</p>
             </div>

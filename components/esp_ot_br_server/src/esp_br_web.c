@@ -1239,6 +1239,37 @@ static esp_err_t device_mode_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t device_esp_reboot_post_handler(httpd_req_t *req)
+{
+    cJSON *error    = cJSON_CreateNumber(0);
+    cJSON *result   = cJSON_CreateString("successful");
+    cJSON *message  = cJSON_CreateString("Rebooting... \n Page reloads in 20s");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+
+    if (s_fw_cbs.esp_reboot)
+        s_fw_cbs.esp_reboot(s_fw_cbs.ctx);
+
+    return ESP_OK;
+}
+
+static esp_err_t device_esp_erasenvs_post_handler(httpd_req_t *req)
+{
+    esp_err_t ret = ESP_FAIL;
+    if (s_fw_cbs.esp_erase_nvs)
+        ret = s_fw_cbs.esp_erase_nvs(s_fw_cbs.ctx);
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? "ESP factory reset successful" : "Failed to erase ESP-NVS");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+
+    return ret;
+}
+
 static esp_err_t network_wifi_get_handler(httpd_req_t *req)
 {
     wifi_config_data_t cfg = {0};
@@ -1410,15 +1441,17 @@ static esp_err_t network_wifi_scan_get_handler(httpd_req_t *req)
 static httpd_uri_t s_device_handlers[] = {
     { .uri = ESP_OT_REST_API_FLASH_ESP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_esp_post_handler, .user_ctx = &s_server.data },
     { .uri = ESP_OT_REST_API_FLASH_RCP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_rcp_post_handler, .user_ctx = &s_server.data },
-    { .uri = "/device/mode",      .method = HTTP_GET,  .handler = device_mode_get_handler,   .user_ctx = &s_server.data },
-    { .uri = "/device/mode",      .method = HTTP_POST, .handler = device_mode_post_handler,  .user_ctx = &s_server.data },
-    { .uri = "/network/wifi",     .method = HTTP_GET,  .handler = network_wifi_get_handler,  .user_ctx = &s_server.data },
-    { .uri = "/network/wifi",     .method = HTTP_POST, .handler = network_wifi_post_handler, .user_ctx = &s_server.data },
-    { .uri = "/network/ethernet", .method = HTTP_GET,  .handler = network_eth_get_handler,   .user_ctx = &s_server.data },
-    { .uri = "/network/ethernet", .method = HTTP_POST, .handler = network_eth_post_handler,  .user_ctx = &s_server.data },
-    { .uri = "/network/status",   .method = HTTP_GET,  .handler = network_status_get_handler,.user_ctx = &s_server.data },
-    { .uri = "/network/mdns",     .method = HTTP_POST, .handler = network_mdns_post_handler, .user_ctx = &s_server.data },
-    { .uri = "/network/wifi/scan",.method = HTTP_GET,  .handler = network_wifi_scan_get_handler, .user_ctx = &s_server.data },
+    { .uri = "/device/mode",        .method = HTTP_GET,  .handler = device_mode_get_handler,            .user_ctx = &s_server.data },
+    { .uri = "/device/mode",        .method = HTTP_POST, .handler = device_mode_post_handler,           .user_ctx = &s_server.data },
+    { .uri = "/device/esp/reboot",  .method = HTTP_POST, .handler = device_esp_reboot_post_handler,     .user_ctx = &s_server.data },
+    { .uri = "/device/esp/erasenvs",.method = HTTP_POST, .handler = device_esp_erasenvs_post_handler,   .user_ctx = &s_server.data },
+    { .uri = "/network/wifi",       .method = HTTP_GET,  .handler = network_wifi_get_handler,           .user_ctx = &s_server.data },
+    { .uri = "/network/wifi",       .method = HTTP_POST, .handler = network_wifi_post_handler,          .user_ctx = &s_server.data },
+    { .uri = "/network/ethernet",   .method = HTTP_GET,  .handler = network_eth_get_handler,            .user_ctx = &s_server.data },
+    { .uri = "/network/ethernet",   .method = HTTP_POST, .handler = network_eth_post_handler,           .user_ctx = &s_server.data },
+    { .uri = "/network/status",     .method = HTTP_GET,  .handler = network_status_get_handler,         .user_ctx = &s_server.data },
+    { .uri = "/network/mdns",       .method = HTTP_POST, .handler = network_mdns_post_handler,          .user_ctx = &s_server.data },
+    { .uri = "/network/wifi/scan",  .method = HTTP_GET,  .handler = network_wifi_scan_get_handler,      .user_ctx = &s_server.data },
 };
 
 /*-----------------------------------------------------

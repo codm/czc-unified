@@ -764,3 +764,9 @@ It is also important to keep in mind that GitHub enforces a rate limit of 60 req
 hour. Because of this it is better to host the firmware yourself rather than downloading
 and fetching it from GitHub every time.
 
+### Additional resources
+
+- RCP documentation (Chip & BSL): https://www.ti.com/lit/ug/swcu192/swcu192.pdf?ts=1785221111184
+- Zigbee Zstack protocol: https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/158/Z_2D00_Stack-Monitor-and-Test-API.pdf
+- Thread Spinel protocol: https://software-dl.ti.com/simplelink/esd/simplelink_cc13xx_cc26xx_sdk/6.20.00.29/exports/docs/thread/doxygen/openthread/html/spinel_8h.html / https://github.com/openthread/openthread/blob/main/src/lib/spinel/spinel.h
+- Highlevel openthread api: https://openthread.io/reference

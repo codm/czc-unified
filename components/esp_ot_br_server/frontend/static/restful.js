@@ -984,6 +984,39 @@ function setZigbeeTransport(mode) {
 }
 
 /* --------------------------------------------------------------------
+                        Debug Buttons
+-------------------------------------------------------------------- */
+
+function esp_restart_device() 
+{
+  $.ajax({
+    url: '/device/esp/reboot', 
+    type: 'POST',
+    complete: function() {
+      setTimeout(function() { location.reload(); }, 20000);
+    }
+  });
+}
+
+function esp_erase_nvs() 
+{
+  $.ajax({
+    url: '/device/esp/erasenvs', 
+    type: 'POST',
+  });
+}
+
+function rcp_restart_device() 
+{
+
+}
+
+function rcp_erase_nvram() 
+{
+
+}
+
+/* --------------------------------------------------------------------
                             action
 -------------------------------------------------------------------- */
 function frontend_click_for_more_form_param() {
