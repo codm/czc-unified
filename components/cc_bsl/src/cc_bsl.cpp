@@ -1,4 +1,4 @@
-#include "rcp_hal.h"
+#include "cc_bsl.h"
 
 #include "board_config.h"
 #include "esp_check.h"
@@ -7,7 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char* TAG = "RcpHal";
+static const char* TAG = "cc_bsl";
 
 // BSL command bytes (CC2652 ROM bootloader protocol)
 constexpr uint8_t CMD_PING         = 0x20;
@@ -22,11 +22,11 @@ constexpr uint8_t BSL_NACK = 0x33;
 
 constexpr size_t MAX_SEND_DATA_LEN = 252;  // 255 - SIZE - CHECKSUM
 
-RcpHal::RcpHal()
+CcBsl::CcBsl()
     : uartPort{UART_NUM_MAX}, bslMode{false}
 {}
 
-esp_err_t RcpHal::init(uart_port_t uartNum)
+esp_err_t CcBsl::init(uart_port_t uartNum)
 {
     uartPort = uartNum;
 
@@ -68,7 +68,7 @@ esp_err_t RcpHal::init(uart_port_t uartNum)
     return ESP_OK;
 }
 
-esp_err_t RcpHal::acquireUart()
+esp_err_t CcBsl::acquireUart()
 {
     if (uart_is_driver_installed(uartPort)) {
         uart_driver_delete(uartPort);
@@ -95,7 +95,7 @@ esp_err_t RcpHal::acquireUart()
     return ESP_OK;
 }
 
-esp_err_t RcpHal::enterBootloader()
+esp_err_t CcBsl::enterBootloader()
 {
     ESP_RETURN_ON_ERROR(acquireUart(), TAG, "UART acquire failed");
 
@@ -122,7 +122,7 @@ esp_err_t RcpHal::enterBootloader()
     return ESP_OK;
 }
 
-esp_err_t RcpHal::eraseFlash()
+esp_err_t CcBsl::eraseFlash()
 {
     if (!bslMode) {
         ESP_RETURN_ON_ERROR(enterBootloader(), TAG, "enterBootloader failed");
@@ -139,7 +139,7 @@ esp_err_t RcpHal::eraseFlash()
     return checkLastCmd();
 }
 
-esp_err_t RcpHal::beginFlash(uint32_t address, uint32_t size)
+esp_err_t CcBsl::beginFlash(uint32_t address, uint32_t size)
 {
     if ((size % 4) != 0) {
         ESP_LOGE(TAG, "beginFlash: size %lu is not 4-byte aligned", size);
@@ -166,7 +166,7 @@ esp_err_t RcpHal::beginFlash(uint32_t address, uint32_t size)
     return checkLastCmd();
 }
 
-esp_err_t RcpHal::sendData(const uint8_t* data, int length)
+esp_err_t CcBsl::sendData(const uint8_t* data, int length)
 {
     if (data == nullptr || length <= 0) {
         return ESP_ERR_INVALID_ARG;
@@ -188,7 +188,7 @@ esp_err_t RcpHal::sendData(const uint8_t* data, int length)
     return checkLastCmd();
 }
 
-esp_err_t RcpHal::reset()
+esp_err_t CcBsl::reset()
 {
     gpio_set_level(Board::CC_RST_PIN, 0);
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -198,14 +198,14 @@ esp_err_t RcpHal::reset()
     return ESP_OK;
 }
 
-esp_err_t RcpHal::close()
+esp_err_t CcBsl::close()
 {
     return uart_driver_delete(uartPort);
 }
 
 // --- private ---
 
-esp_err_t RcpHal::sendPacket(const uint8_t* cmdAndData, size_t length)
+esp_err_t CcBsl::sendPacket(const uint8_t* cmdAndData, size_t length)
 {
     if (length == 0 || cmdAndData == nullptr) {
         return ESP_ERR_INVALID_ARG;
@@ -227,7 +227,7 @@ esp_err_t RcpHal::sendPacket(const uint8_t* cmdAndData, size_t length)
     return ESP_OK;
 }
 
-esp_err_t RcpHal::uartSync()
+esp_err_t CcBsl::uartSync()
 {
     uint8_t syncBytes[2]{CMD_UART_SYNC, CMD_UART_SYNC};
     if (uart_write_bytes(uartPort, syncBytes, sizeof(syncBytes)) < 0) {
@@ -240,7 +240,7 @@ esp_err_t RcpHal::uartSync()
     return ESP_OK;
 }
 
-bool RcpHal::waitAck(uint32_t timeoutMs)
+bool CcBsl::waitAck(uint32_t timeoutMs)
 {
     TickType_t start{xTaskGetTickCount()};
 
@@ -265,7 +265,7 @@ bool RcpHal::waitAck(uint32_t timeoutMs)
     return false;
 }
 
-esp_err_t RcpHal::readResponse(uint8_t* outBuf, size_t bufSize, size_t* outLen)
+esp_err_t CcBsl::readResponse(uint8_t* outBuf, size_t bufSize, size_t* outLen)
 {
     if (outBuf == nullptr || outLen == nullptr) {
         return ESP_ERR_INVALID_ARG;
@@ -316,7 +316,7 @@ esp_err_t RcpHal::readResponse(uint8_t* outBuf, size_t bufSize, size_t* outLen)
     return ESP_OK;
 }
 
-esp_err_t RcpHal::checkLastCmd()
+esp_err_t CcBsl::checkLastCmd()
 {
     uint8_t cmd{CMD_GET_STATUS};
     ESP_RETURN_ON_ERROR(sendPacket(&cmd, 1), TAG, "GET_STATUS send failed");

@@ -280,8 +280,12 @@ czc_ot_firmware/
 │   │
 │   ├── update_manager/           RCP (BSL) + ESP (OTA) firmware updates
 │   │   ├── include/update_manager.h
-│   │   ├── private_include/rcp_hal.h, rcp_updater.h, ota_updater.h
+│   │   ├── private_include/rcp_updater.h, ota_updater.h
 │   │   └── src/
+│   │
+│   ├── cc_bsl/                   CC13xx/CC26xx ROM bootloader (BSL) protocol wrapper
+│   │   ├── include/cc_bsl.h
+│   │   └── src/cc_bsl.cpp
 │   │
 │   ├── firmware_manager/         Protocol stack selection (Thread / Zigbee)
 │   │   ├── include/firmware_manager.h   ← DeviceMode enum
@@ -322,10 +326,14 @@ Composition root. Runs the boot-decision-tree on every boot and routes web API r
 ##### `update_manager`
 
 Wraps two updaters, both non-blocking (spawn an internal FreeRTOS task and signal completion via a binary semaphore / reboot):
-- **`RcpUpdater`** — downloads TI binary into the OTA staging partition, then drives the CC2652 BSL over UART (`RcpHal`). `UpdateManager::flashRcp()` spawns the task; `UpdateManager::waitForRcpFlash()` blocks the caller until it's done and returns the result — used by `AppController` both at boot and for live re-flashes.
+- **`RcpUpdater`** — downloads TI binary into the OTA staging partition, then drives the CC2652 BSL over UART via `CcBsl` (`cc_bsl` component). `UpdateManager::flashRcp()` spawns the task; `UpdateManager::waitForRcpFlash()` blocks the caller until it's done and returns the result — used by `AppController` both at boot and for live re-flashes.
 - **`OtaUpdater`** — thin `esp_https_ota` wrapper for live ESP firmware updates; reboots on success.
 
 Both use the same OTA partition; a `busy` flag prevents simultaneous access.
+
+##### `cc_bsl`
+
+Standalone, project-agnostic wrapper around the TI CC13xx/CC26xx ROM bootloader (BSL) protocol — framing (`SIZE`/`CHECKSUM`/`CMD`/`DATA`), `ACK`/`NACK` handling and the flash commands (`PING`, `DOWNLOAD`, `SEND_DATA`, `GET_STATUS`, `BANK_ERASE`). `CcBsl` owns the UART driver and the RST/BSL GPIO lines for the duration of a flash session. Split out of `update_manager` (formerly `RcpHal`) so the BSL transport can be reused outside this project without dragging in OTA/RCP-update orchestration.
 
 ##### `firmware_manager`
 
@@ -434,10 +442,10 @@ classDiagram
         +flashEsp(url) esp_err_t
     }
     class RcpUpdater {
-        -RcpHal hal
+        -CcBsl cc_bsl
         +flash(url) esp_err_t
     }
-    class RcpHal {
+    class CcBsl {
         -uart_port_t uartPort
         -bool bslMode
         +init(uart) esp_err_t
@@ -543,7 +551,7 @@ classDiagram
     AppController o-- FirmwareManager
     UpdateManager *-- RcpUpdater
     UpdateManager *-- OtaUpdater
-    RcpUpdater *-- RcpHal
+    RcpUpdater *-- CcBsl
 
     FirmwareManager o-- ProtocolController
     ProtocolController <|.. ThreadController
@@ -743,8 +751,8 @@ empty) — the point is cutting polling traffic, not duplicating `NetworkStatus`
      `FirmwareManager::stop()` to free the RCP UART.
   2. `UpdateManager::flashRcp()` spawns a background task that downloads the TI binary
      over HTTPS into the OTA staging partition (`RcpUpdater`) and drives the CC2652 BSL
-     over UART (`RcpHal`): sync → bank-erase → download → send-data → reset. The UART
-     driver is released via `RcpHal::close()` after the flash.
+     over UART via `CcBsl` (`cc_bsl` component): sync → bank-erase → download →
+     send-data → reset. The UART driver is released via `CcBsl::close()` after the flash.
   3. `requestRcpFlash()` blocks on `UpdateManager::waitForRcpFlash()`, which waits on a
      binary semaphore signaled by that task — no polling, no fixed delay.
   4. On success, writes `mode` to `device_mode` and sets `device_setup`, then calls

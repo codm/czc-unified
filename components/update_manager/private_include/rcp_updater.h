@@ -2,13 +2,13 @@
 #define CZC_RCP_UPDATER_H_
 
 #include "esp_err.h"
-#include "rcp_hal.h"
+#include "cc_bsl.h"
 
 /**
  * @brief Orchestrates a full RCP firmware update: download → stage → BSL-flash.
  *
  *        Downloads the TI binary from the given URL into the inactive OTA
- *        partition (used as staging), then drives the CC2652 BSL via RcpHal
+ *        partition (used as staging), then drives the CC2652 BSL via CcBsl
  *        to erase, program and reset the co-processor.
  *
  *        Runs exclusively at boot time from the `rcp_flash_pending` intent
@@ -24,8 +24,8 @@ public:
     /**
      * @brief Download firmware from `url` and flash it to the CC2652.
      *
-     *        Sequence: downloadToStaging() → RcpHal::eraseFlash() →
-     *        RcpHal::beginFlash() → RcpHal::sendData() (loop) → RcpHal::reset()
+     *        Sequence: downloadToStaging() → CcBsl::eraseFlash() →
+     *        CcBsl::beginFlash() → CcBsl::sendData() (loop) → CcBsl::reset()
      *
      * @param[in] url  HTTPS URL of the TI firmware binary (.bin)
      *
@@ -34,7 +34,7 @@ public:
     esp_err_t flash(const char* url);
 
 private:
-    RcpHal hal;
+    CcBsl cc_bsl;
     size_t downloadedSize;
 
     /**
@@ -51,7 +51,7 @@ private:
 
     /**
      * @brief Read firmware from the staging partition and transmit it block-by-block
-     *        to the CC2652 via RcpHal::sendData().
+     *        to the CC2652 via CcBsl::sendData().
      *
      * @return `ESP_OK` on success
      */

@@ -5,6 +5,7 @@ idf_component_register(
     REQUIRES
     PRIV_REQUIRES
         board_config
+        cc_bsl
         esp_http_client
         esp_https_ota
         esp_partition
