@@ -20,7 +20,7 @@ esp_err_t UartTransport::open()
     savedVprintf = esp_log_set_vprintf([](const char*, va_list) -> int { return 0; });
 
     uart_config_t cfg = {
-        .baud_rate  = 115200,
+        .baud_rate  = Board::COORD_BAUD,
         .data_bits  = UART_DATA_8_BITS,
         .parity     = UART_PARITY_DISABLE,
         .stop_bits  = UART_STOP_BITS_1,
