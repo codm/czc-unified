@@ -19,13 +19,12 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    // Status LEDs — initialise first so every step is visible
+    // Status LEDs; initialise first so every step is visible
     StatusLightManager statusLight;
     ESP_ERROR_CHECK(statusLight.init());
     esp_event_post(STATUS_LED_EVENT,
                    static_cast<int32_t>(LedState::BOOTING), nullptr, 0, 0);
 
-    // Network — starts in background (Ethernet + optionally WiFi)
     NetworkStateMachine network;
 
     // Mount SPIFFS for the web frontend
@@ -36,13 +35,11 @@ extern "C" void app_main(void)
     spiffsConf.format_if_mount_failed = false;
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&spiffsConf));
 
-    // Managers — owned here, injected by reference into AppController
-    UpdateManager   updateManager;
+    UpdateManager updateManager;
     FirmwareManager firmwareManager;
-    AppController   appController{updateManager, firmwareManager};
+    AppController appController{updateManager, firmwareManager};
 
-    // Start web server early — user may need to configure WiFi through it
-    // before any internet connection is available (AP mode / first boot)
+    // Start webserver 
     web_firmware_callbacks_t fwCbs{};
     appController.fillFirmwareCallbacks(&fwCbs);
 
@@ -52,7 +49,7 @@ extern "C" void app_main(void)
     esp_br_web_start("/spiffs", &fwCbs, &netCbs);
 
     // Now wait for a routed connection (Ethernet or WiFi)
-    // If no WiFi is configured the NSM opens an AP — user configures
+    // If no WiFi is configured the NSM opens an AP -> user configures
     // WiFi through the web UI and NSM reconnects automatically
     ESP_LOGI(TAG, "Waiting for internet connection...");
     network.waitUntilInternetIsConnected();
