@@ -64,7 +64,7 @@ esp_err_t CcBsl::init(uart_port_t uartNum)
                         TAG, "uart_driver_install failed");
     uart_flush_input(uartPort);
 
-    ESP_LOGI(TAG, "Init OK — UART%d at %lu baud", uartPort, Board::BSL_BAUD);
+    ESP_LOGD(TAG, "Init OK — UART%d at %lu baud", uartPort, Board::BSL_BAUD);
     return ESP_OK;
 }
 
