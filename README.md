@@ -775,6 +775,6 @@ and fetching it from GitHub every time.
 ### Additional resources
 
 - RCP documentation (Chip & BSL): https://www.ti.com/lit/ug/swcu192/swcu192.pdf?ts=1785221111184
-- Zigbee Zstack protocol: https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/158/Z_2D00_Stack-Monitor-and-Test-API.pdf
+- Zigbee Zstack protocol: https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/158/Z_2D00_Stack-Monitor-and-Test-API.pdf / https://software-dl.ti.com/simplelink/esd/simplelink_cc13x2_26x2_sdk/3.30.00.03/exports/docs/zigbee/html/zigbee/znp_interface.html
 - Thread Spinel protocol: https://software-dl.ti.com/simplelink/esd/simplelink_cc13xx_cc26xx_sdk/6.20.00.29/exports/docs/thread/doxygen/openthread/html/spinel_8h.html / https://github.com/openthread/openthread/blob/main/src/lib/spinel/spinel.h
 - Highlevel openthread api: https://openthread.io/reference
