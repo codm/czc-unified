@@ -191,6 +191,14 @@ esp_err_t ThreadController::stop()
     }
 
     vTaskDelay(pdMS_TO_TICKS(500));
+
+    if (!esp_openthread_lock_acquire(0)) {
+        ESP_LOGW(TAG, "OpenThread mainloop already exited on its own — skipping esp_openthread_stop()");
+        threadActive = false;
+        return ESP_OK;
+    }
+    esp_openthread_lock_release();
+
     esp_err_t err = esp_openthread_stop();
     
     if (err != ESP_OK) {
