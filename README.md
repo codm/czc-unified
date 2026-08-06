@@ -287,6 +287,10 @@ czc_ot_firmware/
 │   │   ├── include/cc_bsl.h
 │   │   └── src/cc_bsl.cpp
 │   │
+│   ├── zstack_mt/                Z-Stack Monitor and Test (MT) UART protocol wrapper
+│   │   ├── include/zstack_mt.h
+│   │   └── src/zstack_mt.cpp
+│   │
 │   ├── firmware_manager/         Protocol stack selection (Thread / Zigbee)
 │   │   ├── include/firmware_manager.h   ← DeviceMode enum
 │   │   ├── private_include/protocol_controller.h, thread_controller.h,
@@ -334,6 +338,16 @@ Both use the same OTA partition; a `busy` flag prevents simultaneous access.
 ##### `cc_bsl`
 
 Standalone, project-agnostic wrapper around the TI CC13xx/CC26xx ROM bootloader (BSL) protocol — framing (`SIZE`/`CHECKSUM`/`CMD`/`DATA`), `ACK`/`NACK` handling and the flash commands (`PING`, `DOWNLOAD`, `SEND_DATA`, `GET_STATUS`, `BANK_ERASE`). `CcBsl` owns the UART driver and the RST/BSL GPIO lines for the duration of a flash session. Split out of `update_manager` (formerly `RcpHal`) so the BSL transport can be reused outside this project without dragging in OTA/RCP-update orchestration.
+
+##### `zstack_mt`
+
+Standalone wrapper around TI's **Z-Stack Monitor and Test (MT)** UART protocol — the same command interface Zigbee host applications use to talk to a Z-Stack-based RCP (framing: `SOF (0xFE)` + length + `cmd0`/`cmd1` + data + XOR checksum, see [`zstack_mt.h`](components/zstack_mt/include/zstack_mt.h) for the packet layout). `ZstackMt` owns the RCP UART plus the RST/BSL GPIO lines for the duration of a session, mirroring `cc_bsl`'s ownership model but talking to the RCP's *application* firmware instead of its bootloader.
+
+- `init()` — configures the RST/BSL GPIOs (BSL held high, i.e. non-bootloader), toggles reset to boot the RCP into normal Z-Stack firmware, then blocks on the `SYS_RESET_IND` callback before returning.
+- `eraseNvram()` — sends `NVRAMCLEARSTARTOPS` (`ZCD_STARTOPT_CLEAR_CONFIG` | `ZCD_STARTOPT_CLEAR_STATE`) and reboots the RCP so it applies the clear on the next boot; blocks on `rebootRcp()` until the reset callback confirms it's back up.
+- `close()` — deletes the UART driver, freeing the port for another owner (`CcBsl`, `ProtocolController`).
+
+Currently driven directly from `AppController::run()` to reset/erase the RCP as part of the boot sequence, ahead of the boot-decision-tree.
 
 ##### `firmware_manager`
 
@@ -427,6 +441,7 @@ classDiagram
     class AppController {
         -UpdateManager& updateManager
         -FirmwareManager& firmwareManager
+        -ZstackMt zstackMt
         +run() void
         +fillFirmwareCallbacks(cbs) void
         +requestRcpFlash(url, mode) esp_err_t
@@ -457,6 +472,13 @@ classDiagram
     }
     class OtaUpdater {
         +flash(url) esp_err_t
+    }
+    class ZstackMt {
+        -uart_port_t uartPort
+        +init(uart) esp_err_t
+        +close() esp_err_t
+        +eraseNvram() esp_err_t
+        +rebootRcp(timeout) esp_err_t
     }
 
     class FirmwareManager {
@@ -549,6 +571,7 @@ classDiagram
 
     AppController o-- UpdateManager
     AppController o-- FirmwareManager
+    AppController *-- ZstackMt
     UpdateManager *-- RcpUpdater
     UpdateManager *-- OtaUpdater
     RcpUpdater *-- CcBsl
