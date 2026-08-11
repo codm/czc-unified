@@ -29,7 +29,13 @@ esp_err_t RcpUpdater::flash(const char* url)
 {
     Sse_events::flash::post_device_state(SseDeviceMode::FLASHING, nullptr);
 
-    ESP_RETURN_ON_ERROR(cc_bsl.init(Board::RCP_UART), TAG, "cc_bsl init failed");
+    esp_err_t initRet = cc_bsl.init(Board::RCP_UART);
+    if (initRet != ESP_OK) {
+        ESP_LOGE(TAG, "cc_bsl init failed: %s", esp_err_to_name(initRet));
+        Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, false, "cc_bsl init failed");
+        Sse_events::flash::post_device_state(SseDeviceMode::NORMAL, nullptr);
+        return initRet;
+    }
 
     esp_err_t ret = downloadToStaging(url);
     if (ret == ESP_OK) {
@@ -41,6 +47,7 @@ esp_err_t RcpUpdater::flash(const char* url)
     {
         ESP_LOGE(TAG, "Flash failed during RCP write!");
         Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, false, "Flash failed during write!");
+        Sse_events::flash::post_device_state(SseDeviceMode::NORMAL, nullptr);
         return ESP_FAIL;
     }
     Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, true);

@@ -121,7 +121,9 @@ function isSectionVisible(section, currentMode)
   let sectionModes = (section.dataset.modes || 'all').split(' ');
   let sectionUsedInMode = sectionModes.some(function(mode)
     {
-      return (mode === 'all') || (mode === currentMode.group);
+      return (mode === 'all')
+        || (mode === currentMode.group)
+        || (mode === 'coordinator' && currentMode.isCoordinator);
     }
   );
   return sectionUsedInMode;
@@ -535,6 +537,9 @@ function initEventSource()
     const data = JSON.parse(e.data);
     if (data.mode === 'flashing') {
       showFlashModal(data.phase);
+    } else if (document.getElementById('flash_window').dataset.failed === 'true') {
+      // Keep the failure message visible; user dismisses via the close button.
+      document.getElementById('flash_window_close').style.display = '';
     } else {
       hideFlashModal();
     }
@@ -568,6 +573,7 @@ function _isFlashStatusActive() {
 }
 
 function showFlashModal(phase) {
+  document.getElementById('flash_window').dataset.failed = 'false';
   if (!_isFlashStatusActive()) {
     const statusEl = document.getElementById('flash_status');
     const tpl = document.getElementById('flash-status-tpl').content.cloneNode(true);
@@ -584,6 +590,7 @@ function showFlashModal(phase) {
 
 function hideFlashModal() {
   document.getElementById('flash_window').style.display = 'none';
+  document.getElementById('flash_window').dataset.failed = 'false';
   _resetFlashStatus();
 }
 
@@ -611,7 +618,12 @@ function onFlashComplete(target, success, error) {
     return;
   }
 
-  if (success) setTimeout(hideFlashModal, 2000);
+  if (success) {
+    setTimeout(hideFlashModal, 2000);
+  } else {
+    document.getElementById('flash_window').dataset.failed = 'true';
+    document.getElementById('flash_window_close').style.display = '';
+  }
 }
 
 function _flashPhaseLabel(phase) {
@@ -961,7 +973,8 @@ function do_rcp_flash_with_url(url, mode) {
 }
 
 function frontend_cancel_flash() {
-  document.getElementById('flash_window').style.display = 'none';
+  document.getElementById('flash_window').dataset.failed = 'false';
+  hideFlashModal();
 }
 
 /* --------------------------------------------------------------------
