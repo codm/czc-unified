@@ -134,6 +134,8 @@ public:
      * @param[in] timeoutMs max poll time in ms
      * 
      * @return `ESP_OK` when the RCP is back up in time - `ESP_FAIL` when the RCP doesnt answer in time 
+     * 
+     * @warning UART has to be configured for ZstackMt for a valid answer
     */
     esp_err_t rebootRcp(uint32_t timeoutMs);
 };

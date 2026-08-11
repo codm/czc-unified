@@ -36,6 +36,10 @@ typedef struct {
 
     esp_err_t (*esp_erase_nvs) (void *ctx);
 
+    esp_err_t (*rcp_reboot) (void *ctx);
+
+    esp_err_t (*rcp_erase_nvram) (void *ctx);
+
     void *ctx;
 } web_firmware_callbacks_t;
 

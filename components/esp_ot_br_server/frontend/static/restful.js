@@ -1006,14 +1006,20 @@ function esp_erase_nvs()
   });
 }
 
-function rcp_restart_device() 
+function rcp_restart_device()
 {
-
+  $.ajax({
+    url: '/device/rcp/reboot',
+    type: 'POST',
+  });
 }
 
-function rcp_erase_nvram() 
+function rcp_erase_nvram()
 {
-
+  $.ajax({
+    url: '/device/rcp/erasenvram',
+    type: 'POST',
+  });
 }
 
 /* --------------------------------------------------------------------

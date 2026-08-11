@@ -292,8 +292,8 @@ czc_ot_firmware/
 │   │   └── src/zstack_mt.cpp
 │   │
 │   ├── firmware_manager/         Protocol stack selection (Thread / Zigbee)
-│   │   ├── include/firmware_manager.h   ← DeviceMode enum
-│   │   ├── private_include/protocol_controller.h, thread_controller.h,
+│   │   ├── include/firmware_manager.h, protocol_controller.h   ← DeviceMode enum
+│   │   ├── private_include/thread_controller.h,
 │   │   │                               zigbee_proxy_controller.h, proxy_transport.h
 │   │   └── src/
 │   │
@@ -347,13 +347,35 @@ Standalone wrapper around TI's **Z-Stack Monitor and Test (MT)** UART protocol �
 - `eraseNvram()` — sends `NVRAMCLEARSTARTOPS` (`ZCD_STARTOPT_CLEAR_CONFIG` | `ZCD_STARTOPT_CLEAR_STATE`) and reboots the RCP so it applies the clear on the next boot; blocks on `rebootRcp()` until the reset callback confirms it's back up.
 - `close()` — deletes the UART driver, freeing the port for another owner (`CcBsl`, `ProtocolController`).
 
-Currently driven directly from `AppController::run()` to reset/erase the RCP as part of the boot sequence, ahead of the boot-decision-tree.
+Owned by `ZigbeeProxyController`, which drives it for the `/device/rcp/reboot` and
+`/device/rcp/erasenvram` debug actions: the proxy is stopped to free the UART, `ZstackMt`
+does the reset/erase, then the proxy is restarted. Only meaningful while the RCP runs
+Z-Stack firmware (`ZIGBEE_USB` / `ZIGBEE_NET` / `ZIGBEE_ROUTER`) — see
+[`firmware_manager`](#firmware_manager) below for the Thread-mode equivalents.
 
 ##### `firmware_manager`
 
 Selects and starts the correct `ProtocolController` implementation based on `DeviceMode`:
 - `ThreadController` — OTBR stack (Spinel over UART).
-- `ZigbeeProxyController` — transparent serial proxy (USB or TCP). Pumps bytes between the RCP UART and an `IProxyTransport` implementation (`UartTransport` for USB, `TcpTransport` for TCP) using two FreeRTOS tasks.
+- `ZigbeeProxyController` — transparent serial proxy (USB or TCP). Pumps bytes between the RCP UART and an `IProxyTransport` implementation (`UartTransport` for USB, `TcpTransport` for TCP) using two FreeRTOS tasks. In `ZIGBEE_ROUTER` mode there is no transport — `start()`/`stop()` are no-ops and the RCP runs standalone; the ESP never touches the UART except for the debug actions below.
+
+**RCP debug actions (`resetRcp()` / `factoryReset()`).** `rcp_reboot` and `rcp_erase_nvram`
+(`AppController` → `FirmwareManager` → active `ProtocolController`) are implemented
+per-protocol because the RCP speaks a different command set in each mode:
+- `ZigbeeProxyController` drives `ZstackMt` directly (Z-Stack MT protocol) — see
+  [`zstack_mt`](#zstack_mt) above.
+- `ThreadController::resetRcp()` only pulses the RST GPIO — no Spinel/stack restart. The
+  Spinel driver already handles unsolicited RCP resets (`rcpFailureHandler`, triggered on
+  RCP failure), so it resynchronises on its own.
+- `ThreadController::factoryReset()` doesn't touch the RCP at all: in Thread mode the RCP
+  holds no meaningful config of its own — the dataset lives in the ESP's NVS via the
+  OpenThread settings API. It disables the Thread/IPv6 interface, calls
+  `otInstanceErasePersistentInfo()` (erase-only, unlike `otInstanceFactoryReset()` which
+  also triggers an immediate platform reboot — not what a "clear the RCP/network config"
+  button should do), then does a full `stop()` + `start()` to come back up clean.
+
+`IProtocolController::resetRcp()`/`factoryReset()` are pure virtual — both implementations
+must provide one, since there's no protocol-agnostic default that makes sense for either.
 
 **`ThreadController::stop()` drain barrier.** Disabling the OpenThread stack triggers
 address-removal / multicast-leave-group notifications that are handled asynchronously —
@@ -441,13 +463,14 @@ classDiagram
     class AppController {
         -UpdateManager& updateManager
         -FirmwareManager& firmwareManager
-        -ZstackMt zstackMt
         +run() void
         +fillFirmwareCallbacks(cbs) void
         +requestRcpFlash(url, mode) esp_err_t
         +requestEspFlash(url) esp_err_t
         +requestModeChange(mode) esp_err_t
         +getCurrentMode() DeviceMode
+        +rcpReboot() esp_err_t
+        +rcpEraseNvram() esp_err_t
     }
 
     class UpdateManager {
@@ -485,6 +508,8 @@ classDiagram
         -DeviceMode activeMode
         +start(mode) esp_err_t
         +getActiveMode() DeviceMode
+        +resetRcp() esp_err_t
+        +factoryReset() esp_err_t
     }
 
     %% ── Interface Layer 1: Protocol lifecycle ──────────────────────────
@@ -493,18 +518,25 @@ classDiagram
         +start() esp_err_t
         +stop() esp_err_t
         +isRunning() bool
+        +resetRcp() esp_err_t
+        +factoryReset() esp_err_t
     }
     class ThreadController {
         +start() esp_err_t
         +stop() esp_err_t
         +isRunning() bool
+        +resetRcp() esp_err_t
+        +factoryReset() esp_err_t
     }
     class ZigbeeProxyController {
         -transport unique_ptr~IProxyTransport~
         -rcpToHostTask TaskHandle_t
         -hostToRcpTask TaskHandle_t
+        -ZstackMt zstackMt
         +start() esp_err_t
         +stop() esp_err_t
+        +resetRcp() esp_err_t
+        +factoryReset() esp_err_t
         +isRunning() bool
     }
 
@@ -571,7 +603,6 @@ classDiagram
 
     AppController o-- UpdateManager
     AppController o-- FirmwareManager
-    AppController *-- ZstackMt
     UpdateManager *-- RcpUpdater
     UpdateManager *-- OtaUpdater
     RcpUpdater *-- CcBsl
@@ -581,6 +612,7 @@ classDiagram
     ProtocolController <|.. ZigbeeProxyController
 
     ZigbeeProxyController *-- IProxyTransport
+    ZigbeeProxyController *-- ZstackMt
     IProxyTransport <|.. UartTransport
     IProxyTransport <|.. TcpTransport
 
@@ -621,6 +653,10 @@ reboot mechanism anymore; see [Firmware Flash](#firmware-flash).
 | `POST` | `/flash/esp` | Start live ESP OTA update |
 | `GET` | `/device/mode` | Returns `{"mode": <int>, "device_setup": <bool>}` |
 | `POST` | `/device/mode` | Set device mode — `{"mode": <int>}` |
+| `POST` | `/device/esp/reboot` | Reboot the ESP32 |
+| `POST` | `/device/esp/erasenvs` | Erase the ESP32's own NVS |
+| `POST` | `/device/rcp/reboot` | Hardware-reset the RCP — Zigbee via `ZstackMt`, Thread via a direct RST pulse |
+| `POST` | `/device/rcp/erasenvram` | Erase the RCP's persisted network config — Zigbee via `ZstackMt` NVRAM clear, Thread via the OpenThread settings API (RCP itself holds no state in Thread mode) |
 | `GET` | `/network/wifi` | Read WiFi config from NVS |
 | `POST` | `/network/wifi` | Write WiFi config + trigger reconnect |
 | `GET` | `/network/ethernet` | Read Ethernet config from NVS |

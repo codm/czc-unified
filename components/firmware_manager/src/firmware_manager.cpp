@@ -40,3 +40,15 @@ DeviceMode FirmwareManager::getActiveMode()
 {
     return activeMode;
 }
+
+esp_err_t FirmwareManager::resetRcp()
+{
+    ESP_RETURN_ON_FALSE(protocol, ESP_ERR_INVALID_STATE, TAG, "No protocol running");
+    return protocol->resetRcp();
+}
+
+esp_err_t FirmwareManager::factoryReset()
+{
+    ESP_RETURN_ON_FALSE(protocol, ESP_ERR_INVALID_STATE, TAG, "No protocol running");
+    return protocol->factoryReset();
+}

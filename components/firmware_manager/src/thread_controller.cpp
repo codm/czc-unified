@@ -16,6 +16,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "openthread/dataset.h"
+#include "openthread/instance.h"
 #include "openthread/tasklet.h"
 #include <string.h>
 
@@ -217,6 +218,41 @@ esp_err_t ThreadController::stop()
 bool ThreadController::isRunning()
 {
     return threadActive;
+}
+
+esp_err_t ThreadController::resetRcp()
+{
+    rcpFailureHandler();
+    return ESP_OK;
+}
+
+esp_err_t ThreadController::factoryReset()
+{
+    otInstance* instance = esp_openthread_get_instance();
+    ESP_RETURN_ON_FALSE(instance, ESP_ERR_INVALID_STATE, TAG, "No OpenThread instance running");
+
+    if (!esp_openthread_lock_acquire(portMAX_DELAY)) {
+        ESP_LOGE(TAG, "Could not acquire OpenThread lock");
+        return ESP_ERR_TIMEOUT;
+    }
+
+    if (otThreadGetDeviceRole(instance) != OT_DEVICE_ROLE_DISABLED) {
+        otThreadSetEnabled(instance, false);
+    }
+    if (otIp6IsEnabled(instance)) {
+        otIp6SetEnabled(instance, false);
+    }
+
+    otError otErr = otInstanceErasePersistentInfo(instance);
+    esp_openthread_lock_release();
+
+    if (otErr != OT_ERROR_NONE) {
+        ESP_LOGE(TAG, "otInstanceErasePersistentInfo failed: %s", otThreadErrorToString(otErr));
+        return ESP_FAIL;
+    }
+
+    ESP_RETURN_ON_ERROR(stop(), TAG, "stop() after erase failed");
+    return start();
 }
 
 void ThreadController::rcpFailureHandler()

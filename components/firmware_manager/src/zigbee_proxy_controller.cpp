@@ -58,6 +58,12 @@ void ZigbeeProxyController::hostToRcpFunc(void* ctx)
 
 esp_err_t ZigbeeProxyController::start()
 {
+    if (!transport)
+    {
+        // ZIGBEE_ROUTER — RCP runs standalone, ESP doesn't touch the UART.
+        return ESP_OK;
+    }
+
     // RCP Uart init
     uart_config_t cfg = {
         .baud_rate  = 115200,
@@ -97,6 +103,12 @@ esp_err_t ZigbeeProxyController::start()
 
 esp_err_t ZigbeeProxyController::stop()
 {
+    if (!transport)
+    {
+        // ZIGBEE_ROUTER — nothing was started.
+        return ESP_OK;
+    }
+
     proxyActive = false;
 
     if (rcpToHostTask) 
@@ -118,4 +130,34 @@ esp_err_t ZigbeeProxyController::stop()
 bool ZigbeeProxyController::isRunning()
 {
     return proxyActive;
+}
+
+esp_err_t ZigbeeProxyController::resetRcp()
+{
+    constexpr uint32_t rebootTimeoutMs {5000};
+
+    ESP_RETURN_ON_ERROR(stop(), TAG, "stop before RCP reset failed");
+
+    esp_err_t err = zstackMt.init(Board::RCP_UART);
+    if (err == ESP_OK) {
+        err = zstackMt.rebootRcp(rebootTimeoutMs);
+    }
+    zstackMt.close();
+
+    esp_err_t startErr = start();
+    return (err == ESP_OK) ? startErr : err;
+}
+
+esp_err_t ZigbeeProxyController::factoryReset()
+{
+    ESP_RETURN_ON_ERROR(stop(), TAG, "stop before RCP erase failed");
+
+    esp_err_t err = zstackMt.init(Board::RCP_UART);
+    if (err == ESP_OK) {
+        err = zstackMt.eraseNvram();
+    }
+    zstackMt.close();
+
+    esp_err_t startErr = start();
+    return (err == ESP_OK) ? startErr : err;
 }

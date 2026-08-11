@@ -99,6 +99,31 @@ public:
      *          different error in case de-initialization fails (shouldn't happen) 
      */
     esp_err_t espEraseNvs();
+
+    /**
+     * @brief Hardware-resets the RCP, using whichever mechanism the
+     *        currently active protocol (Zigbee/Thread) implements.
+     *
+     *        Zigbee: reboots via `ZstackMt` (Z-Stack MT protocol).
+     *        Thread: pulses the RST GPIO directly — the Spinel driver
+     *        resynchronises on its own, no stack restart needed.
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t rcpReboot();
+
+    /**
+     * @brief Erases the RCP's persisted network config, using whichever
+     *        mechanism the currently active protocol (Zigbee/Thread) implements.
+     *
+     *        Zigbee: erases Z-Stack NVRAM (network table & config) via `ZstackMt`.
+     *        Thread: erases the Thread dataset/settings via the OpenThread
+     *        settings API — the RCP itself holds no meaningful config in
+     *        Thread mode.
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t rcpEraseNvram();
     
     /**
      * @brief Fill a `web_firmware_callbacks_t` struct with static C shims

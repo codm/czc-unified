@@ -63,6 +63,22 @@ public:
      */
     DeviceMode getActiveMode();
 
+    /**
+     * @brief Hardware-reset the RCP without touching the active protocol's
+     *        own state. Forwards to the active `IProtocolController`.
+     *
+     * @return `ESP_OK` on success — `ESP_ERR_INVALID_STATE` if no protocol is running
+     */
+    esp_err_t resetRcp();
+
+    /**
+     * @brief Erase the RCP's persisted network config via the active
+     *        `IProtocolController`.
+     *
+     * @return `ESP_OK` on success — `ESP_ERR_INVALID_STATE` if no protocol is running
+     */
+    esp_err_t factoryReset();
+
 private:
     std::unique_ptr<IProtocolController> protocol;
     DeviceMode activeMode;

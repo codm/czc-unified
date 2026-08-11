@@ -97,6 +97,16 @@ esp_err_t AppController::espEraseNvs()
     return nvs_flash_erase();
 }
 
+esp_err_t AppController::rcpReboot()
+{
+    return firmwareManager.resetRcp();
+}
+
+esp_err_t AppController::rcpEraseNvram()
+{
+    return firmwareManager.factoryReset();
+}
+
 void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
 {
     cbs->flash_rcp = [](void* ctx, const char* url, int mode)
@@ -128,6 +138,14 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     cbs->esp_erase_nvs = [](void* ctx)
     {
         return static_cast<AppController*>(ctx)->espEraseNvs();
+    };
+    cbs->rcp_reboot = [](void* ctx)
+    {
+        return static_cast<AppController*>(ctx)->rcpReboot();
+    };
+    cbs->rcp_erase_nvram = [](void* ctx)
+    {
+        return static_cast<AppController*>(ctx)->rcpEraseNvram();
     };
     cbs->ctx = this;
 }
