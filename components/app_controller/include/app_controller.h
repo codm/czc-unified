@@ -126,6 +126,11 @@ public:
     esp_err_t rcpEraseNvram();
     
     /**
+     * @brief 
+     */
+    void setLogLevel();
+
+    /**
      * @brief Fill a `web_firmware_callbacks_t` struct with static C shims
      *        that forward firmware / mode requests to this AppController instance.
      *
