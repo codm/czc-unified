@@ -1239,6 +1239,34 @@ static esp_err_t device_mode_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t device_log_level_post_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/loglevel body");
+
+    cJSON *item = cJSON_GetObjectItem(body, "mode");
+    if (!cJSON_IsNumber(item)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'mode' field");
+        return ESP_FAIL;
+    }
+
+    int logLevel = (int)cJSON_GetNumberValue(item);
+    cJSON_Delete(body);
+
+    if (s_fw_cbs.esp_set_log_level) {
+        s_fw_cbs.esp_set_log_level(s_fw_cbs.ctx, logLevel);
+    }
+
+    cJSON *error    = cJSON_CreateNumber(0);
+    cJSON *result   = cJSON_CreateString("successful");
+    cJSON *message  = cJSON_CreateString("");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+    return send_ret;
+}
+
 static esp_err_t device_esp_reboot_post_handler(httpd_req_t *req)
 {
     cJSON *error    = cJSON_CreateNumber(0);
@@ -1474,6 +1502,7 @@ static httpd_uri_t s_device_handlers[] = {
     { .uri = ESP_OT_REST_API_FLASH_RCP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_rcp_post_handler, .user_ctx = &s_server.data },
     { .uri = "/device/mode",            .method = HTTP_GET,  .handler = device_mode_get_handler,            .user_ctx = &s_server.data },
     { .uri = "/device/mode",            .method = HTTP_POST, .handler = device_mode_post_handler,           .user_ctx = &s_server.data },
+    { .uri = "/device/loglevel",        .method = HTTP_POST, .handler = device_log_level_post_handler,      .user_ctx = &s_server.data },
     { .uri = "/device/esp/reboot",      .method = HTTP_POST, .handler = device_esp_reboot_post_handler,     .user_ctx = &s_server.data },
     { .uri = "/device/esp/erasenvs",    .method = HTTP_POST, .handler = device_esp_erasenvs_post_handler,   .user_ctx = &s_server.data },
     { .uri = "/device/rcp/reboot",      .method = HTTP_POST, .handler = device_rcp_reboot_post_handler,     .user_ctx = &s_server.data },

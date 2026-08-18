@@ -2,7 +2,6 @@
 
 #include "app_nvs.h"
 #include "esp_check.h"
-#include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -107,6 +106,12 @@ esp_err_t AppController::rcpEraseNvram()
     return firmwareManager.factoryReset();
 }
 
+void AppController::setLogLevel(esp_log_level_t logLevel)
+{
+    if (logLevel)
+        esp_log_level_set("*", logLevel);
+}
+
 void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
 {
     cbs->flash_rcp = [](void* ctx, const char* url, int mode)
@@ -146,6 +151,10 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     cbs->rcp_erase_nvram = [](void* ctx)
     {
         return static_cast<AppController*>(ctx)->rcpEraseNvram();
+    };
+    cbs->esp_set_log_level = [](void* ctx, int log_level)
+    {
+        return static_cast<AppController*>(ctx)->setLogLevel(static_cast<esp_log_level_t>(log_level));
     };
     cbs->ctx = this;
 }

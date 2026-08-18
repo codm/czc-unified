@@ -708,6 +708,16 @@
                     <button type="button" class="btn btn-default" onclick="esp_restart_device()">Restart Device</button>
                     <button type="button" class="btn btn-default" onclick="esp_erase_nvs()">Factory Reset (Erase NVS)</button>
                   </div>
+                  <div class="card-subsection">
+                    <p class="card-title">Log Level</p>
+                    <select id="esp-log-level-select" onchange="esp_set_log_level(this.value)">
+                      <option value="5">Verbose</option>
+                      <option value="4">Debug</option>
+                      <option value="3" selected>Info</option>
+                      <option value="2">Warning</option>
+                      <option value="1">Error</option>
+                    </select>
+                  </div>
                 </div>
 
                 <!-- RCP -->
@@ -720,7 +730,7 @@
                 </div>
 
               </div>
-              <p class="note">Exercise caution when using the debug functions. These actions cannot be undone.</p>
+              <p class="note">Exercise caution when using the debug functions. Some actions cannot be undone.</p>
             </div>
           </div>
         </div>

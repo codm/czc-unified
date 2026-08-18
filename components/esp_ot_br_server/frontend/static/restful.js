@@ -1035,6 +1035,16 @@ function rcp_erase_nvram()
   });
 }
 
+function esp_set_log_level(mode)
+{
+  $.ajax({
+    url: '/device/loglevel',
+    type: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({mode: parseInt(mode, 10)}),
+  });
+}
+
 /* --------------------------------------------------------------------
                             action
 -------------------------------------------------------------------- */

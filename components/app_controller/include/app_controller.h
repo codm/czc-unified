@@ -2,6 +2,7 @@
 #define CZC_APP_CONTROLLER_H_
 
 #include "esp_err.h"
+#include "esp_log.h"
 #include "firmware_callbacks.h"
 #include "update_manager.h"
 #include "firmware_manager.h"
@@ -126,9 +127,13 @@ public:
     esp_err_t rcpEraseNvram();
     
     /**
-     * @brief 
+     * @brief change Loglevel of Project to given Level
+     * 
+     * @param[in] logLevel 
+     * 
+     * @return void
      */
-    void setLogLevel();
+    void setLogLevel(esp_log_level_t logLevel);
 
     /**
      * @brief Fill a `web_firmware_callbacks_t` struct with static C shims

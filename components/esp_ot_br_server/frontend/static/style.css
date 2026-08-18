@@ -1055,6 +1055,11 @@ input:disabled {
     border-bottom: 1px solid #e0e0e0;
 }
 
+/* Extra block stacked below a card's first section (e.g. Log Level under ESP32 actions) */
+.card-subsection {
+    margin-top: 24px;
+}
+
 
 /* =============================================================================
    STATUS BADGES (header bar)

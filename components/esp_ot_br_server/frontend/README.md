@@ -316,6 +316,7 @@ Visible only in coordinator mode (modes 1 and 2). Shows two buttons: **USB / UAR
 |---|---|---|
 | `GET` | `/device/mode` | First boot check, current mode display |
 | `POST` | `/device/mode` | Zigbee transport switch (coordinator USB &lt;-&gt; Net) |
+| `POST` | `/device/loglevel` | Debug page — set ESP32 log level (`{"mode": <int>}`, 1=Error .. 5=Verbose) |
 | `GET` | `/network/status` | Polling for internet connectivity (first boot) |
 | `GET` | `/network/wifi` | Load WiFi config form |
 | `POST` | `/network/wifi` | Save WiFi config |

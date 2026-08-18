@@ -657,6 +657,7 @@ reboot mechanism anymore; see [Firmware Flash](#firmware-flash).
 | `POST` | `/device/esp/erasenvs` | Erase the ESP32's own NVS |
 | `POST` | `/device/rcp/reboot` | Hardware-reset the RCP — Zigbee via `ZstackMt`, Thread via a direct RST pulse |
 | `POST` | `/device/rcp/erasenvram` | Erase the RCP's persisted network config — Zigbee via `ZstackMt` NVRAM clear, Thread via the OpenThread settings API (RCP itself holds no state in Thread mode) |
+| `POST` | `/device/loglevel` | Set the ESP32 runtime log level — `{"mode": <int>}`, where `0`=None, `1`=Error, `2`=Warning, `3`=Info, `4`=Debug, `5`=Verbose (matches `esp_log_level_t`) |
 | `GET` | `/network/wifi` | Read WiFi config from NVS |
 | `POST` | `/network/wifi` | Write WiFi config + trigger reconnect |
 | `GET` | `/network/ethernet` | Read Ethernet config from NVS |

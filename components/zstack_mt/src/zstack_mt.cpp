@@ -1,6 +1,5 @@
 #include "zstack_mt.h"
 
-#include "nvram_addr.h"
 #include "board_config.h"
 
 #include "esp_log.h"
