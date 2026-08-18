@@ -178,14 +178,14 @@ esp_err_t ThreadController::stop()
     } 
     else if (esp_event_handler_register(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId,
                                           handleDrainBarrier, drainDone) != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to register drain handler — falling back to a fixed delay");
+        ESP_LOGW(TAG, "Failed to register drain handler: falling back to a fixed delay");
         vSemaphoreDelete(drainDone);
         vTaskDelay(pdMS_TO_TICKS(500));
     } 
     else {
         esp_event_post(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId, nullptr, 0, portMAX_DELAY);
         if (xSemaphoreTake(drainDone, pdMS_TO_TICKS(5000)) != pdTRUE) {
-            ESP_LOGW(TAG, "Netif teardown drain timed out — proceeding anyway");
+            ESP_LOGW(TAG, "Netif teardown drain timed out: proceeding anyway");
         }
         esp_event_handler_unregister(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId, handleDrainBarrier);
         vSemaphoreDelete(drainDone);
@@ -194,7 +194,7 @@ esp_err_t ThreadController::stop()
     vTaskDelay(pdMS_TO_TICKS(500));
 
     if (!esp_openthread_lock_acquire(0)) {
-        ESP_LOGW(TAG, "OpenThread mainloop already exited on its own — skipping esp_openthread_stop()");
+        ESP_LOGW(TAG, "OpenThread mainloop already exited on its own: skipping esp_openthread_stop()");
         threadActive = false;
         return ESP_OK;
     }

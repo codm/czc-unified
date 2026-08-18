@@ -71,6 +71,9 @@ esp_err_t ZigbeeProxyController::start()
         .parity     = UART_PARITY_DISABLE,
         .stop_bits  = UART_STOP_BITS_1,
         .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+        .rx_flow_ctrl_thresh = 0,
+        .source_clk = UART_SCLK_DEFAULT,
+        .flags = {},
     };
 
     ESP_RETURN_ON_ERROR(uart_param_config(Board::RCP_UART, &cfg), TAG, "Failed at [RCP]uart_param_config");

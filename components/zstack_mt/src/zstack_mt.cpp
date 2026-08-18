@@ -7,7 +7,7 @@
 #include "esp_check.h"
 #include "freertos/task.h"
 
-constexpr char* TAG = "ZstackMt";
+constexpr const char* TAG = "ZstackMt";
 
 constexpr uint8_t SOF {0xFE}; 
 constexpr uint16_t PACKET_WAIT_TIME_MS {1000};

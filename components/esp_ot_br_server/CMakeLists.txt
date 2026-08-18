@@ -15,17 +15,19 @@ endif()
 
 # For IDF < 6.0, use IDF's built-in json component; for IDF >= 6.0 use managed cJSON component through idf_component.yml
 if("${IDF_VERSION_MAJOR}" VERSION_LESS "6")
-    list(APPEND requires json)
+    set(JSON_COMPONENT json)
+else()
+    set(JSON_COMPONENT cjson)
 endif()
 
 idf_component_register(
     SRC_DIRS src
     INCLUDE_DIRS include
     PRIV_INCLUDE_DIRS private_include
-    REQUIRES 
+    REQUIRES
         esp_http_server
-        json
-    
+        ${JSON_COMPONENT}
+
     PRIV_REQUIRES 
         sse_events
         network 

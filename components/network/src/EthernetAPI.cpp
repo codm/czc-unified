@@ -1,4 +1,5 @@
 #include "EthernetAPI.h"
+#include "esp_eth_phy_lan87xx.h"
 
 const char* EthernetAPI::TAG = "ethernet";
 
