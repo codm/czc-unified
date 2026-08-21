@@ -64,6 +64,11 @@ esp_err_t ZigbeeProxyController::start()
         return ESP_OK;
     }
 
+    if (uart_is_driver_installed(Board::RCP_UART)) {
+        ESP_LOGW(TAG, "UART%d driver already installed at init: deleting stale instance!", Board::RCP_UART);
+        uart_driver_delete(Board::RCP_UART);
+    }
+
     // RCP Uart init
     uart_config_t cfg = {
         .baud_rate  = 115200,
@@ -127,7 +132,7 @@ esp_err_t ZigbeeProxyController::stop()
 
     transport->close();
 
-    return uart_driver_delete(Board::HOST_UART);
+    return uart_driver_delete(Board::RCP_UART);
 }
 
 bool ZigbeeProxyController::isRunning()

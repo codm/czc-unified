@@ -66,15 +66,25 @@ esp_err_t AppController::requestEspFlash(const char* url)
 esp_err_t AppController::requestModeChange(DeviceMode mode)
 {
     ESP_RETURN_ON_ERROR(AppNvs::writeDeviceMode(mode), TAG, "Write device mode failed");
-    ESP_LOGI(TAG, "Mode change to %d", static_cast<int>(mode));
+    DeviceMode currentMode {firmwareManager.getActiveMode()};
+    ESP_LOGI(TAG, "Mode change from %d to %d", static_cast<int>(currentMode), static_cast<int>(mode));
 
     // Live switch only for coordinator-to-coordinator transitions (e.g. USB <-> Net).
     // Any transition involving Thread needs a fresh RCP flash — use requestRcpFlash().
-    if (firmwareManager.getActiveMode() != DeviceMode::THREAD && mode != DeviceMode::THREAD)
+    if (currentMode != DeviceMode::THREAD && mode != DeviceMode::THREAD)
     {
-        firmwareManager.stop();
+        esp_err_t ret = firmwareManager.stop();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "Error shutting down Transport interface");
+            return ESP_FAIL;
+        }
+            
         vTaskDelay(pdMS_TO_TICKS(50));
-        firmwareManager.start(mode);
+        ret = firmwareManager.start(mode);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "Error starting new Transport interface");
+            return ESP_FAIL;
+        }
     }
 
     return ESP_OK;

@@ -1225,18 +1225,22 @@ static esp_err_t device_mode_post_handler(httpd_req_t *req)
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'mode' field");
         return ESP_FAIL;
     }
-
     int mode = (int)cJSON_GetNumberValue(mode_item);
     cJSON_Delete(body);
 
-    // Send response before callback — callback triggers reboot
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"scheduled\",\"reboot\":true}");
-
+    esp_err_t ret = ESP_FAIL;
     if (s_fw_cbs.set_mode) {
-        s_fw_cbs.set_mode(s_fw_cbs.ctx, mode);
+        ret = s_fw_cbs.set_mode(s_fw_cbs.ctx, mode);
     }
-    return ESP_OK;
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? "" : "Failed to Change Proxy Mode");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+
+    return ret;
 }
 
 static esp_err_t device_log_level_post_handler(httpd_req_t *req)

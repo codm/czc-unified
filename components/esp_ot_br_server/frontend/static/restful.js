@@ -984,14 +984,25 @@ function frontend_cancel_flash() {
 function setZigbeeTransport(mode) {
   document.getElementById('zb-btn-usb').classList.toggle('active', mode === 1);
   document.getElementById('zb-btn-net').classList.toggle('active', mode === 2);
-  document.getElementById('zb-transport-status').innerText = 'Switching — this may take a few seconds ...';
+  document.getElementById('zb-transport-status').innerText = 'Switching: this may take a few seconds ...';
   $.ajax({
     url: '/device/mode', type: 'POST',
     contentType: 'application/json',
+    dataType: 'json',
     data: JSON.stringify({mode: mode}),
-    complete: function() {
-      document.getElementById('zb-transport-status').innerText = ' page reloads in 10 seconds.';
-      setTimeout(function() { location.reload(); }, 10000);
+    success: function(data) {
+      if (data && data.error === 0 && data.result === 'successful') {
+        setHeaderModeBadge(mode);
+        document.getElementById('zb-transport-status').innerText = '';
+      } else {
+        document.getElementById('zb-transport-status').innerText =
+          (data && data.message) ? data.message : 'Failed to switch transport';
+      }
+    },
+    error: function() {
+      document.getElementById('zb-transport-status').innerText = 'Failed to switch transport';
+      document.getElementById('zb-btn-usb').classList.toggle('active', mode === 1);
+  document.getElementById('zb-btn-net').classList.toggle('active', mode === 2);
     }
   });
 }

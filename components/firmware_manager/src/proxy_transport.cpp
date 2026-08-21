@@ -17,6 +17,11 @@ static const char* TAG = "ProxyTransport";
 
 esp_err_t UartTransport::open()
 {
+    if (uart_is_driver_installed(Board::HOST_UART)) {
+        ESP_LOGW(TAG, "UART%d driver already installed at init: deleting stale instance!", Board::HOST_UART);
+        uart_driver_delete(Board::HOST_UART);
+    }
+
     savedVprintf = esp_log_set_vprintf([](const char*, va_list) -> int { return 0; });
 
     uart_config_t cfg = {
