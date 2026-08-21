@@ -214,13 +214,21 @@ bool WirelessAPI::getWifiIsConnected()
 esp_err_t WirelessAPI::scan(scan_shortend_record_t **scan_records, uint16_t *count)
 {
     esp_err_t ret = ESP_OK;
-    bool temporary_init = !wifiNetif && !apNetif;
-    if (temporary_init) {
+    bool temporary_sta_init   = !wifiNetif && !apNetif;
+    bool temporary_sta_for_ap = !wifiNetif && apNetif;
+
+    if (temporary_sta_init) {
         wifiNetif = esp_netif_create_default_wifi_sta();
         wifi_init_config_t init_cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_RETURN_ON_ERROR(esp_wifi_init(&init_cfg), TAG, "Error initializing Wifi driver for scan");
         ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "Error setting Wifi mode for scan");
         ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "Error starting Wifi driver for scan");
+    } else if (temporary_sta_for_ap) {
+        // Scanning requires station function, which plain WIFI_MODE_AP doesn't provide.
+        // Add a STA interface and switch to APSTA just for the scan; the SoftAP keeps
+        // running throughout and we drop back to AP-only again in cleanup.
+        wifiNetif = esp_netif_create_default_wifi_sta();
+        ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_APSTA), TAG, "Error switching to APSTA for scan");
     }
 
     constexpr wifi_country_t country_settings{
@@ -241,9 +249,12 @@ esp_err_t WirelessAPI::scan(scan_shortend_record_t **scan_records, uint16_t *cou
     ESP_GOTO_ON_ERROR(esp_wifi_scan_get_ap_num(&aps_found), cleanup, TAG, "Error retrieving found AP num");
 
     found_aps = (wifi_ap_record_t*)malloc(aps_found * sizeof(wifi_ap_record_t));
+    ESP_GOTO_ON_FALSE(aps_found == 0 || found_aps != nullptr, ESP_ERR_NO_MEM, cleanup, TAG, "Out of memory for AP records");
     ESP_GOTO_ON_ERROR(esp_wifi_scan_get_ap_records(&aps_found, found_aps), cleanup, TAG, "Error getting AP records");
 
     *scan_records = (scan_shortend_record_t*)malloc(aps_found * sizeof(scan_shortend_record_t));
+    ESP_GOTO_ON_FALSE(aps_found == 0 || *scan_records != nullptr, ESP_ERR_NO_MEM, cleanup, TAG, "Out of memory for scan results");
+
     for (size_t index = 0; index < aps_found; index++)
     {
         strncpy((char*)(*scan_records)[index].ssid, (const char*)found_aps[index].ssid, sizeof((*scan_records)[index].ssid) - 1);
@@ -252,14 +263,20 @@ esp_err_t WirelessAPI::scan(scan_shortend_record_t **scan_records, uint16_t *cou
         (*scan_records)[index].primary_channel = found_aps[index].primary;
         (*scan_records)[index].authmode        = static_cast<uint8_t>(found_aps[index].authmode);
     }
-    free(found_aps);
     *count = aps_found;
 
 cleanup:
-    if (temporary_init) 
+    free(found_aps);
+    if (temporary_sta_init)
     {
         esp_wifi_stop();
         esp_wifi_deinit();
+        esp_netif_destroy_default_wifi(wifiNetif);
+        wifiNetif = nullptr;
+    }
+    else if (temporary_sta_for_ap)
+    {
+        esp_wifi_set_mode(WIFI_MODE_AP);
         esp_netif_destroy_default_wifi(wifiNetif);
         wifiNetif = nullptr;
     }
