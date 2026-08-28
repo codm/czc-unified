@@ -181,8 +181,8 @@ esp_err_t ZstackMt::setNvramClearStartops()
     return ESP_OK;
 }
 
-ZstackMt::ZstackMt(/* args */)
-    : uartPort(UART_NUM_MAX)
+ZstackMt::ZstackMt(uart_port_t port)
+    : uartPort(port)
 {
 }
 
@@ -261,5 +261,23 @@ esp_err_t ZstackMt::rebootRcp(uint32_t timeoutMs)
     vTaskDelay(pdMS_TO_TICKS(500));
 
     ESP_RETURN_ON_ERROR(waitForResetCallback(timeoutMs), TAG, "Reset Callback was not received in time");
+    return ESP_OK;
+}
+
+esp_err_t ZstackMt::setLed(bool ledState)
+{
+    Request request {
+        .cmd0 = 0x27,
+        .cmd1 = 0x0A,
+        .data {0x01, static_cast<uint8_t>(ledState ? 0x01 : 0x00)},  // LED index 1, on/off
+        .len  = 0x02,
+    };
+    ESP_RETURN_ON_ERROR(sendCmdAndWaitForResponse(request), TAG, "SET_LED command failed");
+
+    if (request.data[0] != 0x00) {
+        ESP_LOGW(TAG, "SET_LED returned failure status");
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+
     return ESP_OK;
 }

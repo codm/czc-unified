@@ -13,6 +13,7 @@ idf_component_register(
         freertos
         log
         spiffs
+        status_light
 
     PRIV_REQUIRES
         esp_driver_uart

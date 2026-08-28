@@ -30,6 +30,7 @@ private:
     esp_timer_handle_t tickTimer;
     LedState           currentState;
     uint32_t           tickCount;
+    bool               lastRcpLed;
 
     /**
      * @brief ESP event handler — updates `currentState` if the incoming state has

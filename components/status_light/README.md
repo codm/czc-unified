@@ -127,8 +127,62 @@ posting the correct follow-up state.
 
 ---
 
-## ZigBee LED (yellow)
+## RCP LED (ZigBee LED, yellow)
 
-The yellow ZigBee LED is physically connected to the CC2652P7 and is **not** controlled
-by this component. It is driven by the ZigBee firmware itself and can be toggled via
-ZStack MT commands from `ZigbeeProxyController`.
+The yellow ZigBee LED is physically wired to the CC2652 RCP, not to an ESP32 GPIO — it can
+only be toggled by sending it a vendor Z-Stack MT command over the RCP's UART, the same
+link `ZigbeeProxyController` uses to relay traffic between the RCP and the host. Because
+that UART is a single, exclusively-owned resource, this component never talks to it
+directly.
+
+Instead, `mapLedsToState()` derives the desired on/off value in the same `switch` that
+drives the two GPIO LEDs, and posts it as a separate event, `RCP_LED_EVENT`, only when the
+value actually changes:
+
+```
+StatusLightManager::mapLedsToState()        FirmwareManager
+        │                                          │
+        │── rcpLed = f(currentState) ──┐           │
+        │   (posted only on change)    │           │
+        │── esp_event_post(RCP_LED_EVENT) ────────►│
+        │                                          │── ledEventHandler() [non-blocking]
+        │                                          │   xQueueOverwrite(rcpLedQueue, …)
+        │                                          │
+        │                                          │── rcpLedTask (dedicated task)
+        │                                          │   xQueueReceive(rcpLedQueue, …)
+        │                                          │   protocol->setRcpLed(ledState)
+```
+
+`RCP_LED_EVENT`'s `event_id` carries only the already-arbitrated on/off value (0 or 1) —
+subscribers don't need to know about `LedState` priority at all.
+
+**Why a queue + dedicated task:** `esp_event`'s default loop runs every registered handler
+for every event base on one shared task. `IProtocolController::setRcpLed()` blocks (UART
+round-trip, up to ~500 ms) — calling it directly from the event handler would stall every
+other handler in the system, including `StatusLightManager`'s own handler for the two GPIO
+LEDs. `FirmwareManager` keeps `ledEventHandler()` non-blocking (just an `xQueueOverwrite`
+into a 1-slot mailbox queue) and does the actual blocking call from `rcpLedTaskFunc()`, a
+small dedicated task.
+
+**Which states light it** (see the `rcpLed` assignment in each `case` of
+`mapLedsToState()` to change this):
+
+| `currentState` | RCP LED |
+|---|---|
+| `ZIGBEE_NET` | on |
+| `ZIGBEE_USB` | on |
+| all others | off |
+
+**Sending the actual command** happens in `firmware_manager`, via
+`IProtocolController::setRcpLed(bool ledState)`:
+
+| Controller | Behaviour |
+|---|---|
+| `ZigbeeProxyController` | Sends the vendor Z-Stack MT `SET_LED` command (`cmd0=0x27`, `cmd1=0x0A`, LED index 1) via `ZstackMt::setLed()`. Pauses `rcpToHostTask`/`hostToRcpTask` for the duration so the command/response frame isn't leaked into the host-bound proxy stream — does **not** stop the whole proxy or reboot the RCP. Guarded by a mutex shared with `resetRcp()`/`factoryReset()` so at most one RCP operation runs at a time; best-effort — returns `ESP_ERR_TIMEOUT` if the RCP is busy with one of those and gives up after 500 ms, or `ESP_ERR_INVALID_STATE` if the proxy isn't running. |
+| `ThreadController` | `ESP_ERR_NOT_SUPPORTED` — the CC2652 has no RCP-hosted LED in Thread/OpenThread mode. |
+
+Ported from the legacy Arduino firmware's `CCTools::ledToggle()` / `CommandInterface::_ledToggle()`
+(command bytes `zigLed1On`/`zigLed1Off`). The legacy version relied on Arduino's
+single-threaded `loop()` to implicitly serialise the LED command against the proxy relay —
+here, with real preemptive FreeRTOS tasks, that serialisation is done explicitly via the
+mutex and the relay-task pause described above.

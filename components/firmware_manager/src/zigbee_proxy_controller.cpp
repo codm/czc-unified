@@ -8,7 +8,7 @@
 static const char* TAG = "ZigbeeProxyController";
 
 ZigbeeProxyController::ZigbeeProxyController(DeviceMode proxyMode)
-    : mode{proxyMode}, proxyActive{false}
+    : mode{proxyMode}, proxyActive{false}, zstackMt{Board::RCP_UART}, rcpAccessMutex{xSemaphoreCreateMutex()}
 {
     switch (proxyMode)
     {
@@ -30,7 +30,38 @@ ZigbeeProxyController::ZigbeeProxyController(DeviceMode proxyMode)
     }
 }
 
-void ZigbeeProxyController::rcpToHostFunc(void* ctx)
+esp_err_t ZigbeeProxyController::setRcpLed(bool ledState)
+{
+    if (xSemaphoreTake(rcpAccessMutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+        ESP_LOGW(TAG, "setRcpLed: RCP busy, dropping update");
+        return ESP_ERR_TIMEOUT;
+    }
+
+    esp_err_t err;
+    if (!proxyActive) {
+        // resetRcp()/factoryReset() ran while we were waiting for the mutex and left the proxy stopped.
+        err = ESP_ERR_INVALID_STATE;
+    } else {
+        // Pause the relay tasks so our command/response frame doesn't get read by
+        // rcpToHostFunc and leaked into the host-bound byte stream.
+        vTaskSuspend(rcpToHostTask);
+        vTaskSuspend(hostToRcpTask);
+
+        uart_flush_input(Board::RCP_UART);
+        err = zstackMt.setLed(ledState);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "setRcpLed failed: %s", esp_err_to_name(err));
+        }
+
+        vTaskResume(rcpToHostTask);
+        vTaskResume(hostToRcpTask);
+    }
+
+    xSemaphoreGive(rcpAccessMutex);
+    return err;
+}
+
+void ZigbeeProxyController::rcpToHostFunc(void *ctx)
 {
     auto* self = static_cast<ZigbeeProxyController*>(ctx);
     uint8_t buf[256];
@@ -103,8 +134,8 @@ esp_err_t ZigbeeProxyController::start()
     }
 
     proxyActive = true;
-    xTaskCreate(rcpToHostFunc, "rcp_to_host", 4096, this, 5, &rcpToHostTask);
-    xTaskCreate(hostToRcpFunc, "host_to_rcp", 4096, this, 5, &hostToRcpTask);
+    xTaskCreate(rcpToHostFunc, RCP_TO_HOST_HANDLE, 4096, this, 5, &rcpToHostTask);
+    xTaskCreate(hostToRcpFunc, HOST_TO_RCP_HANDLE, 4096, this, 5, &hostToRcpTask);
 
     return ESP_OK;
 }
@@ -142,30 +173,61 @@ bool ZigbeeProxyController::isRunning()
 
 esp_err_t ZigbeeProxyController::resetRcp()
 {
+    xSemaphoreTake(rcpAccessMutex, portMAX_DELAY);
+
     constexpr uint32_t rebootTimeoutMs {5000};
+    esp_err_t err = stop();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "stop before RCP reset failed: %s", esp_err_to_name(err));
+    } else {
+        err = zstackMt.init(Board::RCP_UART);
+        if (err == ESP_OK) {
+            err = zstackMt.rebootRcp(rebootTimeoutMs);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "RCP reboot failed: %s", esp_err_to_name(err));
+            }
+        } else {
+            ESP_LOGE(TAG, "zstackMt init for RCP reset failed: %s", esp_err_to_name(err));
+        }
+        zstackMt.close();
 
-    ESP_RETURN_ON_ERROR(stop(), TAG, "stop before RCP reset failed");
-
-    esp_err_t err = zstackMt.init(Board::RCP_UART);
-    if (err == ESP_OK) {
-        err = zstackMt.rebootRcp(rebootTimeoutMs);
+        esp_err_t startErr = start();
+        if (startErr != ESP_OK) {
+            ESP_LOGE(TAG, "restart after RCP reset failed: %s", esp_err_to_name(startErr));
+        }
+        err = (err == ESP_OK) ? startErr : err;
     }
-    zstackMt.close();
 
-    esp_err_t startErr = start();
-    return (err == ESP_OK) ? startErr : err;
+    xSemaphoreGive(rcpAccessMutex);
+    return err;
 }
 
 esp_err_t ZigbeeProxyController::factoryReset()
 {
-    ESP_RETURN_ON_ERROR(stop(), TAG, "stop before RCP erase failed");
+    xSemaphoreTake(rcpAccessMutex, portMAX_DELAY);
 
-    esp_err_t err = zstackMt.init(Board::RCP_UART);
-    if (err == ESP_OK) {
-        err = zstackMt.eraseNvram();
+    esp_err_t err = stop();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "stop before RCP erase failed: %s", esp_err_to_name(err));
+    } else {
+        err = zstackMt.init(Board::RCP_UART);
+        if (err == ESP_OK) {
+            err = zstackMt.eraseNvram();
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "RCP NVRAM erase failed: %s", esp_err_to_name(err));
+            }
+        } else {
+            ESP_LOGE(TAG, "zstackMt init for RCP erase failed: %s", esp_err_to_name(err));
+        }
+        zstackMt.close();
+
+        esp_err_t startErr = start();
+        if (startErr != ESP_OK) {
+            ESP_LOGE(TAG, "restart after RCP erase failed: %s", esp_err_to_name(startErr));
+        }
+        err = (err == ESP_OK) ? startErr : err;
     }
-    zstackMt.close();
 
-    esp_err_t startErr = start();
-    return (err == ESP_OK) ? startErr : err;
+    xSemaphoreGive(rcpAccessMutex);
+    return err;
 }

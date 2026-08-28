@@ -2,7 +2,12 @@
 #define CZC_FIRMWARE_MANAGER_H_
 
 #include "protocol_controller.h"
+#include "status_light_event.h"
 #include "esp_err.h"
+#include "esp_event.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
 #include <memory>
 
 /**
@@ -35,6 +40,19 @@ public:
      * @warning No protocol defined yet!
      */
     FirmwareManager();
+
+    /**
+     * @brief Subscribe to `RCP_LED_EVENT` and start the RCP-LED worker task.
+     *
+     *        Mirrors the already-arbitrated RCP LED on/off state onto the
+     *        active protocol's RCP-hosted LED (if it has one) via
+     *        `IProtocolController::setRcpLed()`. The worker task does the
+     *        actual (blocking) call, so the event loop's own task is never
+     *        blocked.
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t init();
 
     /**
      * @brief Start the protocol stack for the given mode.
@@ -82,6 +100,13 @@ public:
 private:
     std::unique_ptr<IProtocolController> protocol;
     DeviceMode activeMode;
+
+    QueueHandle_t rcpLedQueue{nullptr};
+    TaskHandle_t  rcpLedTask{nullptr};
+
+    static void ledEventHandler(void* arg, esp_event_base_t event_base,
+                                int32_t event_id, void* event_data);
+    static void rcpLedTaskFunc(void* arg);
 };
 
 #endif // CZC_FIRMWARE_MANAGER_H_

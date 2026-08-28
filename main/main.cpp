@@ -37,6 +37,7 @@ extern "C" void app_main(void)
 
     UpdateManager updateManager;
     FirmwareManager firmwareManager;
+    ESP_ERROR_CHECK(firmwareManager.init());
     AppController appController{updateManager, firmwareManager};
 
     // Start webserver 

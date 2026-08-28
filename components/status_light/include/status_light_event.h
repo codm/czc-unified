@@ -5,6 +5,9 @@
 
 ESP_EVENT_DECLARE_BASE(STATUS_LED_EVENT);
 
+/** @brief Posted with the arbitrated `LedState` whenever it changes. */
+ESP_EVENT_DECLARE_BASE(RCP_LED_EVENT);
+
 /**
  * @brief LED states posted as events into the default event loop.
  *
