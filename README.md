@@ -11,11 +11,7 @@ as possible (firmware version, steps to reproduce, log output).
 
 Known Issues:
 
-- Firmware downloads over a Wi-Fi connection are not yet possible (LAN only).
-- No visual feedback on the CZC during setup or firmware updates.
-- The web interface is unreachable if the RCP is not configured correctly.
-- SoftAP closes after invalid or non-existent network credentials are submitted.
-- Feedback messages in the SoftAP configuration flow are unclear.
+- The web interface is unreachable if the RCP is not configured correctly (Only Thread mode is affected - this is an IDF Issue).
 
 ### Capturing Debug Output
 
