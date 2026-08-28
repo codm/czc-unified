@@ -44,6 +44,30 @@ public:
      */
     bool isRunning() override;
 
+    /**
+     * @brief Hardware-resets the CC2652 via the RST pin.
+     *
+     *        Pure hardware pulse — does not touch OpenThread stack state.
+     *        The Spinel driver already handles unsolicited RCP resets (see
+     *        `rcpFailureHandler`), so the stack resynchronises on its own.
+     *
+     * @return `ESP_OK`
+     */
+    esp_err_t resetRcp() override;
+
+    /**
+     * @brief Erase the Thread dataset/settings and return to a clean state.
+     *
+     *        Unlike the Zigbee RCP, the CC2652 holds no meaningful config of
+     *        its own in Thread mode — the dataset lives in the ESP's NVS via
+     *        the OpenThread settings API. Disables the Thread/IPv6 interface,
+     *        erases persistent info via `otInstanceErasePersistentInfo()`,
+     *        then does a full `stop()` + `start()` to come back up clean.
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t factoryReset() override;
+
 private:
     bool threadActive;
 

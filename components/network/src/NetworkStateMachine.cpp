@@ -57,6 +57,7 @@ void NetworkStateMachine::initAndStartInitTimer()
     esp_timer_create_args_t initTimerConfig = {
         .callback = NetworkStateMachine::initTimerCallback,
         .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
         .name = "networkInitTimer",
         .skip_unhandled_events = false
     };
@@ -74,6 +75,7 @@ void NetworkStateMachine::initRetryTimer()
     esp_timer_create_args_t retryTimerConfig = {
         .callback = NetworkStateMachine::retryTimerCallback,
         .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
         .name = "retryTimer",
         .skip_unhandled_events = false
     };

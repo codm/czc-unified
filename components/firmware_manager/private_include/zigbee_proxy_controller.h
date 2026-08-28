@@ -4,6 +4,7 @@
 #include "protocol_controller.h"
 #include "firmware_manager.h"
 #include "proxy_transport.h"
+#include "zstack_mt.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -16,8 +17,9 @@
  *        host application via IProxyTransport (USB or TCP).
  *
  *        The active transport is selected at construction based on DeviceMode:
- *          - ZIGBEE_USB → UartTransport
- *          - ZIGBEE_NET → TcpTransport
+ *          - ZIGBEE_USB    → UartTransport
+ *          - ZIGBEE_NET    → TcpTransport
+ *          - ZIGBEE_ROUTER → none — RCP runs standalone, start()/stop() are no-ops
  *
  */
 class ZigbeeProxyController : public IProtocolController {
@@ -50,6 +52,28 @@ public:
      */
     bool isRunning() override;
 
+    /**
+     * @brief Hardware-resets the RCP via `ZstackMt`, using the Z-Stack MT
+     *        protocol the RCP's Zigbee firmware speaks.
+     *
+     *        Stops the proxy (releasing the UART) for the duration of the
+     *        reset and restarts it afterwards.
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t resetRcp() override;
+
+    /**
+     * @brief Erases the RCP's Z-Stack NVRAM (network table & config) via
+     *        `ZstackMt`.
+     *
+     *        Stops the proxy (releasing the UART) for the duration of the
+     *        erase and restarts it afterwards.
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t factoryReset() override;
+
 private:
     static void rcpToHostFunc(void* ctx);
     static void hostToRcpFunc(void* ctx);
@@ -59,6 +83,7 @@ private:
     std::unique_ptr<IProxyTransport> transport;
     TaskHandle_t                     rcpToHostTask{nullptr};
     TaskHandle_t                     hostToRcpTask{nullptr};
+    ZstackMt                         zstackMt;
 };
 
 #endif // CZC_ZIGBEE_PROXY_CONTROLLER_H_

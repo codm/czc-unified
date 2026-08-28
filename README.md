@@ -11,11 +11,7 @@ as possible (firmware version, steps to reproduce, log output).
 
 Known Issues:
 
-- Firmware downloads over a Wi-Fi connection are not yet possible (LAN only).
-- No visual feedback on the CZC during setup or firmware updates.
-- The web interface is unreachable if the RCP is not configured correctly.
-- SoftAP closes after invalid or non-existent network credentials are submitted.
-- Feedback messages in the SoftAP configuration flow are unclear.
+- The web interface is unreachable if the RCP is not configured correctly (Only Thread mode is affected - this is an IDF Issue).
 
 ### Capturing Debug Output
 
@@ -280,12 +276,20 @@ czc_ot_firmware/
 │   │
 │   ├── update_manager/           RCP (BSL) + ESP (OTA) firmware updates
 │   │   ├── include/update_manager.h
-│   │   ├── private_include/rcp_hal.h, rcp_updater.h, ota_updater.h
+│   │   ├── private_include/rcp_updater.h, ota_updater.h
 │   │   └── src/
 │   │
+│   ├── cc_bsl/                   CC13xx/CC26xx ROM bootloader (BSL) protocol wrapper
+│   │   ├── include/cc_bsl.h
+│   │   └── src/cc_bsl.cpp
+│   │
+│   ├── zstack_mt/                Z-Stack Monitor and Test (MT) UART protocol wrapper
+│   │   ├── include/zstack_mt.h
+│   │   └── src/zstack_mt.cpp
+│   │
 │   ├── firmware_manager/         Protocol stack selection (Thread / Zigbee)
-│   │   ├── include/firmware_manager.h   ← DeviceMode enum
-│   │   ├── private_include/protocol_controller.h, thread_controller.h,
+│   │   ├── include/firmware_manager.h, protocol_controller.h   ← DeviceMode enum
+│   │   ├── private_include/thread_controller.h,
 │   │   │                               zigbee_proxy_controller.h, proxy_transport.h
 │   │   └── src/
 │   │
@@ -322,16 +326,52 @@ Composition root. Runs the boot-decision-tree on every boot and routes web API r
 ##### `update_manager`
 
 Wraps two updaters, both non-blocking (spawn an internal FreeRTOS task and signal completion via a binary semaphore / reboot):
-- **`RcpUpdater`** — downloads TI binary into the OTA staging partition, then drives the CC2652 BSL over UART (`RcpHal`). `UpdateManager::flashRcp()` spawns the task; `UpdateManager::waitForRcpFlash()` blocks the caller until it's done and returns the result — used by `AppController` both at boot and for live re-flashes.
+- **`RcpUpdater`** — downloads TI binary into the OTA staging partition, then drives the CC2652 BSL over UART via `CcBsl` (`cc_bsl` component). `UpdateManager::flashRcp()` spawns the task; `UpdateManager::waitForRcpFlash()` blocks the caller until it's done and returns the result — used by `AppController` both at boot and for live re-flashes.
 - **`OtaUpdater`** — thin `esp_https_ota` wrapper for live ESP firmware updates; reboots on success.
 
 Both use the same OTA partition; a `busy` flag prevents simultaneous access.
+
+##### `cc_bsl`
+
+Standalone, project-agnostic wrapper around the TI CC13xx/CC26xx ROM bootloader (BSL) protocol — framing (`SIZE`/`CHECKSUM`/`CMD`/`DATA`), `ACK`/`NACK` handling and the flash commands (`PING`, `DOWNLOAD`, `SEND_DATA`, `GET_STATUS`, `BANK_ERASE`). `CcBsl` owns the UART driver and the RST/BSL GPIO lines for the duration of a flash session. Split out of `update_manager` (formerly `RcpHal`) so the BSL transport can be reused outside this project without dragging in OTA/RCP-update orchestration.
+
+##### `zstack_mt`
+
+Standalone wrapper around TI's **Z-Stack Monitor and Test (MT)** UART protocol — the same command interface Zigbee host applications use to talk to a Z-Stack-based RCP (framing: `SOF (0xFE)` + length + `cmd0`/`cmd1` + data + XOR checksum, see [`zstack_mt.h`](components/zstack_mt/include/zstack_mt.h) for the packet layout). `ZstackMt` owns the RCP UART plus the RST/BSL GPIO lines for the duration of a session, mirroring `cc_bsl`'s ownership model but talking to the RCP's *application* firmware instead of its bootloader.
+
+- `init()` — configures the RST/BSL GPIOs (BSL held high, i.e. non-bootloader), toggles reset to boot the RCP into normal Z-Stack firmware, then blocks on the `SYS_RESET_IND` callback before returning.
+- `eraseNvram()` — sends `NVRAMCLEARSTARTOPS` (`ZCD_STARTOPT_CLEAR_CONFIG` | `ZCD_STARTOPT_CLEAR_STATE`) and reboots the RCP so it applies the clear on the next boot; blocks on `rebootRcp()` until the reset callback confirms it's back up.
+- `close()` — deletes the UART driver, freeing the port for another owner (`CcBsl`, `ProtocolController`).
+
+Owned by `ZigbeeProxyController`, which drives it for the `/device/rcp/reboot` and
+`/device/rcp/erasenvram` debug actions: the proxy is stopped to free the UART, `ZstackMt`
+does the reset/erase, then the proxy is restarted. Only meaningful while the RCP runs
+Z-Stack firmware (`ZIGBEE_USB` / `ZIGBEE_NET` / `ZIGBEE_ROUTER`) — see
+[`firmware_manager`](#firmware_manager) below for the Thread-mode equivalents.
 
 ##### `firmware_manager`
 
 Selects and starts the correct `ProtocolController` implementation based on `DeviceMode`:
 - `ThreadController` — OTBR stack (Spinel over UART).
-- `ZigbeeProxyController` — transparent serial proxy (USB or TCP). Pumps bytes between the RCP UART and an `IProxyTransport` implementation (`UartTransport` for USB, `TcpTransport` for TCP) using two FreeRTOS tasks.
+- `ZigbeeProxyController` — transparent serial proxy (USB or TCP). Pumps bytes between the RCP UART and an `IProxyTransport` implementation (`UartTransport` for USB, `TcpTransport` for TCP) using two FreeRTOS tasks. In `ZIGBEE_ROUTER` mode there is no transport — `start()`/`stop()` are no-ops and the RCP runs standalone; the ESP never touches the UART except for the debug actions below.
+
+**RCP debug actions (`resetRcp()` / `factoryReset()`).** `rcp_reboot` and `rcp_erase_nvram`
+(`AppController` → `FirmwareManager` → active `ProtocolController`) are implemented
+per-protocol because the RCP speaks a different command set in each mode:
+- `ZigbeeProxyController` drives `ZstackMt` directly (Z-Stack MT protocol) — see
+  [`zstack_mt`](#zstack_mt) above.
+- `ThreadController::resetRcp()` only pulses the RST GPIO — no Spinel/stack restart. The
+  Spinel driver already handles unsolicited RCP resets (`rcpFailureHandler`, triggered on
+  RCP failure), so it resynchronises on its own.
+- `ThreadController::factoryReset()` doesn't touch the RCP at all: in Thread mode the RCP
+  holds no meaningful config of its own — the dataset lives in the ESP's NVS via the
+  OpenThread settings API. It disables the Thread/IPv6 interface, calls
+  `otInstanceErasePersistentInfo()` (erase-only, unlike `otInstanceFactoryReset()` which
+  also triggers an immediate platform reboot — not what a "clear the RCP/network config"
+  button should do), then does a full `stop()` + `start()` to come back up clean.
+
+`IProtocolController::resetRcp()`/`factoryReset()` are pure virtual — both implementations
+must provide one, since there's no protocol-agnostic default that makes sense for either.
 
 **`ThreadController::stop()` drain barrier.** Disabling the OpenThread stack triggers
 address-removal / multicast-leave-group notifications that are handled asynchronously —
@@ -425,6 +465,8 @@ classDiagram
         +requestEspFlash(url) esp_err_t
         +requestModeChange(mode) esp_err_t
         +getCurrentMode() DeviceMode
+        +rcpReboot() esp_err_t
+        +rcpEraseNvram() esp_err_t
     }
 
     class UpdateManager {
@@ -434,10 +476,10 @@ classDiagram
         +flashEsp(url) esp_err_t
     }
     class RcpUpdater {
-        -RcpHal hal
+        -CcBsl cc_bsl
         +flash(url) esp_err_t
     }
-    class RcpHal {
+    class CcBsl {
         -uart_port_t uartPort
         -bool bslMode
         +init(uart) esp_err_t
@@ -450,11 +492,20 @@ classDiagram
     class OtaUpdater {
         +flash(url) esp_err_t
     }
+    class ZstackMt {
+        -uart_port_t uartPort
+        +init(uart) esp_err_t
+        +close() esp_err_t
+        +eraseNvram() esp_err_t
+        +rebootRcp(timeout) esp_err_t
+    }
 
     class FirmwareManager {
         -DeviceMode activeMode
         +start(mode) esp_err_t
         +getActiveMode() DeviceMode
+        +resetRcp() esp_err_t
+        +factoryReset() esp_err_t
     }
 
     %% ── Interface Layer 1: Protocol lifecycle ──────────────────────────
@@ -463,18 +514,25 @@ classDiagram
         +start() esp_err_t
         +stop() esp_err_t
         +isRunning() bool
+        +resetRcp() esp_err_t
+        +factoryReset() esp_err_t
     }
     class ThreadController {
         +start() esp_err_t
         +stop() esp_err_t
         +isRunning() bool
+        +resetRcp() esp_err_t
+        +factoryReset() esp_err_t
     }
     class ZigbeeProxyController {
         -transport unique_ptr~IProxyTransport~
         -rcpToHostTask TaskHandle_t
         -hostToRcpTask TaskHandle_t
+        -ZstackMt zstackMt
         +start() esp_err_t
         +stop() esp_err_t
+        +resetRcp() esp_err_t
+        +factoryReset() esp_err_t
         +isRunning() bool
     }
 
@@ -543,13 +601,14 @@ classDiagram
     AppController o-- FirmwareManager
     UpdateManager *-- RcpUpdater
     UpdateManager *-- OtaUpdater
-    RcpUpdater *-- RcpHal
+    RcpUpdater *-- CcBsl
 
     FirmwareManager o-- ProtocolController
     ProtocolController <|.. ThreadController
     ProtocolController <|.. ZigbeeProxyController
 
     ZigbeeProxyController *-- IProxyTransport
+    ZigbeeProxyController *-- ZstackMt
     IProxyTransport <|.. UartTransport
     IProxyTransport <|.. TcpTransport
 
@@ -590,6 +649,11 @@ reboot mechanism anymore; see [Firmware Flash](#firmware-flash).
 | `POST` | `/flash/esp` | Start live ESP OTA update |
 | `GET` | `/device/mode` | Returns `{"mode": <int>, "device_setup": <bool>}` |
 | `POST` | `/device/mode` | Set device mode — `{"mode": <int>}` |
+| `POST` | `/device/esp/reboot` | Reboot the ESP32 |
+| `POST` | `/device/esp/erasenvs` | Erase the ESP32's own NVS |
+| `POST` | `/device/rcp/reboot` | Hardware-reset the RCP — Zigbee via `ZstackMt`, Thread via a direct RST pulse |
+| `POST` | `/device/rcp/erasenvram` | Erase the RCP's persisted network config — Zigbee via `ZstackMt` NVRAM clear, Thread via the OpenThread settings API (RCP itself holds no state in Thread mode) |
+| `POST` | `/device/loglevel` | Set the ESP32 runtime log level — `{"mode": <int>}`, where `0`=None, `1`=Error, `2`=Warning, `3`=Info, `4`=Debug, `5`=Verbose (matches `esp_log_level_t`) |
 | `GET` | `/network/wifi` | Read WiFi config from NVS |
 | `POST` | `/network/wifi` | Write WiFi config + trigger reconnect |
 | `GET` | `/network/ethernet` | Read Ethernet config from NVS |
@@ -743,8 +807,8 @@ empty) — the point is cutting polling traffic, not duplicating `NetworkStatus`
      `FirmwareManager::stop()` to free the RCP UART.
   2. `UpdateManager::flashRcp()` spawns a background task that downloads the TI binary
      over HTTPS into the OTA staging partition (`RcpUpdater`) and drives the CC2652 BSL
-     over UART (`RcpHal`): sync → bank-erase → download → send-data → reset. The UART
-     driver is released via `RcpHal::close()` after the flash.
+     over UART via `CcBsl` (`cc_bsl` component): sync → bank-erase → download →
+     send-data → reset. The UART driver is released via `CcBsl::close()` after the flash.
   3. `requestRcpFlash()` blocks on `UpdateManager::waitForRcpFlash()`, which waits on a
      binary semaphore signaled by that task — no polling, no fixed delay.
   4. On success, writes `mode` to `device_mode` and sets `device_setup`, then calls
@@ -764,3 +828,9 @@ It is also important to keep in mind that GitHub enforces a rate limit of 60 req
 hour. Because of this it is better to host the firmware yourself rather than downloading
 and fetching it from GitHub every time.
 
+### Additional resources
+
+- RCP documentation (Chip & BSL): https://www.ti.com/lit/ug/swcu192/swcu192.pdf?ts=1785221111184
+- Zigbee Zstack protocol: https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/158/Z_2D00_Stack-Monitor-and-Test-API.pdf / https://software-dl.ti.com/simplelink/esd/simplelink_cc13x2_26x2_sdk/3.30.00.03/exports/docs/zigbee/html/zigbee/znp_interface.html
+- Thread Spinel protocol: https://software-dl.ti.com/simplelink/esd/simplelink_cc13xx_cc26xx_sdk/6.20.00.29/exports/docs/thread/doxygen/openthread/html/spinel_8h.html / https://github.com/openthread/openthread/blob/main/src/lib/spinel/spinel.h
+- Highlevel openthread api: https://openthread.io/reference

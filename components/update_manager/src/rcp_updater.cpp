@@ -22,22 +22,32 @@ constexpr int MAX_REDIRECTS {5};
 constexpr float PERCENT_PRINT_DELTA {0.5};
 
 RcpUpdater::RcpUpdater()
-    : hal{}, downloadedSize{0}
+    : cc_bsl{}, downloadedSize{0}
 {}
 
 esp_err_t RcpUpdater::flash(const char* url)
 {
     Sse_events::flash::post_device_state(SseDeviceMode::FLASHING, nullptr);
 
-    ESP_RETURN_ON_ERROR(hal.init(Board::RCP_UART), TAG, "HAL init failed");
-    ESP_RETURN_ON_ERROR(downloadToStaging(url),    TAG, "Download failed");
-    esp_err_t ret = flashFromStaging();
-    hal.close();
+    esp_err_t initRet = cc_bsl.init(Board::RCP_UART);
+    if (initRet != ESP_OK) {
+        ESP_LOGE(TAG, "cc_bsl init failed: %s", esp_err_to_name(initRet));
+        Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, false, "cc_bsl init failed");
+        Sse_events::flash::post_device_state(SseDeviceMode::NORMAL, nullptr);
+        return initRet;
+    }
+
+    esp_err_t ret = downloadToStaging(url);
+    if (ret == ESP_OK) {
+        ret = flashFromStaging();
+    }
+    cc_bsl.close();
 
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Flash failed during RCP write!");
         Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, false, "Flash failed during write!");
+        Sse_events::flash::post_device_state(SseDeviceMode::NORMAL, nullptr);
         return ESP_FAIL;
     }
     Sse_events::flash::post_flash_complete(SseFlashTarget::RCP, true);
@@ -181,9 +191,9 @@ esp_err_t RcpUpdater::flashFromStaging()
 
     ESP_LOGI(TAG, "Flashing %lu B (aligned: %lu B) to CC2652...", totalSize, alignedSize);
 
-    ESP_RETURN_ON_ERROR(hal.eraseFlash(),                       TAG, "Erase failed");
+    ESP_RETURN_ON_ERROR(cc_bsl.eraseFlash(),                       TAG, "Erase failed");
     ESP_LOGI(TAG, "BEGIN_FLASH...");
-    ESP_RETURN_ON_ERROR(hal.beginFlash(FLASH_START_ADDR, alignedSize), TAG, "beginFlash failed");
+    ESP_RETURN_ON_ERROR(cc_bsl.beginFlash(FLASH_START_ADDR, alignedSize), TAG, "beginFlash failed");
 
     uint8_t blockBuf[BSL_BLOCK_SIZE]{};
     size_t offset{0};
@@ -205,7 +215,7 @@ esp_err_t RcpUpdater::flashFromStaging()
             return err;
         }
 
-        if (hal.sendData(blockBuf, static_cast<int>(paddedRead)) != ESP_OK) {
+        if (cc_bsl.sendData(blockBuf, static_cast<int>(paddedRead)) != ESP_OK) {
             ESP_LOGE(TAG, "sendData failed at offset %u", offset);
             return ESP_FAIL;
         }
@@ -223,5 +233,5 @@ esp_err_t RcpUpdater::flashFromStaging()
     }
 
     ESP_LOGI(TAG, "Flash complete — resetting CC2652");
-    return hal.reset();
+    return cc_bsl.reset();
 }

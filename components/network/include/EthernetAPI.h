@@ -13,7 +13,7 @@ struct ethernetConfig {
     uint8_t powerPin = 5;
     uint8_t mdcPin = 23;
     uint8_t mdiPin = 18;
-    emac_rmii_clock_gpio_t clkGpio = (emac_rmii_clock_gpio_t)17;
+    int clkGpio = 17;
 };
 
 class EthernetAPI

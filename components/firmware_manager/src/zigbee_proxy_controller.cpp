@@ -36,9 +36,9 @@ void ZigbeeProxyController::rcpToHostFunc(void* ctx)
     uint8_t buf[256];
     while (self->proxyActive) {
         int n = uart_read_bytes(Board::RCP_UART, buf, sizeof(buf), pdMS_TO_TICKS(10));
-        if (n > 0) 
+        if (n > 0)
             self->transport->write(buf, n);
-        vTaskDelay(pdTICKS_TO_MS(10));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
     vTaskDelete(nullptr);
 }
@@ -49,15 +49,26 @@ void ZigbeeProxyController::hostToRcpFunc(void* ctx)
     uint8_t buf[256];
     while (self->proxyActive) {
         int n = self->transport->read(buf, sizeof(buf));
-        if (n > 0) 
+        if (n > 0)
             uart_write_bytes(Board::RCP_UART, buf, n);
-        vTaskDelay(pdTICKS_TO_MS(10));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
     vTaskDelete(nullptr);
 }
 
 esp_err_t ZigbeeProxyController::start()
 {
+    if (!transport)
+    {
+        // ZIGBEE_ROUTER — RCP runs standalone, ESP doesn't touch the UART.
+        return ESP_OK;
+    }
+
+    if (uart_is_driver_installed(Board::RCP_UART)) {
+        ESP_LOGW(TAG, "UART%d driver already installed at init: deleting stale instance!", Board::RCP_UART);
+        uart_driver_delete(Board::RCP_UART);
+    }
+
     // RCP Uart init
     uart_config_t cfg = {
         .baud_rate  = 115200,
@@ -65,6 +76,9 @@ esp_err_t ZigbeeProxyController::start()
         .parity     = UART_PARITY_DISABLE,
         .stop_bits  = UART_STOP_BITS_1,
         .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+        .rx_flow_ctrl_thresh = 0,
+        .source_clk = UART_SCLK_DEFAULT,
+        .flags = {},
     };
 
     ESP_RETURN_ON_ERROR(uart_param_config(Board::RCP_UART, &cfg), TAG, "Failed at [RCP]uart_param_config");
@@ -97,6 +111,12 @@ esp_err_t ZigbeeProxyController::start()
 
 esp_err_t ZigbeeProxyController::stop()
 {
+    if (!transport)
+    {
+        // ZIGBEE_ROUTER — nothing was started.
+        return ESP_OK;
+    }
+
     proxyActive = false;
 
     if (rcpToHostTask) 
@@ -112,10 +132,40 @@ esp_err_t ZigbeeProxyController::stop()
 
     transport->close();
 
-    return uart_driver_delete(Board::HOST_UART);
+    return uart_driver_delete(Board::RCP_UART);
 }
 
 bool ZigbeeProxyController::isRunning()
 {
     return proxyActive;
+}
+
+esp_err_t ZigbeeProxyController::resetRcp()
+{
+    constexpr uint32_t rebootTimeoutMs {5000};
+
+    ESP_RETURN_ON_ERROR(stop(), TAG, "stop before RCP reset failed");
+
+    esp_err_t err = zstackMt.init(Board::RCP_UART);
+    if (err == ESP_OK) {
+        err = zstackMt.rebootRcp(rebootTimeoutMs);
+    }
+    zstackMt.close();
+
+    esp_err_t startErr = start();
+    return (err == ESP_OK) ? startErr : err;
+}
+
+esp_err_t ZigbeeProxyController::factoryReset()
+{
+    ESP_RETURN_ON_ERROR(stop(), TAG, "stop before RCP erase failed");
+
+    esp_err_t err = zstackMt.init(Board::RCP_UART);
+    if (err == ESP_OK) {
+        err = zstackMt.eraseNvram();
+    }
+    zstackMt.close();
+
+    esp_err_t startErr = start();
+    return (err == ESP_OK) ? startErr : err;
 }

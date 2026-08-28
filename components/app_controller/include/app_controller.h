@@ -2,6 +2,7 @@
 #define CZC_APP_CONTROLLER_H_
 
 #include "esp_err.h"
+#include "esp_log.h"
 #include "firmware_callbacks.h"
 #include "update_manager.h"
 #include "firmware_manager.h"
@@ -43,18 +44,6 @@ public:
     void run();
 
     /**
-     * @brief Fill a `web_firmware_callbacks_t` struct with static C shims
-     *        that forward firmware / mode requests to this AppController instance.
-     *
-     *        Call this before `esp_br_web_start()` in main.
-     *
-     * @param[out] cbs  Firmware callback struct to fill
-     *
-     * @return void
-     */
-    void fillFirmwareCallbacks(web_firmware_callbacks_t* cbs);
-
-    /**
      * @brief Flash RCP firmware live and activate `mode` — no reboot.
      *
      *        Stops the currently active protocol controller (if any) to free the
@@ -68,7 +57,7 @@ public:
      * @return `ESP_OK` on success
      */
     esp_err_t requestRcpFlash(const char* url, DeviceMode mode);
-
+    
     /**
      * @brief Start a live ESP OTA update.
      *
@@ -77,7 +66,7 @@ public:
      * @return `ESP_OK` if the update task was started
      */
     esp_err_t requestEspFlash(const char* url);
-
+    
     /**
      * @brief Switch device mode: write new mode
      *
@@ -86,14 +75,78 @@ public:
      * @return `ESP_OK` if the intent was written successfully
      */
     esp_err_t requestModeChange(DeviceMode mode);
-
+    
     /**
      * @brief Return the currently active device mode.
      *
      * @return `DeviceMode` as reported by the FirmwareManager
      */
     DeviceMode getCurrentMode();
+    
+    /**
+     * @brief Shuts down interface and reboots ESP
+     * 
+     * @return void
+     */
+    void espReboot();
+    
+    /**
+     * @brief Erase ESP non volatile storage
+     * 
+     * @return `ESP_OK` on success - 
+     * 
+     *          ESP_ERR_NOT_FOUND if there is no NVS partition labeled "nvs" in the partition table - 
+     * 
+     *          different error in case de-initialization fails (shouldn't happen) 
+     */
+    esp_err_t espEraseNvs();
 
+    /**
+     * @brief Hardware-resets the RCP, using whichever mechanism the
+     *        currently active protocol (Zigbee/Thread) implements.
+     *
+     *        Zigbee: reboots via `ZstackMt` (Z-Stack MT protocol).
+     *        Thread: pulses the RST GPIO directly — the Spinel driver
+     *        resynchronises on its own, no stack restart needed.
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t rcpReboot();
+
+    /**
+     * @brief Erases the RCP's persisted network config, using whichever
+     *        mechanism the currently active protocol (Zigbee/Thread) implements.
+     *
+     *        Zigbee: erases Z-Stack NVRAM (network table & config) via `ZstackMt`.
+     *        Thread: erases the Thread dataset/settings via the OpenThread
+     *        settings API — the RCP itself holds no meaningful config in
+     *        Thread mode.
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t rcpEraseNvram();
+    
+    /**
+     * @brief change Loglevel of Project to given Level
+     * 
+     * @param[in] logLevel 
+     * 
+     * @return void
+     */
+    void setLogLevel(esp_log_level_t logLevel);
+
+    /**
+     * @brief Fill a `web_firmware_callbacks_t` struct with static C shims
+     *        that forward firmware / mode requests to this AppController instance.
+     *
+     *        Call this before `esp_br_web_start()` in main.
+     *
+     * @param[out] cbs  Firmware callback struct to fill
+     *
+     * @return void
+     */
+    void fillFirmwareCallbacks(web_firmware_callbacks_t* cbs);
+    
 private:
     UpdateManager&  updateManager;
     FirmwareManager& firmwareManager;

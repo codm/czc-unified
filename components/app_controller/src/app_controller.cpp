@@ -2,10 +2,10 @@
 
 #include "app_nvs.h"
 #include "esp_check.h"
-#include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs_flash.h"
 
 static const char* TAG = "AppController";
 
@@ -66,15 +66,25 @@ esp_err_t AppController::requestEspFlash(const char* url)
 esp_err_t AppController::requestModeChange(DeviceMode mode)
 {
     ESP_RETURN_ON_ERROR(AppNvs::writeDeviceMode(mode), TAG, "Write device mode failed");
-    ESP_LOGI(TAG, "Mode change to %d", static_cast<int>(mode));
+    DeviceMode currentMode {firmwareManager.getActiveMode()};
+    ESP_LOGI(TAG, "Mode change from %d to %d", static_cast<int>(currentMode), static_cast<int>(mode));
 
     // Live switch only for coordinator-to-coordinator transitions (e.g. USB <-> Net).
     // Any transition involving Thread needs a fresh RCP flash — use requestRcpFlash().
-    if (firmwareManager.getActiveMode() != DeviceMode::THREAD && mode != DeviceMode::THREAD)
+    if (currentMode != DeviceMode::THREAD && mode != DeviceMode::THREAD)
     {
-        firmwareManager.stop();
+        esp_err_t ret = firmwareManager.stop();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "Error shutting down Transport interface");
+            return ESP_FAIL;
+        }
+            
         vTaskDelay(pdMS_TO_TICKS(50));
-        firmwareManager.start(mode);
+        ret = firmwareManager.start(mode);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "Error starting new Transport interface");
+            return ESP_FAIL;
+        }
     }
 
     return ESP_OK;
@@ -83,6 +93,33 @@ esp_err_t AppController::requestModeChange(DeviceMode mode)
 DeviceMode AppController::getCurrentMode()
 {
     return firmwareManager.getActiveMode();
+}
+
+void AppController::espReboot()
+{
+    firmwareManager.stop();
+    esp_restart();
+}
+
+esp_err_t AppController::espEraseNvs()
+{
+    return nvs_flash_erase();
+}
+
+esp_err_t AppController::rcpReboot()
+{
+    return firmwareManager.resetRcp();
+}
+
+esp_err_t AppController::rcpEraseNvram()
+{
+    return firmwareManager.factoryReset();
+}
+
+void AppController::setLogLevel(esp_log_level_t logLevel)
+{
+    if (logLevel)
+        esp_log_level_set("*", logLevel);
 }
 
 void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
@@ -108,6 +145,26 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     {
         *setup_out = AppNvs::readDeviceSetup() ? 1 : 0;
         return ESP_OK;
+    };
+    cbs->esp_reboot = [](void* ctx)
+    {
+        return static_cast<AppController*>(ctx)->espReboot();
+    };
+    cbs->esp_erase_nvs = [](void* ctx)
+    {
+        return static_cast<AppController*>(ctx)->espEraseNvs();
+    };
+    cbs->rcp_reboot = [](void* ctx)
+    {
+        return static_cast<AppController*>(ctx)->rcpReboot();
+    };
+    cbs->rcp_erase_nvram = [](void* ctx)
+    {
+        return static_cast<AppController*>(ctx)->rcpEraseNvram();
+    };
+    cbs->esp_set_log_level = [](void* ctx, int log_level)
+    {
+        return static_cast<AppController*>(ctx)->setLogLevel(static_cast<esp_log_level_t>(log_level));
     };
     cbs->ctx = this;
 }

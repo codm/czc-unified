@@ -1,5 +1,5 @@
-#ifndef CZC_RCP_HAL_H_
-#define CZC_RCP_HAL_H_
+#ifndef CC_BSL_H
+#define CC_BSL_H
 
 #include "esp_err.h"
 #include "driver/uart.h"
@@ -16,12 +16,12 @@
  * @note  The BSL protocol uses: SIZE / CHECKSUM / CMD [/ DATA],
  *        ACK = 0xCC, NACK = 0x33 (both preceded by 0x00).
  */
-class RcpHal {
+class CcBsl {
 public:
     /**
      * @brief Constructor — members are initialised to safe defaults.
      */
-    RcpHal();
+    CcBsl();
 
     /**
      * @brief Configure RST/BSL GPIO outputs and install the UART driver.
@@ -146,4 +146,4 @@ private:
     esp_err_t checkLastCmd();
 };
 
-#endif // CZC_RCP_HAL_H_
+#endif // CC_BSL_H

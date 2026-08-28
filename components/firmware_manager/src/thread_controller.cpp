@@ -16,6 +16,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "openthread/dataset.h"
+#include "openthread/instance.h"
 #include "openthread/tasklet.h"
 #include <string.h>
 
@@ -177,18 +178,27 @@ esp_err_t ThreadController::stop()
     } 
     else if (esp_event_handler_register(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId,
                                           handleDrainBarrier, drainDone) != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to register drain handler — falling back to a fixed delay");
+        ESP_LOGW(TAG, "Failed to register drain handler: falling back to a fixed delay");
         vSemaphoreDelete(drainDone);
         vTaskDelay(pdMS_TO_TICKS(500));
     } 
     else {
         esp_event_post(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId, nullptr, 0, portMAX_DELAY);
-        if (xSemaphoreTake(drainDone, pdMS_TO_TICKS(2000)) != pdTRUE) {
-            ESP_LOGW(TAG, "Netif teardown drain timed out — proceeding anyway");
+        if (xSemaphoreTake(drainDone, pdMS_TO_TICKS(5000)) != pdTRUE) {
+            ESP_LOGW(TAG, "Netif teardown drain timed out: proceeding anyway");
         }
         esp_event_handler_unregister(THREAD_CONTROLLER_DRAIN_EVENT, kDrainBarrierEventId, handleDrainBarrier);
         vSemaphoreDelete(drainDone);
     }
+
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    if (!esp_openthread_lock_acquire(0)) {
+        ESP_LOGW(TAG, "OpenThread mainloop already exited on its own: skipping esp_openthread_stop()");
+        threadActive = false;
+        return ESP_OK;
+    }
+    esp_openthread_lock_release();
 
     esp_err_t err = esp_openthread_stop();
     
@@ -208,6 +218,41 @@ esp_err_t ThreadController::stop()
 bool ThreadController::isRunning()
 {
     return threadActive;
+}
+
+esp_err_t ThreadController::resetRcp()
+{
+    rcpFailureHandler();
+    return ESP_OK;
+}
+
+esp_err_t ThreadController::factoryReset()
+{
+    otInstance* instance = esp_openthread_get_instance();
+    ESP_RETURN_ON_FALSE(instance, ESP_ERR_INVALID_STATE, TAG, "No OpenThread instance running");
+
+    if (!esp_openthread_lock_acquire(portMAX_DELAY)) {
+        ESP_LOGE(TAG, "Could not acquire OpenThread lock");
+        return ESP_ERR_TIMEOUT;
+    }
+
+    if (otThreadGetDeviceRole(instance) != OT_DEVICE_ROLE_DISABLED) {
+        otThreadSetEnabled(instance, false);
+    }
+    if (otIp6IsEnabled(instance)) {
+        otIp6SetEnabled(instance, false);
+    }
+
+    otError otErr = otInstanceErasePersistentInfo(instance);
+    esp_openthread_lock_release();
+
+    if (otErr != OT_ERROR_NONE) {
+        ESP_LOGE(TAG, "otInstanceErasePersistentInfo failed: %s", otThreadErrorToString(otErr));
+        return ESP_FAIL;
+    }
+
+    ESP_RETURN_ON_ERROR(stop(), TAG, "stop() after erase failed");
+    return start();
 }
 
 void ThreadController::rcpFailureHandler()

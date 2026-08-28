@@ -699,13 +699,38 @@
           </div>
           <div class="content-panel">
             <div class="form-card">
-              <div class="btn-row">
-                <button type="button" class="btn btn-default" disabled>Clear NVRAM</button>
-                <button type="button" class="btn btn-default" disabled>Factory Reset</button>
-                <button type="button" class="btn btn-default" disabled>Export Logs</button>
-                <button type="button" class="btn btn-default" disabled>Restart Device</button>
+              <div class="split-grid">
+
+                <!-- ESP32 -->
+                <div class="card">
+                  <p class="card-title">ESP32</p>
+                  <div class="btn-row">
+                    <button type="button" class="btn btn-default" onclick="esp_restart_device()">Restart Device</button>
+                    <button type="button" class="btn btn-default" onclick="esp_erase_nvs()">Factory Reset (Erase NVS)</button>
+                  </div>
+                  <div class="card-subsection">
+                    <p class="card-title">Log Level</p>
+                    <select id="esp-log-level-select" onchange="esp_set_log_level(this.value)">
+                      <option value="5">Verbose</option>
+                      <option value="4">Debug</option>
+                      <option value="3" selected>Info</option>
+                      <option value="2">Warning</option>
+                      <option value="1">Error</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- RCP -->
+                <div class="card">
+                  <p class="card-title">RCP</p>
+                  <div class="btn-row">
+                    <button type="button" class="btn btn-default" onclick="rcp_restart_device()">Restart Device</button>
+                    <button type="button" class="btn btn-default" onclick="rcp_erase_nvram()">Clear NVRAM</button>
+                  </div>
+                </div>
+
               </div>
-              <p class="note">Debug actions will be enabled in a future release.</p>
+              <p class="note">Exercise caution when using the debug functions. Some actions cannot be undone.</p>
             </div>
           </div>
         </div>

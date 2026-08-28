@@ -121,7 +121,9 @@ function isSectionVisible(section, currentMode)
   let sectionModes = (section.dataset.modes || 'all').split(' ');
   let sectionUsedInMode = sectionModes.some(function(mode)
     {
-      return (mode === 'all') || (mode === currentMode.group);
+      return (mode === 'all')
+        || (mode === currentMode.group)
+        || (mode === 'coordinator' && currentMode.isCoordinator);
     }
   );
   return sectionUsedInMode;
@@ -535,6 +537,9 @@ function initEventSource()
     const data = JSON.parse(e.data);
     if (data.mode === 'flashing') {
       showFlashModal(data.phase);
+    } else if (document.getElementById('flash_window').dataset.failed === 'true') {
+      // Keep the failure message visible; user dismisses via the close button.
+      document.getElementById('flash_window_close').style.display = '';
     } else {
       hideFlashModal();
     }
@@ -568,6 +573,7 @@ function _isFlashStatusActive() {
 }
 
 function showFlashModal(phase) {
+  document.getElementById('flash_window').dataset.failed = 'false';
   if (!_isFlashStatusActive()) {
     const statusEl = document.getElementById('flash_status');
     const tpl = document.getElementById('flash-status-tpl').content.cloneNode(true);
@@ -584,6 +590,7 @@ function showFlashModal(phase) {
 
 function hideFlashModal() {
   document.getElementById('flash_window').style.display = 'none';
+  document.getElementById('flash_window').dataset.failed = 'false';
   _resetFlashStatus();
 }
 
@@ -611,7 +618,12 @@ function onFlashComplete(target, success, error) {
     return;
   }
 
-  if (success) setTimeout(hideFlashModal, 2000);
+  if (success) {
+    setTimeout(hideFlashModal, 2000);
+  } else {
+    document.getElementById('flash_window').dataset.failed = 'true';
+    document.getElementById('flash_window_close').style.display = '';
+  }
 }
 
 function _flashPhaseLabel(phase) {
@@ -961,7 +973,8 @@ function do_rcp_flash_with_url(url, mode) {
 }
 
 function frontend_cancel_flash() {
-  document.getElementById('flash_window').style.display = 'none';
+  document.getElementById('flash_window').dataset.failed = 'false';
+  hideFlashModal();
 }
 
 /* --------------------------------------------------------------------
@@ -971,15 +984,75 @@ function frontend_cancel_flash() {
 function setZigbeeTransport(mode) {
   document.getElementById('zb-btn-usb').classList.toggle('active', mode === 1);
   document.getElementById('zb-btn-net').classList.toggle('active', mode === 2);
-  document.getElementById('zb-transport-status').innerText = 'Switching — this may take a few seconds ...';
+  document.getElementById('zb-transport-status').innerText = 'Switching: this may take a few seconds ...';
   $.ajax({
     url: '/device/mode', type: 'POST',
     contentType: 'application/json',
+    dataType: 'json',
     data: JSON.stringify({mode: mode}),
-    complete: function() {
-      document.getElementById('zb-transport-status').innerText = ' page reloads in 10 seconds.';
-      setTimeout(function() { location.reload(); }, 10000);
+    success: function(data) {
+      if (data && data.error === 0 && data.result === 'successful') {
+        setHeaderModeBadge(mode);
+        document.getElementById('zb-transport-status').innerText = '';
+      } else {
+        document.getElementById('zb-transport-status').innerText =
+          (data && data.message) ? data.message : 'Failed to switch transport';
+      }
+    },
+    error: function() {
+      document.getElementById('zb-transport-status').innerText = 'Failed to switch transport';
+      document.getElementById('zb-btn-usb').classList.toggle('active', mode === 1);
+  document.getElementById('zb-btn-net').classList.toggle('active', mode === 2);
     }
+  });
+}
+
+/* --------------------------------------------------------------------
+                        Debug Buttons
+-------------------------------------------------------------------- */
+
+function esp_restart_device() 
+{
+  $.ajax({
+    url: '/device/esp/reboot', 
+    type: 'POST',
+    complete: function() {
+      setTimeout(function() { location.reload(); }, 20000);
+    }
+  });
+}
+
+function esp_erase_nvs() 
+{
+  $.ajax({
+    url: '/device/esp/erasenvs', 
+    type: 'POST',
+  });
+}
+
+function rcp_restart_device()
+{
+  $.ajax({
+    url: '/device/rcp/reboot',
+    type: 'POST',
+  });
+}
+
+function rcp_erase_nvram()
+{
+  $.ajax({
+    url: '/device/rcp/erasenvram',
+    type: 'POST',
+  });
+}
+
+function esp_set_log_level(mode)
+{
+  $.ajax({
+    url: '/device/loglevel',
+    type: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({mode: parseInt(mode, 10)}),
   });
 }
 

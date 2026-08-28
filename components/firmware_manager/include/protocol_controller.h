@@ -36,6 +36,22 @@ public:
      */
     virtual bool isRunning() = 0;
 
+    /**
+     * @brief Hardware-reset the RCP without touching the protocol stack's
+     *        own state (no re-attach, no dataset/network-table changes).
+     *
+     * @return `ESP_OK` on success
+     */
+    virtual esp_err_t resetRcp() = 0;
+
+    /**
+     * @brief Erase the RCP's persisted network config and return it to a
+     *        clean, unconfigured state.
+     *
+     * @return `ESP_OK` on success
+     */
+    virtual esp_err_t factoryReset() = 0;
+
     virtual ~IProtocolController() = default;
 };
 

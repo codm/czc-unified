@@ -1225,18 +1225,112 @@ static esp_err_t device_mode_post_handler(httpd_req_t *req)
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'mode' field");
         return ESP_FAIL;
     }
-
     int mode = (int)cJSON_GetNumberValue(mode_item);
     cJSON_Delete(body);
 
-    // Send response before callback — callback triggers reboot
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"scheduled\",\"reboot\":true}");
-
+    esp_err_t ret = ESP_FAIL;
     if (s_fw_cbs.set_mode) {
-        s_fw_cbs.set_mode(s_fw_cbs.ctx, mode);
+        ret = s_fw_cbs.set_mode(s_fw_cbs.ctx, mode);
     }
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? "" : "Failed to Change Proxy Mode");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+
+    return ret;
+}
+
+static esp_err_t device_log_level_post_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/loglevel body");
+
+    cJSON *item = cJSON_GetObjectItem(body, "mode");
+    if (!cJSON_IsNumber(item)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'mode' field");
+        return ESP_FAIL;
+    }
+
+    int logLevel = (int)cJSON_GetNumberValue(item);
+    cJSON_Delete(body);
+
+    if (s_fw_cbs.esp_set_log_level) {
+        s_fw_cbs.esp_set_log_level(s_fw_cbs.ctx, logLevel);
+    }
+
+    cJSON *error    = cJSON_CreateNumber(0);
+    cJSON *result   = cJSON_CreateString("successful");
+    cJSON *message  = cJSON_CreateString("");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+    return send_ret;
+}
+
+static esp_err_t device_esp_reboot_post_handler(httpd_req_t *req)
+{
+    cJSON *error    = cJSON_CreateNumber(0);
+    cJSON *result   = cJSON_CreateString("successful");
+    cJSON *message  = cJSON_CreateString("Rebooting... \n Page reloads in 20s");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+
+    if (s_fw_cbs.esp_reboot)
+        s_fw_cbs.esp_reboot(s_fw_cbs.ctx);
+
     return ESP_OK;
+}
+
+static esp_err_t device_esp_erasenvs_post_handler(httpd_req_t *req)
+{
+    esp_err_t ret = ESP_FAIL;
+    if (s_fw_cbs.esp_erase_nvs)
+        ret = s_fw_cbs.esp_erase_nvs(s_fw_cbs.ctx);
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? "ESP factory reset successful" : "Failed to erase ESP-NVS");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+
+    return ret;
+}
+
+static esp_err_t device_rcp_reboot_post_handler(httpd_req_t *req) 
+{
+    esp_err_t ret = ESP_FAIL;
+
+    if (s_fw_cbs.rcp_reboot)
+        ret = s_fw_cbs.rcp_reboot(s_fw_cbs.ctx);
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? "RCP reboot successful" : "Failed to reboot RCP");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+    return send_ret;
+}
+
+static esp_err_t device_rcp_erasenvram_post_handler(httpd_req_t *req)
+{
+    esp_err_t ret = ESP_FAIL;
+    if (s_fw_cbs.rcp_erase_nvram)
+        ret = s_fw_cbs.rcp_erase_nvram(s_fw_cbs.ctx);
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? "RCP factory reset successful" : "Failed to erase RCP-Nvram");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+    return send_ret;
 }
 
 static esp_err_t network_wifi_get_handler(httpd_req_t *req)
@@ -1410,15 +1504,20 @@ static esp_err_t network_wifi_scan_get_handler(httpd_req_t *req)
 static httpd_uri_t s_device_handlers[] = {
     { .uri = ESP_OT_REST_API_FLASH_ESP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_esp_post_handler, .user_ctx = &s_server.data },
     { .uri = ESP_OT_REST_API_FLASH_RCP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_rcp_post_handler, .user_ctx = &s_server.data },
-    { .uri = "/device/mode",      .method = HTTP_GET,  .handler = device_mode_get_handler,   .user_ctx = &s_server.data },
-    { .uri = "/device/mode",      .method = HTTP_POST, .handler = device_mode_post_handler,  .user_ctx = &s_server.data },
-    { .uri = "/network/wifi",     .method = HTTP_GET,  .handler = network_wifi_get_handler,  .user_ctx = &s_server.data },
-    { .uri = "/network/wifi",     .method = HTTP_POST, .handler = network_wifi_post_handler, .user_ctx = &s_server.data },
-    { .uri = "/network/ethernet", .method = HTTP_GET,  .handler = network_eth_get_handler,   .user_ctx = &s_server.data },
-    { .uri = "/network/ethernet", .method = HTTP_POST, .handler = network_eth_post_handler,  .user_ctx = &s_server.data },
-    { .uri = "/network/status",   .method = HTTP_GET,  .handler = network_status_get_handler,.user_ctx = &s_server.data },
-    { .uri = "/network/mdns",     .method = HTTP_POST, .handler = network_mdns_post_handler, .user_ctx = &s_server.data },
-    { .uri = "/network/wifi/scan",.method = HTTP_GET,  .handler = network_wifi_scan_get_handler, .user_ctx = &s_server.data },
+    { .uri = "/device/mode",            .method = HTTP_GET,  .handler = device_mode_get_handler,            .user_ctx = &s_server.data },
+    { .uri = "/device/mode",            .method = HTTP_POST, .handler = device_mode_post_handler,           .user_ctx = &s_server.data },
+    { .uri = "/device/loglevel",        .method = HTTP_POST, .handler = device_log_level_post_handler,      .user_ctx = &s_server.data },
+    { .uri = "/device/esp/reboot",      .method = HTTP_POST, .handler = device_esp_reboot_post_handler,     .user_ctx = &s_server.data },
+    { .uri = "/device/esp/erasenvs",    .method = HTTP_POST, .handler = device_esp_erasenvs_post_handler,   .user_ctx = &s_server.data },
+    { .uri = "/device/rcp/reboot",      .method = HTTP_POST, .handler = device_rcp_reboot_post_handler,     .user_ctx = &s_server.data },
+    { .uri = "/device/rcp/erasenvram",  .method = HTTP_POST, .handler = device_rcp_erasenvram_post_handler, .user_ctx = &s_server.data },
+    { .uri = "/network/wifi",           .method = HTTP_GET,  .handler = network_wifi_get_handler,           .user_ctx = &s_server.data },
+    { .uri = "/network/wifi",           .method = HTTP_POST, .handler = network_wifi_post_handler,          .user_ctx = &s_server.data },
+    { .uri = "/network/ethernet",       .method = HTTP_GET,  .handler = network_eth_get_handler,            .user_ctx = &s_server.data },
+    { .uri = "/network/ethernet",       .method = HTTP_POST, .handler = network_eth_post_handler,           .user_ctx = &s_server.data },
+    { .uri = "/network/status",         .method = HTTP_GET,  .handler = network_status_get_handler,         .user_ctx = &s_server.data },
+    { .uri = "/network/mdns",           .method = HTTP_POST, .handler = network_mdns_post_handler,          .user_ctx = &s_server.data },
+    { .uri = "/network/wifi/scan",      .method = HTTP_GET,  .handler = network_wifi_scan_get_handler,      .user_ctx = &s_server.data },
 };
 
 /*-----------------------------------------------------
