@@ -1,7 +1,8 @@
 #include "time_service.h"
 
-#include "TimeService.hpp"
+#include "time_service.h"
 #include "esp_netif_sntp.h"
+#include "esp_sntp.h"
 #include "esp_log.h"
 #include <cstring>
 
@@ -11,7 +12,6 @@ namespace {
 
     const char* TAG = "TimeService";
 
-    // muss den SNTP-Client überleben: lwIP speichert nur den Pointer
     char s_server[64] = "pool.ntp.org";
 
     esp_err_t waitForSync()
@@ -27,8 +27,11 @@ namespace {
 
 namespace TimeService {
 
-esp_err_t init()
+esp_err_t init(const char* server)
 {
+    if (server != nullptr) 
+        strlcpy(s_server, server, sizeof(s_server));
+
     esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG(s_server);
     cfg.server_from_dhcp  = false;
 
@@ -40,6 +43,11 @@ esp_err_t init()
         ESP_LOGE(TAG, "sntp_init: %s", esp_err_to_name(err));
         return err;
     }
+    if (setTimezone("CET-1CEST,M3.5.0,M10.5.0/3") != ESP_OK) {
+        ESP_LOGE(TAG, "sntp_init: error setting default timezone");
+        return err;
+    } // Source of Default timezone should be NVS! 
+
     return waitForSync();
 }
 

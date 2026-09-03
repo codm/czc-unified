@@ -9,9 +9,11 @@ namespace TimeService
     /**
      * @brief initializes SNTP default server "pool.ntp.org" with NETIF interface (Threat save)
      * 
+     * @param[in] server Name of the server - if not specified using default server "pool.ntp.org" 
+     * 
      * @return `ESP_OK` on successful connection within 10s - `ESP_FAIL` else
      */
-    esp_err_t init();
+    esp_err_t init(const char* server = nullptr);
 
     /**
      * @brief updates timeserver and checks if its reachable 

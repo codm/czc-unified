@@ -6,6 +6,7 @@ idf_component_register(
     PRIV_REQUIRES
         board_config
         lwip
+        esp_netif
 
     REQUIRES
         log
