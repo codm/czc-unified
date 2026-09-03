@@ -7,6 +7,7 @@ idf_component_register(
         board_config
         lwip
         esp_netif
+        nvs_flash
 
     REQUIRES
         log
