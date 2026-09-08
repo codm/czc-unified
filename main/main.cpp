@@ -5,6 +5,8 @@
 #include "firmware_manager.h"
 #include "app_controller.h"
 #include "esp_br_web.h"
+#include "time_service.h"
+
 #include "esp_spiffs.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
@@ -49,12 +51,13 @@ extern "C" void app_main(void)
 
     esp_br_web_start("/spiffs", &fwCbs, &netCbs);
 
-    // Now wait for a routed connection (Ethernet or WiFi)
-    // If no WiFi is configured the NSM opens an AP -> user configures
-    // WiFi through the web UI and NSM reconnects automatically
     ESP_LOGI(TAG, "Waiting for internet connection...");
     network.waitUntilInternetIsConnected();
     ESP_LOGI(TAG, "Routed Connection available! Starting Application...");
+    TimeService::init();
+    struct tm currTime {};
+    TimeService::getCurrTime(currTime);
+    ESP_LOGW(TAG, "Current time is %d:%d", currTime.tm_hour, currTime.tm_min);
 
     // Boot-decision-tree → normal operation (may reboot and never return)
     appController.run();

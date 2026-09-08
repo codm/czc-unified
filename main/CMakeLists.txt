@@ -7,6 +7,7 @@ idf_component_register(SRCS "main.cpp"
                                 app_controller
                                 esp_ot_br_server
                                 time_service
+                                cron
 
                                 spiffs
                                 nvs_flash

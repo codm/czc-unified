@@ -303,6 +303,15 @@ czc_ot_firmware/
 │   ├── network/                  Ethernet + WiFi state machine
 │   │   └── include/NetworkStateMachine.h, network_config.h, nvs_bind.h
 │   │
+│   ├── time_service/             SNTP time sync + timezone (NVS-backed defaults)
+│   │   ├── include/time_service.h
+│   │   ├── private_include/time_service_nvs.h
+│   │   └── src/time_service.cpp, time_service_nvs.cpp
+│   │
+│   ├── cron/                     Wall-clock job scheduler (one task, minute resolution)
+│   │   ├── include/cron.h        ← cron_timing_t + namespace Cron
+│   │   └── src/cron.cpp
+│   │
 │   ├── esp_ot_br_server/         HTTP server + web frontend (C)
 │   │   ├── include/esp_br_web.h  ← web callback structs + esp_br_web_start()
 │   │   └── frontend/             HTML/JS/CSS (gzip-compressed into SPIFFS)
@@ -410,6 +419,89 @@ Event-driven LED manager. Other components post `LedState` events; the manager a
 ##### `network`
 
 Ethernet / WiFi / SoftAP state machine. Extended with `getWifiConfig()`, `setWifiConfig()`, `getEthernetConfig()`, `setEthernetConfig()`, `getNetworkStatus()`, `scanWifi()` and `fillNetworkCallbacks()`. NVS bindings in `NvsBinding` namespace support full IP configuration (DHCP / static IP / gateway / DNS). See [`components/network/README.md`](components/network/README.md) for the full state diagram and NVS layout.
+
+##### `time_service`
+
+SNTP time synchronisation and timezone handling, implemented as `namespace TimeService`
+([`time_service.h`](components/time_service/include/time_service.h)) over static
+file-scope state (the currently configured server). Started from `main.cpp` *after*
+`waitUntilInternetIsConnected()` — SNTP needs a routed connection, so it is deliberately
+not part of the early boot sequence.
+
+- `init(server = nullptr)` — configures `esp_netif_sntp` with `server_from_dhcp = false`,
+  applies the persisted defaults and blocks up to **10 s** for the first sync
+  (`ESP_OK` on success, `ESP_FAIL` on timeout). Passing `nullptr` uses the time server
+  stored in NVS, falling back to `pool.ntp.org`.
+- `setServer(server)` — validates and stores the new server, persists it to NVS, then
+  restarts SNTP and waits for a sync. Used to verify a user-supplied server is actually
+  reachable before accepting it.
+- `setTimezone(tz)` — sets the `TZ` environment variable + `tzset()` and persists the
+  value. Takes a POSIX TZ string as found in
+  [`posix_tz_db/zones.csv`](https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv),
+  e.g. `CET-1CEST,M3.5.0,M10.5.0/3`.
+- `getCurrTime(out)` — fills a `struct tm` via `localtime_r()`. Returns `ESP_FAIL` if the
+  year is before **2024**, which is the cheap "clock was never synced" check (an unsynced
+  ESP starts at the 1970 epoch).
+
+**Persisted defaults.** Both the timezone and the time server survive a reboot, so a
+device that comes up without a reachable NTP server still uses the user's configured
+timezone. The private `TimeServiceNvs` namespace
+([`time_service_nvs.h`](components/time_service/private_include/time_service_nvs.h))
+owns the keys — same pattern as `AppNvs` / `NvsBinding`: every function opens and closes
+its own handle, and the values are read on `init()` and written on every setter.
+
+| NVS namespace | Key | Type | Written by | Default if absent |
+|---|---|---|---|---|
+| `time_service_defs` | `tz` | string | `setTimezone()` | `CET-1CEST,M3.5.0,M10.5.0/3` (Berlin) |
+| `time_service_defs` | `ts` | string | `setServer()` | `pool.ntp.org` |
+
+##### `cron`
+
+Wall-clock job scheduler, implemented as `namespace Cron`
+([`cron.h`](components/cron/include/cron.h)) over static file-scope state (the job list and
+the task handle). Lets other components run a callback at a given date/time instead of
+building their own timer task. Built on top of [`time_service`](#time_service) — it compares
+against `TimeService::getCurrTime()`, so it only does anything useful once SNTP has synced
+and must be started *after* `TimeService::init()`.
+
+- `init()` — creates the `Cron_Task` FreeRTOS task (2 KB stack, priority 5). The task wakes
+  every second and calls the job check every **60 s**, i.e. the scheduling resolution is one
+  minute.
+- `scheduleJob(timing, funcptr)` — appends a job to the list and returns its handle.
+  The callback takes no parameters and returns `esp_err_t`; its return value is currently
+  ignored by the scheduler.
+- `removeJob(handle)` — removes the job from the list again.
+- `close()` — deletes the cron task. The job list is not cleared.
+
+**Timing struct.** `cron_timing_t` holds the five classic cron fields, using the same value
+ranges as `struct tm` (see `localtime_r`), *not* the ones from a crontab line:
+
+| Field | Range | `struct tm` counterpart |
+|---|---|---|
+| `minute` | 0–59 | `tm_min` |
+| `hour` | 0–23 | `tm_hour` |
+| `dotm` (day of the month) | 1–31 | `tm_mday` |
+| `month` | **0–11** (0 = January) | `tm_mon` |
+| `weekday` | 0–6 (0 = Sunday) | `tm_wday` |
+
+**Matching semantics.** A job runs when **all five** fields equal the current time — there is
+no wildcard (`*`) field. A `cron_timing_t` therefore describes one concrete point in the
+calendar year, and only fires in years where the given day of the month happens to fall on
+the given weekday. Recurring schedules ("every hour", "every Monday") are not expressible
+yet; that needs a wildcard sentinel in `cron_timing_t` and a match that skips wildcard fields.
+
+**Known limitations** (the component is new and not wired into `main.cpp` yet):
+
+- **Handles are off by one.** `scheduleJob()` returns `jobs.size()` *after* the insert, so the
+  first job gets handle `1` while it lives at index `0`; `removeJob()` indexes the list with
+  that handle directly and therefore erases the following job. `removeJob()` also does no
+  bounds check, and handles of all later jobs shift down on every removal.
+- **No locking.** The job list is a plain `std::vector` shared between the caller and the cron
+  task — scheduling or removing a job while the task is iterating is a data race.
+- **Free-running interval.** The 60 s period is measured from task start, not aligned to the
+  minute boundary, so the sampled minute can drift and skip a scheduled minute entirely.
+- **No sync check.** `TimeService::getCurrTime()`'s return value is not evaluated, so before
+  the first SNTP sync the jobs are matched against the 1970 epoch time.
 
 ##### `esp_ot_br_server`
 
@@ -585,6 +677,29 @@ classDiagram
         +init() esp_err_t
     }
 
+    class TimeService {
+        <<namespace>>
+        +init(server) esp_err_t
+        +setServer(server) esp_err_t
+        +setTimezone(tz) esp_err_t
+        +getCurrTime(currTime) esp_err_t
+    }
+    class TimeServiceNvs {
+        <<namespace>>
+        +readDefaultTimezone(tz, length) esp_err_t
+        +writeDefaultTimezone(tz) esp_err_t
+        +readDefaultTimeServer(ts, length) esp_err_t
+        +writeDefaultTimeServer(ts) esp_err_t
+    }
+
+    class Cron {
+        <<namespace>>
+        +init() esp_err_t
+        +scheduleJob(timing, funcptr) int
+        +removeJob(job_handle) esp_err_t
+        +close() void
+    }
+
     class sse_events {
         <<namespace>>
         +init(server) esp_err_t
@@ -616,6 +731,8 @@ classDiagram
     NetworkStateMachine *-- WirelessAPI
 
     WebServer ..> sse_events : sse_events_init()
+    TimeService ..> TimeServiceNvs : persisted defaults
+    Cron ..> TimeService : getCurrTime()
 ```
 
 ### Boot-Decision-Tree
@@ -625,6 +742,8 @@ flowchart TD
     boot(["Boot"])
     net["Network up\n(NetworkStateMachine)"]
     web["Web server start"]
+    conn["Wait for routed connection\n(waitUntilInternetIsConnected)"]
+    time["TimeService::init()\nSNTP sync (max 10 s, non-fatal)"]
     q2{"device_setup?"}
     wait["Block — wait for mode\nselection via web UI"]
     flash["requestRcpFlash():\nstop() active controller (if any)\n→ flashRcp() + waitForRcpFlash()\n→ write device_mode/device_setup\n→ firmware_manager.start(mode)"]
@@ -632,7 +751,7 @@ flowchart TD
     start["firmware_manager.start(mode)"]
     run(["Normal operation"])
 
-    boot --> net --> web --> q2
+    boot --> net --> web --> conn --> time --> q2
     q2 -->|"no (first boot)"| wait -->|"POST /flash/rcp\n(newest fw url + mode)"| flash --> run
     q2 -->|yes| q3 --> start --> run
 ```
