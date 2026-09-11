@@ -15,9 +15,8 @@ Known Issues:
 
 ### Capturing Debug Output
 
-When reporting an issue, serial log output is extremely helpful. Each release provides a
-**debug build** with verbose logging enabled (see [Setup](#setup)) — please use this
-build when capturing logs.
+When reporting an issue, serial log output is extremely helpful. 
+You can enable debug output in the web interface debug section and capture it via USB. 
 
 1. **Install a serial terminal**, e.g. [CoolTerm](https://freeware.the-meiers.org/) (or
    any other serial terminal of your choice).
@@ -49,13 +48,7 @@ build when capturing logs.
 
 1. Download the Binary from the Releases Tab. Make sure that you pick the firmware without the .ota suffix!
 
-> NOTE: Each release provides two firmware variants — a **release build** (default,
-> minimal logging) and a **debug build** (verbose serial logging). Use the debug build if
-> you want to troubleshoot an issue or need to capture logs for a bug report, see
-> [Capturing Debug Output](#capturing-debug-output).
-
-2. Connect your CZC to LAN
-> IMPORTANT NOTE: Currently ESP, RCP Firmware Updates are only supported via LAN. 
+2. Connect your CZC to your Network.
 
 3. Open [ESP Webflasher](https://docs.codm.de/en/zigbee/coordinator/web-installer/). Pick the appropriate OTBR Firmware Version.
 
@@ -489,19 +482,6 @@ no wildcard (`*`) field. A `cron_timing_t` therefore describes one concrete poin
 calendar year, and only fires in years where the given day of the month happens to fall on
 the given weekday. Recurring schedules ("every hour", "every Monday") are not expressible
 yet; that needs a wildcard sentinel in `cron_timing_t` and a match that skips wildcard fields.
-
-**Known limitations** (the component is new and not wired into `main.cpp` yet):
-
-- **Handles are off by one.** `scheduleJob()` returns `jobs.size()` *after* the insert, so the
-  first job gets handle `1` while it lives at index `0`; `removeJob()` indexes the list with
-  that handle directly and therefore erases the following job. `removeJob()` also does no
-  bounds check, and handles of all later jobs shift down on every removal.
-- **No locking.** The job list is a plain `std::vector` shared between the caller and the cron
-  task — scheduling or removing a job while the task is iterating is a data race.
-- **Free-running interval.** The 60 s period is measured from task start, not aligned to the
-  minute boundary, so the sampled minute can drift and skip a scheduled minute entirely.
-- **No sync check.** `TimeService::getCurrTime()`'s return value is not evaluated, so before
-  the first SNTP sync the jobs are matched against the 1970 epoch time.
 
 ##### `esp_ot_br_server`
 
@@ -953,3 +933,5 @@ and fetching it from GitHub every time.
 - Zigbee Zstack protocol: https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/158/Z_2D00_Stack-Monitor-and-Test-API.pdf / https://software-dl.ti.com/simplelink/esd/simplelink_cc13x2_26x2_sdk/3.30.00.03/exports/docs/zigbee/html/zigbee/znp_interface.html
 - Thread Spinel protocol: https://software-dl.ti.com/simplelink/esd/simplelink_cc13xx_cc26xx_sdk/6.20.00.29/exports/docs/thread/doxygen/openthread/html/spinel_8h.html / https://github.com/openthread/openthread/blob/main/src/lib/spinel/spinel.h
 - Highlevel openthread api: https://openthread.io/reference
+
+>NOTE: The documentation is partly generated with AI. We ensure the factual integrety with regular checks by our engineers.

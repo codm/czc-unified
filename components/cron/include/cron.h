@@ -2,7 +2,16 @@
 #define CRON_H_
 
 #include "esp_err.h"
+#include <cstdint>
 
+/* Wildcard for any cron_timing_t field - matches every value */
+constexpr uint8_t CRON_ANY = 0xFF;
+
+/**
+ * Struct to store cron job timing information
+ *
+ * @note `CRON_ANY` (`0xFF`) == wildcard
+ */
 typedef struct cron_timing_t {
     uint8_t minute;
     uint8_t hour;
@@ -36,7 +45,7 @@ namespace Cron {
      * 
      * @param[in] job_handle received on scheduling
      * 
-     * @returns `ESP_OK` on success - `EPS_FAIL` else
+     * @returns `ESP_OK` on success - `ESP_ERR_INVALID_ARGS` if handle is not found
      */
     esp_err_t removeJob(int job_handle);
 

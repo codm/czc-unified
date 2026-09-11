@@ -2,11 +2,16 @@
 
 Event-driven status LED manager for the CZC firmware.
 
-Controls two GPIO LEDs:
-| LED | Colour | GPIO |
-|-----|--------|------|
-| Power | Green | `Board::LED_PWR_PIN` (GPIO 14) |
-| Mode | Red | `Board::LED_MODE_PIN` (GPIO 12) |
+Controls three LEDs:
+
+| LED | Colour | Driven by |
+|-----|--------|-----------|
+| Power | Green | ESP32 GPIO — `Board::LED_PWR_PIN` (GPIO 14) |
+| Mode | Red | ESP32 GPIO — `Board::LED_MODE_PIN` (GPIO 12) |
+| Zigbee | Yellow | CC2652P7 (RCP) — not an ESP32 GPIO; set via a vendor Z-Stack MT command over the RCP UART, see [Zigbee LED](#zigbee-led-cc2652p7-yellow) |
+
+The two GPIO LEDs are driven directly by this component. The Zigbee LED is only
+*arbitrated* here — the actual MT command is sent by `firmware_manager` / `zstack_mt`.
 
 ---
 
@@ -25,17 +30,22 @@ any component                 default event loop         StatusLightManager
      │                               │── timerCallback() ───────►│
      │                               │                          │── mapLedsToState()
      │                               │                          │── led_hal.setPwr/setMode
+     │                               │◄── esp_event_post(RCP_LED_EVENT) ── (Zigbee LED, only on change)
+     │                               │
+     │                               │── ledEventHandler() ──► FirmwareManager → Z-Stack MT SET_LED
 ```
+
+The Zigbee LED path is described in detail in [Zigbee LED](#zigbee-led-cc2652p7-yellow).
 
 ### Internal structure
 
 | File | Role |
 |------|------|
-| `include/status_light_event.h` | Public — `LedState` enum + `STATUS_LED_EVENT` base. Include this to post events. |
+| `include/status_light_event.h` | Public — `LedState` enum + `STATUS_LED_EVENT` base (post into it) and `RCP_LED_EVENT` base (subscribe to it to drive the Zigbee LED). |
 | `include/status_light_manager.h` | Public — `StatusLightManager` class. Include this in `main` to call `init()`. |
 | `private_include/status_light_hal.h` | Private — raw GPIO control, not accessible outside the component. |
 | `src/status_light_hal.cpp` | GPIO init, `setPwr()`, `setMode()`. |
-| `src/status_light_manager.cpp` | Event handler, 100 ms timer, blink logic. |
+| `src/status_light_manager.cpp` | Event handler, 100 ms timer, blink logic, `RCP_LED_EVENT` posting. |
 
 ---
 
@@ -81,18 +91,21 @@ esp_event_post(STATUS_LED_EVENT,
 States are prioritised: a higher-priority state blocks lower-priority events until the
 higher-priority state is explicitly cleared by posting the appropriate resolved state.
 
-| State | Priority | Power LED (green) | Mode LED (red) | When to post |
-|-------|----------|-------------------|----------------|--------------|
-| `ERROR` | 9 (highest) | blink 3 Hz | blink 3 Hz | Unrecoverable fault |
-| `FLASHING` | 8 | blink 3 Hz | blink 3 Hz | RCP or ESP firmware update in progress |
-| `ZIGBEE_ERROR` | 7 | on | blink 3 Hz | Communication failure with ZigBee chip |
-| `ZIGBEE_CONNECTING` | 6 | on | blink 1 Hz | ZigBee chip connection check at startup |
-| `BOOTING` | 5 | blink 1 Hz | off | System starting up (default initial state) |
-| `NETWORK_DOWN` | 4 | blink 1 Hz | off | No network connection available |
-| `THREAD_ACTIVE` | 3 | on | off | Thread/OTBR stack running |
-| `ZIGBEE_USB` | 2 | on | on | Zigbee mode, USB host connected |
-| `ZIGBEE_HOST_WAIT` | 1 | blink 1 Hz | off | Zigbee mode, waiting for host application |
-| `ZIGBEE_NET` | 0 (lowest) | on | off | Zigbee mode, network host connected |
+| State | Priority | Power LED (green) | Mode LED (red) | Zigbee LED (yellow, CC2652) | When to post |
+|-------|----------|-------------------|----------------|-----------------------------|--------------|
+| `ERROR` | 9 (highest) | blink 3 Hz | blink 3 Hz | off | Unrecoverable fault |
+| `FLASHING` | 8 | blink 3 Hz | blink 3 Hz | off | RCP or ESP firmware update in progress |
+| `ZIGBEE_ERROR` | 7 | on | blink 3 Hz | off | Communication failure with ZigBee chip |
+| `ZIGBEE_CONNECTING` | 6 | on | blink 1 Hz | off | ZigBee chip connection check at startup |
+| `BOOTING` | 5 | blink 1 Hz | off | off | System starting up (default initial state) |
+| `NETWORK_DOWN` | 4 | blink 1 Hz | off | off | No network connection available |
+| `THREAD_ACTIVE` | 3 | on | off | off | Thread/OTBR stack running |
+| `ZIGBEE_USB` | 2 | on | on | on | Zigbee mode, USB host connected |
+| `ZIGBEE_HOST_WAIT` | 1 | blink 1 Hz | off | off | Zigbee mode, waiting for host application |
+| `ZIGBEE_NET` | 0 (lowest) | on | off | on | Zigbee mode, network host connected |
+
+The Zigbee LED is never blinked — it is only switched on/off, because every change costs a
+blocking MT round-trip on the RCP UART (see below).
 
 ### Blink timing
 
@@ -127,13 +140,13 @@ posting the correct follow-up state.
 
 ---
 
-## RCP LED (ZigBee LED, yellow)
+## Zigbee LED (CC2652P7, yellow)
 
-The yellow ZigBee LED is physically wired to the CC2652 RCP, not to an ESP32 GPIO — it can
-only be toggled by sending it a vendor Z-Stack MT command over the RCP's UART, the same
-link `ZigbeeProxyController` uses to relay traffic between the RCP and the host. Because
-that UART is a single, exclusively-owned resource, this component never talks to it
-directly.
+The yellow Zigbee LED is physically wired to the CC2652P7 RCP, not to an ESP32 GPIO — it can
+only be toggled by sending the RCP a vendor Z-Stack MT command over the RCP's UART
+(`Board::RCP_UART`), the same link `ZigbeeProxyController` uses to relay traffic between the
+RCP and the host. Because that UART is a single, exclusively-owned resource, this component
+never talks to it directly.
 
 Instead, `mapLedsToState()` derives the desired on/off value in the same `switch` that
 drives the two GPIO LEDs, and posts it as a separate event, `RCP_LED_EVENT`, only when the
@@ -157,8 +170,9 @@ StatusLightManager::mapLedsToState()        FirmwareManager
 subscribers don't need to know about `LedState` priority at all.
 
 **Why a queue + dedicated task:** `esp_event`'s default loop runs every registered handler
-for every event base on one shared task. `IProtocolController::setRcpLed()` blocks (UART
-round-trip, up to ~500 ms) — calling it directly from the event handler would stall every
+for every event base on one shared task. `IProtocolController::setRcpLed()` blocks (up to
+500 ms waiting for the RCP mutex, plus up to 1 s — `PACKET_WAIT_TIME_MS` in `zstack_mt` —
+waiting for the MT response) — calling it directly from the event handler would stall every
 other handler in the system, including `StatusLightManager`'s own handler for the two GPIO
 LEDs. `FirmwareManager` keeps `ledEventHandler()` non-blocking (just an `xQueueOverwrite`
 into a 1-slot mailbox queue) and does the actual blocking call from `rcpLedTaskFunc()`, a
@@ -167,11 +181,35 @@ small dedicated task.
 **Which states light it** (see the `rcpLed` assignment in each `case` of
 `mapLedsToState()` to change this):
 
-| `currentState` | RCP LED |
+| `currentState` | Zigbee LED |
 |---|---|
 | `ZIGBEE_NET` | on |
 | `ZIGBEE_USB` | on |
 | all others | off |
+
+### The Z-Stack MT command
+
+`ZstackMt::setLed()` (component `zstack_mt`) sends a standard MT frame on the RCP UART:
+
+```
+SOF   LEN   CMD0  CMD1  DATA[0]     DATA[1]      FCS
+0xFE  0x02  0x27  0x0A  0x01        0x01 / 0x00  XOR(LEN..DATA)
+                  ^     LED index   on / off
+                  vendor SET_LED (SREQ, subsystem UTIL)
+```
+
+- `CMD0 = 0x27` is the SREQ type (`0x20`) ORed with the UTIL subsystem (`0x07`);
+  `CMD1 = 0x0A` is the vendor `SET_LED` command ID.
+- The FCS is the XOR of every byte after `SOF` (`ZstackMt::calcChecksum()`).
+- `sendCmdAndWaitForResponse()` then waits up to `PACKET_WAIT_TIME_MS` (1 s) for the
+  matching SRSP — same `CMD1`, `CMD0 + 0x40` (`0x67`) — and checks its single status byte;
+  a non-zero status is logged as `SET_LED returned failure status` and returned as
+  `ESP_ERR_INVALID_RESPONSE`.
+
+`ZstackMt::setLed()` only sends the frame; it does **not** reboot the RCP, and it expects
+the UART driver to already be installed by whoever owns the port (`ZigbeeProxyController`).
+
+### Sending the command from the proxy
 
 **Sending the actual command** happens in `firmware_manager`, via
 `IProtocolController::setRcpLed(bool ledState)`:
