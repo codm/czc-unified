@@ -13,11 +13,11 @@ constexpr uint8_t CRON_ANY = 0xFF;
  * @note `CRON_ANY` (`0xFF`) == wildcard
  */
 typedef struct cron_timing_t {
-    uint8_t minute;
-    uint8_t hour;
-    uint8_t dotm;
-    uint8_t month;
-    uint8_t weekday;
+    uint8_t minute = CRON_ANY;
+    uint8_t hour = CRON_ANY;
+    uint8_t dotm = CRON_ANY;
+    uint8_t month = CRON_ANY;
+    uint8_t weekday = CRON_ANY;
 }; 
 
 namespace Cron {

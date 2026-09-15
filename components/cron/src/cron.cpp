@@ -1,4 +1,5 @@
 #include "cron.h"
+#include "cron_nvs.h"
 
 #include <vector>
 #include <tuple>
@@ -13,8 +14,8 @@ namespace
 {
     constexpr const char* TAG = "CRON";
 
-    uint8_t job_handle_counter = 0;
-    SemaphoreHandle_t jobs_access_handle = NULL;
+    uint8_t job_handle_counter {0};
+    SemaphoreHandle_t jobs_access_handle {NULL};
 
     TaskHandle_t cron_task_handle {NULL};
 
@@ -124,7 +125,8 @@ namespace Cron {
         return ESP_ERR_INVALID_ARG;
     }
 
-    void close() {
+    void close()
+    {
         if (cron_task_handle)
             vTaskDelete(cron_task_handle);
         

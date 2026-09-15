@@ -6,6 +6,7 @@
 #include "app_controller.h"
 #include "esp_br_web.h"
 #include "time_service.h"
+#include "cron.h"
 
 #include "esp_spiffs.h"
 #include "nvs_flash.h"
@@ -15,6 +16,13 @@
 #include "freertos/task.h"
 
 static const char* TAG = "main";
+
+esp_err_t printTime() {
+    struct tm currTime {};
+    TimeService::getCurrTime(currTime);
+    ESP_LOGW(TAG, ">>> CRON JOB: Current time is %d:%d", currTime.tm_hour, currTime.tm_min);
+    return ESP_OK;
+}
 
 extern "C" void app_main(void)
 {
@@ -55,9 +63,14 @@ extern "C" void app_main(void)
     network.waitUntilInternetIsConnected();
     ESP_LOGI(TAG, "Routed Connection available! Starting Application...");
     TimeService::init();
+
     struct tm currTime {};
     TimeService::getCurrTime(currTime);
     ESP_LOGW(TAG, "Current time is %d:%d", currTime.tm_hour, currTime.tm_min);
+
+    Cron::init();
+    cron_timing_t timing{};
+    Cron::scheduleJob(timing, printTime);
 
     // Boot-decision-tree → normal operation (may reboot and never return)
     appController.run();

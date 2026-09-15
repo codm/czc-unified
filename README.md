@@ -458,16 +458,18 @@ against `TimeService::getCurrTime()`, so it only does anything useful once SNTP 
 and must be started *after* `TimeService::init()`.
 
 - `init()` — creates the `Cron_Task` FreeRTOS task (2 KB stack, priority 5). The task wakes
-  every second and calls the job check every **60 s**, i.e. the scheduling resolution is one
-  minute.
+  once per minute, right after the minute boundary, and runs every job that matches the
+  current time — i.e. the scheduling resolution is one minute.
 - `scheduleJob(timing, funcptr)` — appends a job to the list and returns its handle.
-  The callback takes no parameters and returns `esp_err_t`; its return value is currently
-  ignored by the scheduler.
+  The callback takes no parameters and returns `esp_err_t`; a non-`ESP_OK` return value is
+  only logged.
 - `removeJob(handle)` — removes the job from the list again.
 - `close()` — deletes the cron task. The job list is not cleared.
 
 **Timing struct.** `cron_timing_t` holds the five classic cron fields, using the same value
-ranges as `struct tm` (see `localtime_r`), *not* the ones from a crontab line:
+ranges as `struct tm` (see `localtime_r`), *not* the ones from a crontab line. Every field
+defaults to `CRON_ANY` (`0xFF`), the wildcard (`*`) — so a default-constructed
+`cron_timing_t` fires every minute, and you only set the fields you want to constrain:
 
 | Field | Range | `struct tm` counterpart |
 |---|---|---|
@@ -477,11 +479,28 @@ ranges as `struct tm` (see `localtime_r`), *not* the ones from a crontab line:
 | `month` | **0–11** (0 = January) | `tm_mon` |
 | `weekday` | 0–6 (0 = Sunday) | `tm_wday` |
 
-**Matching semantics.** A job runs when **all five** fields equal the current time — there is
-no wildcard (`*`) field. A `cron_timing_t` therefore describes one concrete point in the
-calendar year, and only fires in years where the given day of the month happens to fall on
-the given weekday. Recurring schedules ("every hour", "every Monday") are not expressible
-yet; that needs a wildcard sentinel in `cron_timing_t` and a match that skips wildcard fields.
+**Matching semantics.** A job runs when every field is either `CRON_ANY` or equal to the
+current time. `{.minute = 0, .hour = 17}` is "every day at 17:00", `{.minute = 30,
+.weekday = 1}` is "every Monday at every half hour".
+
+**Persistence — jobs are *not* stored in NVS.** The job list lives in RAM only and is
+empty after every boot. This is deliberate: a job carries a function pointer, and a flash
+address is only valid for the firmware image it was built from — persisting it would break
+on the next OTA update. Instead, **the component that owns the schedule owns its
+persistence**:
+
+1. The component stores its *configuration* (e.g. "LEDs off at 17:00, on at 08:00") in its
+   own NVS namespace, in whatever form is natural for it — times, an enabled flag, etc.
+2. In its `init()`, on every boot, it reads that configuration back and re-registers the
+   matching jobs via `Cron::scheduleJob()` with its own callbacks.
+3. Setters that change the configuration write it to NVS and re-schedule (`removeJob()` +
+   `scheduleJob()`), so the running schedule and the persisted one never drift apart.
+
+`Cron` therefore stays stateless across reboots and never needs to know what a job means;
+the NVS layout for a schedule is documented with the component that owns it, next to its
+other keys. Because `Cron` depends on a synced clock, components that register jobs have
+to be initialised *after* `Cron::init()` (which itself comes after `TimeService::init()`
+in `main.cpp`).
 
 ##### `esp_ot_br_server`
 
