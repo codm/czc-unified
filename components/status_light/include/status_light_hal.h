@@ -36,6 +36,22 @@ public:
      * @return void
      */
     void setMode(bool enabled);
+
+    /**
+     * @brief Set the yellow ZigBee LED state
+     * 
+     * @param[in] enabled true = lit, false = off
+     * 
+     * @warning Implemented using event - which intern gets processed by the firmware_manager component. 
+     *          LED change only works whilst in ZigBee Mode. As a prerequisite for the change the proxy has to be 
+     *          temporarily disabled. 
+     * 
+     * @note    Firmware manager uses a tiny queue layer to keep the event handler slim. Changes are pushed into this one slot queue
+     *          and then processed by a task running every 100ms.
+     * 
+     * @returns `void`
+     */
+    void setRcp(bool enabled);
 };
 
 #endif // CZC_STATUS_LIGHT_HAL_H_

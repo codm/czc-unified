@@ -43,9 +43,10 @@ void FirmwareManager::rcpLedTaskFunc(void* arg)
         if (xQueueReceive(self->rcpLedQueue, &ledState, portMAX_DELAY) == pdTRUE && self->protocol) {
             esp_err_t err = self->protocol->setRcpLed(ledState);
             if (err != ESP_OK && err != ESP_ERR_NOT_SUPPORTED && err != ESP_ERR_INVALID_STATE) {
-                ESP_LOGD(TAG, "setRcpLed failed: %s", esp_err_to_name(err));
+                ESP_LOGW(TAG, "setRcpLed failed: %s", esp_err_to_name(err));
             }
         }
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 

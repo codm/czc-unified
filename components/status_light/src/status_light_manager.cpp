@@ -16,10 +16,9 @@ esp_err_t StatusLightManager::init()
 {
     ESP_RETURN_ON_ERROR(ledHal.init(), TAG, "HAL init failed");
 
-    ESP_RETURN_ON_ERROR(
-        esp_event_handler_register(STATUS_LED_EVENT, ESP_EVENT_ANY_ID,
-                                   &eventHandler, this),
-        TAG, "Event handler register failed");
+    ESP_RETURN_ON_ERROR(esp_event_handler_register(STATUS_LED_EVENT, ESP_EVENT_ANY_ID,
+                        &eventHandler, this),
+                        TAG, "Event handler register failed");
 
     esp_timer_create_args_t timerArgs{};
     timerArgs.callback = &timerCallback;
@@ -63,60 +62,51 @@ void StatusLightManager::mapLedsToState()
 
     bool pwrLed{false};
     bool modeLed{false};
-    bool rcpLed{false};
 
     switch (currentState) {
         case LedState::ZIGBEE_NET:
             pwrLed  = true;
             modeLed = false;
-            rcpLed  = true;
             break;
 
         case LedState::ZIGBEE_USB:
             pwrLed  = true;
             modeLed = true;
-            rcpLed  = true;
             break;
 
         case LedState::THREAD_ACTIVE:
             pwrLed  = true;
-            modeLed = false;
-            rcpLed  = false;
+            modeLed = blink1Hz;
             break;
 
         case LedState::ZIGBEE_HOST_WAIT:
-        case LedState::NETWORK_DOWN:
-        case LedState::BOOTING:
-            pwrLed  = blink1Hz;
+            pwrLed = blink1Hz;
             modeLed = false;
-            rcpLed  = false;
             break;
 
-        case LedState::ZIGBEE_CONNECTING:
-            pwrLed  = true;
-            modeLed = blink1Hz;
-            rcpLed  = false;
+        case LedState::NETWORK_DOWN:
+            pwrLed = blink3Hz;
+            modeLed = false;
             break;
+
+        case LedState::BOOTING:
+            pwrLed  = true;
+            modeLed = false;
+            break;
+
 
         case LedState::ZIGBEE_ERROR:
-            pwrLed  = true;
+            pwrLed  = blink1Hz;
             modeLed = blink3Hz;
-            rcpLed  = false;
             break;
 
         case LedState::FLASHING:
         case LedState::ERROR:
             pwrLed  = blink3Hz;
             modeLed = blink3Hz;
-            rcpLed  = false;
             break;
     }
 
     ledHal.setPwr(pwrLed);
     ledHal.setMode(modeLed);
-
-    if (rcpLed != lastRcpLed) {
-        lastRcpLed = rcpLed;
-        esp_event_post(RCP_LED_EVENT, rcpLed ? 1 : 0, nullptr, 0, 0);
-    }
 }

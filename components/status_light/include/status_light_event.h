@@ -20,16 +20,15 @@ ESP_EVENT_DECLARE_BASE(RCP_LED_EVENT);
  *                  nullptr, 0, 0);
  */
 enum class LedState : int32_t {
-    ZIGBEE_NET        = 0,  ///< Zigbee mode, network host active — mode LED off
-    ZIGBEE_USB        = 1,  ///< Zigbee mode, USB host active — mode LED on
-    THREAD_ACTIVE     = 2,  ///< Thread/OTBR running — pwr on, mode off
-    ZIGBEE_HOST_WAIT  = 3,  ///< Zigbee mode, no host connected yet — pwr blinks 1x/s
-    NETWORK_DOWN      = 4,  ///< No network connection — pwr blinks 1x/s
-    BOOTING           = 5,  ///< System startup
-    ZIGBEE_CONNECTING = 6,  ///< Checking ZigBee chip connection — mode blinks 1x/s
-    ZIGBEE_ERROR      = 7,  ///< ZigBee communication error — mode blinks 3x/s
-    FLASHING          = 8,  ///< Firmware update in progress — both LEDs blink fast
-    ERROR             = 9,  ///< General fault — both LEDs blink fast
+    ZIGBEE_NET        = 0,  ///< Zigbee mode, network host active       — pwr on, mode LED off
+    ZIGBEE_USB        = 1,  ///< Zigbee mode, USB host active           — pwr on, mode LED on
+    THREAD_ACTIVE     = 2,  ///< Thread/OTBR running                    — pwr on, mode blink 1x/s
+    ZIGBEE_HOST_WAIT  = 3,  ///< Zigbee mode, no host connected yet     — pwr blinks 1x/s, mode LED off
+    NETWORK_DOWN      = 4,  ///< No network connection                  — pwr blinks 3x/s, mode LED off
+    BOOTING           = 5,  ///< System startup                         — pwr on, mode LED off 
+    ZIGBEE_ERROR      = 6,  ///< ZigBee communication error             — pwr on, mode blinks 3x/s
+    FLASHING          = 7,  ///< Firmware update in progress            — pwr & mode blink 1x/s
+    ERROR             = 8,  ///< General fault                          — pwr & mode blink 3x/s
 };
 
 #endif // CZC_STATUS_LIGHT_EVENT_H_
