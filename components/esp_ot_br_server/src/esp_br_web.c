@@ -5,6 +5,7 @@
  */
 
 #include <limits.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -68,6 +69,7 @@ typedef struct http_server {
 static http_server_t s_server = {NULL, {"", ""}, "", 80}; /* the instance of server */
 static web_firmware_callbacks_t s_fw_cbs  = {0};
 static web_network_callbacks_t  s_net_cbs = {0};
+static web_led_callbacks_t      s_led_cbs = {0};
 
 /**
  * @brief The basic parameter definition for parsing url
@@ -1333,6 +1335,138 @@ static esp_err_t device_rcp_erasenvram_post_handler(httpd_req_t *req)
     return send_ret;
 }
 
+/* Frontend LED names, index = LedId */
+static const char *const s_led_names[] = { "pwr", "mode", "rcp" };
+#define LED_NAME_COUNT (sizeof(s_led_names) / sizeof(s_led_names[0]))
+
+static int led_index_from_name(const char *name)
+{
+    for (int i = 0; i < LED_NAME_COUNT; i++) {
+        if (strcmp(name, s_led_names[i]) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Sends a pack_response() for a callback result. An empty ok_message keeps the frontend silent on success. */
+static esp_err_t send_result_response(httpd_req_t *req, esp_err_t ret, const char *ok_message)
+{
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? ok_message : esp_err_to_name(ret));
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+    return send_ret;
+}
+
+static esp_err_t device_led_get_handler(httpd_req_t *req)
+{
+    cJSON *root = cJSON_CreateObject();
+    for (int i = 0; i < LED_NAME_COUNT; i++) {
+        int mode = 0;
+        if (s_led_cbs.get_override) {
+            s_led_cbs.get_override(s_led_cbs.ctx, i, &mode);
+        }
+        cJSON_AddNumberToObject(root, s_led_names[i], mode);
+    }
+    esp_err_t ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return ret;
+}
+
+static esp_err_t device_led_post_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/led body");
+
+    cJSON *led_item  = cJSON_GetObjectItem(body, "led");
+    cJSON *mode_item = cJSON_GetObjectItem(body, "mode");
+    if (!cJSON_IsString(led_item) || !cJSON_IsNumber(mode_item)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'led' or 'mode' field");
+        return ESP_FAIL;
+    }
+
+    int led  = led_index_from_name(led_item->valuestring);
+    int mode = (int)cJSON_GetNumberValue(mode_item);
+    cJSON_Delete(body);
+
+    if (led < 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Unknown 'led'");
+        return ESP_FAIL;
+    }
+
+    esp_err_t ret = ESP_ERR_NOT_SUPPORTED;
+    if (s_led_cbs.set_override) {
+        ret = s_led_cbs.set_override(s_led_cbs.ctx, led, mode);
+    }
+    return send_result_response(req, ret, "");
+}
+
+static esp_err_t device_nightmode_get_handler(httpd_req_t *req)
+{
+    night_mode_config_t cfg = {0};
+    if (s_led_cbs.get_night_mode) {
+        s_led_cbs.get_night_mode(s_led_cbs.ctx, &cfg);
+    }
+
+    char start[8], end[8];  /* worst case "255:255" — hour / minute are uint8_t */
+    snprintf(start, sizeof(start), "%02u:%02u", cfg.start_hour, cfg.start_minute);
+    snprintf(end,   sizeof(end),   "%02u:%02u", cfg.end_hour,   cfg.end_minute);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "start", start);
+    cJSON_AddStringToObject(root, "end",   end);
+    esp_err_t ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return ret;
+}
+
+/* Parses "HH:MM" into hour / minute. Returns false on malformed input. */
+static bool parse_time_hhmm(const char *text, uint8_t *hour, uint8_t *minute)
+{
+    unsigned h, m;
+    if (sscanf(text, "%2u:%2u", &h, &m) != 2 || h > 23 || m > 59) {
+        return false;
+    }
+    *hour   = (uint8_t)h;
+    *minute = (uint8_t)m;
+    return true;
+}
+
+static esp_err_t device_nightmode_post_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/nightmode body");
+
+    cJSON *start_item = cJSON_GetObjectItem(body, "start");
+    cJSON *end_item   = cJSON_GetObjectItem(body, "end");
+    if (!cJSON_IsString(start_item) || !cJSON_IsString(end_item)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'start' or 'end' field");
+        return ESP_FAIL;
+    }
+
+    night_mode_config_t cfg = {0};
+    bool ok = parse_time_hhmm(start_item->valuestring, &cfg.start_hour, &cfg.start_minute)
+           && parse_time_hhmm(end_item->valuestring,   &cfg.end_hour,   &cfg.end_minute);
+    cJSON_Delete(body);
+
+    if (!ok) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Time must be HH:MM");
+        return ESP_FAIL;
+    }
+
+    esp_err_t ret = ESP_ERR_NOT_SUPPORTED;
+    if (s_led_cbs.set_night_mode) {
+        ret = s_led_cbs.set_night_mode(s_led_cbs.ctx, &cfg);
+    }
+    return send_result_response(req, ret, "Night mode saved.");
+}
+
+
 static esp_err_t network_wifi_get_handler(httpd_req_t *req)
 {
     wifi_config_data_t cfg = {0};
@@ -1511,6 +1645,10 @@ static httpd_uri_t s_device_handlers[] = {
     { .uri = "/device/esp/erasenvs",    .method = HTTP_POST, .handler = device_esp_erasenvs_post_handler,   .user_ctx = &s_server.data },
     { .uri = "/device/rcp/reboot",      .method = HTTP_POST, .handler = device_rcp_reboot_post_handler,     .user_ctx = &s_server.data },
     { .uri = "/device/rcp/erasenvram",  .method = HTTP_POST, .handler = device_rcp_erasenvram_post_handler, .user_ctx = &s_server.data },
+    { .uri = "/device/led",             .method = HTTP_GET,  .handler = device_led_get_handler,             .user_ctx = &s_server.data },
+    { .uri = "/device/led",             .method = HTTP_POST, .handler = device_led_post_handler,            .user_ctx = &s_server.data },
+    { .uri = "/device/nightmode",       .method = HTTP_GET,  .handler = device_nightmode_get_handler,       .user_ctx = &s_server.data },
+    { .uri = "/device/nightmode",       .method = HTTP_POST, .handler = device_nightmode_post_handler,      .user_ctx = &s_server.data },
     { .uri = "/network/wifi",           .method = HTTP_GET,  .handler = network_wifi_get_handler,           .user_ctx = &s_server.data },
     { .uri = "/network/wifi",           .method = HTTP_POST, .handler = network_wifi_post_handler,          .user_ctx = &s_server.data },
     { .uri = "/network/ethernet",       .method = HTTP_GET,  .handler = network_eth_get_handler,            .user_ctx = &s_server.data },
@@ -1603,10 +1741,12 @@ void disconnect_handler(void *arg, esp_event_base_t event_base, int32_t event_id
 
 void esp_br_web_start(const char *base_path,
                       const web_firmware_callbacks_t *fw_cbs,
-                      const web_network_callbacks_t  *net_cbs)
+                      const web_network_callbacks_t  *net_cbs,
+                      const web_led_callbacks_t      *led_cbs)
 {
     if (fw_cbs)  s_fw_cbs  = *fw_cbs;
     if (net_cbs) s_net_cbs = *net_cbs;
+    if (led_cbs) s_led_cbs = *led_cbs;
     if (start_esp_br_http_server(base_path) == NULL) {
         ESP_LOGE(WEB_TAG, "Failed to start web server");
     }
