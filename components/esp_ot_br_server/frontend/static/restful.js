@@ -40,6 +40,7 @@ function initFrontend()
       {
         applyDeviceMode(data.mode);
         networkSetupCheck();
+        led_load_settings();
 
         if (!data.device_setup)
           document.getElementById('mode-selection-modal').style.display = 'flex';
@@ -1053,6 +1054,88 @@ function esp_set_log_level(mode)
     type: 'POST',
     contentType: 'application/json',
     data: JSON.stringify({mode: parseInt(mode, 10)}),
+  });
+}
+
+/* --------------------------------------------------------------------
+                        LED override / Night-Mode
+-------------------------------------------------------------------- */
+
+/* Highlights the button matching `mode` inside the tri-state switch for `led`.
+   led:  'pwr' | 'mode' | 'rcp'    mode: 0 AUTO | 1 ON | 2 OFF (matches LedOverride) */
+function led_render_override(led, mode)
+{
+  document.querySelectorAll('#led-' + led + ' button').forEach(function(btn) {
+    btn.classList.toggle('active', parseInt(btn.dataset.value, 10) === mode);
+  });
+}
+
+/* Called by the tri-state buttons. Sends the new override to the backend and
+   only moves the highlight once the backend confirmed it. */
+function led_set_override(led, mode)
+{
+  $.ajax({
+    url: '/device/led',
+    type: 'POST',
+    contentType: 'application/json',
+    dataType: 'json',
+    data: JSON.stringify({led: led, mode: mode}),
+    success: function(data)
+    {
+      if (data && data.error === 0)
+        led_render_override(led, mode);
+    }
+  });
+}
+
+/* Fetches the current LED overrides and night-mode range so the UI reflects
+   the real state after a page reload. Keeps the defaults if unavailable. */
+function led_load_settings()
+{
+  $.ajax({
+    url: '/device/led',
+    type: 'GET',
+    dataType: 'json',
+    success: function(data)
+    {
+      ['pwr', 'mode', 'rcp'].forEach(function(led) {
+        if (data && typeof data[led] === 'number')
+          led_render_override(led, data[led]);
+      });
+    }
+  });
+
+  $.ajax({
+    url: '/device/nightmode',
+    type: 'GET',
+    dataType: 'json',
+    success: function(data)
+    {
+      if (!data) return;
+      if (data.start) document.getElementById('night-mode-start').value = data.start;
+      if (data.end)   document.getElementById('night-mode-end').value   = data.end;
+    }
+  });
+}
+
+/* Submits the night-mode time range as "HH:MM" strings (native value format
+   of <input type="time">). */
+function night_mode_save()
+{
+  let start = document.getElementById('night-mode-start').value;
+  let end   = document.getElementById('night-mode-end').value;
+
+  if (!start || !end)
+  {
+    frontend_log_show('Night Mode', {error: 1, content: 'Please set both times.'});
+    return;
+  }
+
+  $.ajax({
+    url: '/device/nightmode',
+    type: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({start: start, end: end}),
   });
 }
 

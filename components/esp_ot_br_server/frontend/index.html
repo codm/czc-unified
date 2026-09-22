@@ -728,7 +728,63 @@
                     <button type="button" class="btn btn-default" onclick="rcp_erase_nvram()">Clear NVRAM</button>
                   </div>
                 </div>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="split-grid">
+                <!-- LEDs -->
+                <div class="card">
+                  <p class="card-title">LEDs</p>
+                  <p class="text-muted">"Auto" lets the firmware drive the LED. "On" / "Off" force a fixed state.</p>
 
+                  <div class="led-row">
+                    <span class="led-label">Power (green)</span>
+                    <div class="tri-state" id="led-pwr">
+                      <button type="button" data-value="2" onclick="led_set_override('pwr', 2)">Off</button>
+                      <button type="button" data-value="0" onclick="led_set_override('pwr', 0)" class="active">Auto</button>
+                      <button type="button" data-value="1" onclick="led_set_override('pwr', 1)">On</button>
+                    </div>
+                  </div>
+
+                  <div class="led-row">
+                    <span class="led-label">Mode (red)</span>
+                    <div class="tri-state" id="led-mode">
+                      <button type="button" data-value="2" onclick="led_set_override('mode', 2)">Off</button>
+                      <button type="button" data-value="0" onclick="led_set_override('mode', 0)" class="active">Auto</button>
+                      <button type="button" data-value="1" onclick="led_set_override('mode', 1)">On</button>
+                    </div>
+                  </div>
+
+                  <div class="led-row">
+                    <span class="led-label">Zigbee (yellow)</span>
+                    <div class="tri-state" id="led-rcp">
+                      <button type="button" data-value="2" onclick="led_set_override('rcp', 2)">Off</button>
+                      <button type="button" data-value="0" onclick="led_set_override('rcp', 0)" class="active">Auto</button>
+                      <button type="button" data-value="1" onclick="led_set_override('rcp', 1)">On</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Night-Mode -->
+                <div class="card">
+                  <p class="card-title">Night-Mode</p>
+                  <p class="text-muted">All LEDs are switched off within this time range.</p>
+
+                  <div class="time-range-row">
+                    <label class="time-field">
+                      <span class="field-label">From</span>
+                      <input type="time" id="night-mode-start" value="22:00">
+                    </label>
+                    <label class="time-field">
+                      <span class="field-label">To</span>
+                      <input type="time" id="night-mode-end" value="06:00">
+                    </label>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="button" class="btn btn-default" onclick="night_mode_save()">Save</button>
+                  </div>
+                </div>
               </div>
               <p class="note">Exercise caution when using the debug functions. Some actions cannot be undone.</p>
             </div>

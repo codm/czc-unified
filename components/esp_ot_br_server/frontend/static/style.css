@@ -1041,6 +1041,65 @@ input:disabled {
     margin-top: 16px;
 }
 
+/* Three-position switch (e.g. Off / Auto / On). JS toggles .active on the selected button. */
+.tri-state {
+    display: inline-flex;
+    border: 1px solid rgba(var(--color-secondary-rgb), 0.3);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.tri-state button {
+    padding: 6px 14px;
+    border: none;
+    background: none;
+    color: var(--color-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.tri-state button + button {
+    border-left: 1px solid rgba(var(--color-secondary-rgb), 0.3);
+}
+
+.tri-state button:hover {
+    color: var(--color-primary);
+}
+
+.tri-state button.active {
+    background: var(--color-primary);
+    color: var(--color-white);
+}
+
+/* Label + tri-state switch on one line (LED overrides) */
+.led-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.led-label {
+    font-weight: 700;
+}
+
+/* Two time inputs side by side (Night-Mode range) */
+.time-range-row {
+    display: flex;
+    gap: 20px;
+}
+
+.time-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.time-field .field-label {
+    margin-top: 0;
+}
+
 
 /* =============================================================================
    CARD
