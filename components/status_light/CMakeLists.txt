@@ -4,6 +4,7 @@ idf_component_register(
     PRIV_REQUIRES
         board_config
         esp_driver_gpio
+        cron
 
     REQUIRES
         esp_event
