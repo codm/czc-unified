@@ -31,6 +31,7 @@ namespace Cron {
      * 
      * @param[in] cron_timing When will the cron job run
      * @param[in] funcptr Function which is run 
+     * @param[in] ctx pointer to function context
      * 
      * @note Cron functions must not have any parameters and need `esp_err_t` as a return value 
      * 
@@ -38,7 +39,7 @@ namespace Cron {
      * 
      *          `-1` on error.
      */
-    int scheduleJob(cron_timing_t cron_timing, esp_err_t (*funcptr)());
+    int scheduleJob(cron_timing_t cron_timing, esp_err_t (*funcptr)(void* ctx), void* ctx);
 
     /** 
      * Removes job from scheduling list

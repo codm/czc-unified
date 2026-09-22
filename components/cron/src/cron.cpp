@@ -18,7 +18,7 @@ namespace
 
     TaskHandle_t cron_task_handle {NULL};
 
-    std::vector<std::tuple<uint8_t, cron_timing_t, esp_err_t(*)()>> jobs;
+    std::vector<std::tuple<uint8_t, cron_timing_t, esp_err_t(*)(void* ctx), void*>> jobs;
     
     /* Field matches if it is a wildcard or equals the current value */
     bool fieldMatches(uint8_t field, int current) {
@@ -49,8 +49,8 @@ namespace
         {
             if (needsToBeRun(i, currentTime)) {
                 ESP_LOGD(TAG, "Running Job with the handle %d", std::get<0>(jobs.at(i)));
-                esp_err_t(*funcptr)() = std::get<2>(jobs.at(i));
-                esp_err_t ret {funcptr()};
+                esp_err_t(*funcptr)(void* ctx) = std::get<2>(jobs.at(i));
+                esp_err_t ret {funcptr(std::get<3>(jobs.at(i)))};
                 if (ret != ESP_OK)
                     ESP_LOGW(TAG, "Non ESP_OK return value of Cron job with handle %d", std::get<0>(jobs.at(i)));
             }
@@ -99,9 +99,9 @@ namespace Cron {
         return (cron_task_handle) ? ESP_OK : ESP_FAIL;
     }
 
-    int scheduleJob(cron_timing_t cron_timing, esp_err_t (*funcptr)()) {
+    int scheduleJob(cron_timing_t cron_timing, esp_err_t (*funcptr)(void* ctx), void* ctx) {
         xSemaphoreTake(jobs_access_handle,portMAX_DELAY);
-        jobs.push_back(std::make_tuple(job_handle_counter, cron_timing, funcptr));
+        jobs.push_back(std::make_tuple(job_handle_counter, cron_timing, funcptr, ctx));
         xSemaphoreGive(jobs_access_handle);
 
         job_handle_counter++;

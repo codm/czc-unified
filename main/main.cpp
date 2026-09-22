@@ -17,7 +17,7 @@
 
 static const char* TAG = "main";
 
-esp_err_t printTime() {
+esp_err_t printTime(void* ctx) {
     struct tm currTime {};
     TimeService::getCurrTime(currTime);
     ESP_LOGW(TAG, ">>> CRON JOB: Current time is %d:%d", currTime.tm_hour, currTime.tm_min);
@@ -57,7 +57,10 @@ extern "C" void app_main(void)
     web_network_callbacks_t netCbs{};
     network.fillNetworkCallbacks(&netCbs);
 
-    esp_br_web_start("/spiffs", &fwCbs, &netCbs);
+    web_led_callbacks_t ledCbs{};
+    statusLight.fillLedCallbacks(&ledCbs);
+
+    esp_br_web_start("/spiffs", &fwCbs, &netCbs, &ledCbs);
 
     ESP_LOGI(TAG, "Waiting for internet connection...");
     network.waitUntilInternetIsConnected();
@@ -70,7 +73,7 @@ extern "C" void app_main(void)
 
     Cron::init();
     cron_timing_t timing{};
-    Cron::scheduleJob(timing, printTime);
+    Cron::scheduleJob(timing, printTime, nullptr);
 
     // Boot-decision-tree → normal operation (may reboot and never return)
     appController.run();
