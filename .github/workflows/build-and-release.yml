@@ -16,12 +16,22 @@ jobs:
         uses: espressif/install-esp-idf-action@v1
         with:
           version: "v6.0.2"
-          path: "/espressif/esp-idf"
 
       - name: Patch ESP-IDF for Thread
-        run: | 
-          cd /espressif/esp-idf/components/openthread/src/port/esp_openthread_radio_spinel.cpp
-          sed -i "OT_RADIO_CAPS_RECEIVE_TIMING" >> /dev/null
+        run: |
+          IDF_PATH="${IDF_PATH:-$(dirname "$(dirname "$(command -v idf.py)")")}"
+          FILE="$IDF_PATH/components/openthread/src/port/esp_openthread_radio_spinel.cpp"
+
+          # find line with OT_RADIO_CAPS_RECEIVE_TIMING definition 
+          LINE=$(grep -n -m1 "OT_RADIO_CAPS_RECEIVE_TIMING" "$FILE" | cut -d: -f1)
+          if [ -z "$LINE" ]; then
+            echo "::error::OT_RADIO_CAPS_RECEIVE_TIMING not found in $FILE"
+            exit 1
+          fi
+
+          # print line and delete 
+          echo "Removing line: $LINE: $(sed -n "${LINE}p" "$FILE")"
+          sed -i "${LINE}d" "$FILE"
 
       - name: Build Project
         run: |
