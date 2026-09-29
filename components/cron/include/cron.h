@@ -33,7 +33,7 @@ namespace Cron {
      * @param[in] funcptr Function which is run 
      * @param[in] ctx pointer to function context
      * 
-     * @note Cron functions must not have any parameters and need `esp_err_t` as a return value 
+     * @note Cron functions work like esp idf tasks.  
      * 
      * @returns Job handle - Number which can be used to later delete the Cron job. 
      * 

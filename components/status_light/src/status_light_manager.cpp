@@ -10,7 +10,8 @@ ESP_EVENT_DEFINE_BASE(STATUS_LED_EVENT);
 ESP_EVENT_DEFINE_BASE(RCP_LED_EVENT);
 
 StatusLightManager::StatusLightManager()
-    : ledHal{}, tickTimer{nullptr}, currentState{LedState::BOOTING}, tickCount{0}, overrides{}
+    : ledHal{}, tickTimer{nullptr}, currentState{LedState::BOOTING}, tickCount{0}, overrides{},
+      night_mode_start_handle{-1}, night_mode_end_handle{-1}, night_mode_config{}
 {
     overrides.fill(LedOverride::AUTO);
 }
@@ -80,9 +81,11 @@ esp_err_t StatusLightManager::registerNightMode(night_mode_config_t config)
         return ESP_FAIL;
     }
     night_mode_start_handle = ret;
+    ESP_LOGD(TAG, "Registered night mode start cron job for: %0d:%0d", night_mode_timing.hour, night_mode_timing.minute);
 
     night_mode_timing.minute = config.end_minute;
     night_mode_timing.hour = config.end_hour;
+
     ret = Cron::scheduleJob(night_mode_timing, allLedsAuto, this);
     if (ret == -1) {
         ESP_LOGE(TAG, "Error scheduling nightmode end job");
@@ -90,6 +93,7 @@ esp_err_t StatusLightManager::registerNightMode(night_mode_config_t config)
     }
     night_mode_end_handle = ret;
     night_mode_config = config;
+    ESP_LOGD(TAG, "Registered night mode end cron job for: %0d:%0d", night_mode_timing.hour, night_mode_timing.minute);
 
     return ESP_OK;
 }
@@ -109,6 +113,9 @@ esp_err_t StatusLightManager::clearNightMode()
 
     ESP_RETURN_ON_ERROR(Cron::removeJob(night_mode_start_handle), TAG, "Could not remove nightmode start job");
     ESP_RETURN_ON_ERROR(Cron::removeJob(night_mode_end_handle), TAG, "Could not remove nightmode end job");
+    night_mode_start_handle = -1;
+    night_mode_end_handle = -1;
+    ESP_LOGD(TAG, "Successfully cleared Night Mode cron job");
     return ESP_OK;
 }
 
@@ -148,18 +155,20 @@ bool StatusLightManager::resolveOverride(LedId led, bool autoLevel) const
 esp_err_t StatusLightManager::allLedsOff(void* ctx)
 {
     auto self {static_cast<StatusLightManager*>(ctx)};
-    for (LedOverride overwrite : self->overrides) {
-        overwrite = LedOverride::OFF;
+    for (size_t i = 0; i < LED_COUNT; i++) {
+        ESP_RETURN_ON_ERROR(self->forceLed(static_cast<LedId>(i), LedOverride::OFF), TAG, "Night mode: could not turn LED %u off", i);
     }
+    ESP_LOGD(TAG, "Night mode started - all LEDs off");
     return ESP_OK;
 }
 
 esp_err_t StatusLightManager::allLedsAuto(void* ctx)
 {
     auto self {static_cast<StatusLightManager*>(ctx)};
-    for (LedOverride overwrite : self->overrides) {
-        overwrite = LedOverride::AUTO;
+    for (size_t i = 0; i < LED_COUNT; i++) {
+        ESP_RETURN_ON_ERROR(self->forceLed(static_cast<LedId>(i), LedOverride::AUTO), TAG, "Night mode: could not set LED %u to auto", i);
     }
+    ESP_LOGD(TAG, "Night mode ended - all LEDs auto");
     return ESP_OK;
 }
 
