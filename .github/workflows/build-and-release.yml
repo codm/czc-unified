@@ -38,7 +38,7 @@ jobs:
           idf.py set-target esp32
           idf.py build
           idf.py merge-bin -o czc-unified-${{ github.ref_name }}.full.bin
-          mv czc-unified.bin czc-unified-${{ github.ref_name }}.ota.bin
+          mv build/czc-unified.bin build/czc-unified-${{ github.ref_name }}.ota.bin
 
       - name: Get release text from Changelog.md
         run: |
