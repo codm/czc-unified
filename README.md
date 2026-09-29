@@ -11,6 +11,9 @@ as possible (firmware version, steps to reproduce, log output).
 
 Known Issues:
 
+- Thread stack shutdown does not work reliably! This affects switching
+from Thread to any other protocol.
+- ZigBee Router mode is not properly implemented.
 - The web interface is unreachable if the RCP is not configured correctly (Only Thread mode is affected - this is an IDF Issue).
 
 ### Capturing Debug Output

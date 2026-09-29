@@ -1,0 +1,66 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+     - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ESP-IDF
+        uses: espressif/install-esp-idf-action@v1
+        with:
+          version: "v6.0.2"
+          path: "/espressif/esp-idf"
+
+      - name: Patch ESP-IDF for Thread
+        run: | 
+          cd /espressif/esp-idf/components/openthread/src/port/esp_openthread_radio_spinel.cpp
+          sed -i "OT_RADIO_CAPS_RECEIVE_TIMING" >> /dev/null
+
+      - name: Build Project
+        run: |
+          idf.py set-target esp32
+          idf.py build
+          idf.py merge-bin -o czc-unified-${{ github.ref_name }}.full.bin
+          mv czc-unified.bin czc-unified-${{ github.ref_name }}.ota.bin
+
+      - name: Get release text from Changelog.md
+        run: |
+          VERSION="${GITHUB_REF_NAME#[vV]}"   # "V2.1.1" -> "2.1.1"
+          VERSION_RE="${VERSION//./\\.}"     
+
+          # Get starting line - line with TAG 
+          START=$(grep -n -m1 -E "^#*\s*[vV]${VERSION_RE}(\s|$)" Changelog.md | cut -d: -f1)
+          if [ -z "$START" ]; then
+            echo "::error::Could not find entry for $GITHUB_REF_NAME in Changelog.md"
+            exit 1
+          fi
+
+          # 2. End line - line with next version or end of file 
+          NEXT=$(tail -n +$((START + 1)) Changelog.md | grep -n -m1 -E '^#*\s*[vV][0-9]' | cut -d: -f1)
+          if [ -n "$NEXT" ]; then
+            END=$((START + NEXT - 1))
+          else
+            END='$'
+          fi
+
+          # Move text inbetween into new file
+          sed -n "$((START + 1)),${END}p" Changelog.md > release_notes.md
+
+          cat release_notes.md
+
+      - name: Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ github.ref_name }}
+          body_path: release_notes.md
+          generate_release_notes: false
+          files: |
+            build/czc-unified-${{ github.ref_name }}.ota.bin
+            build/czc-unified-${{ github.ref_name }}.full.bin
