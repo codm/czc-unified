@@ -8,6 +8,7 @@
 - Add proper update status information 
 - Create frontend section for network and mdns 
 - Build automation
+- Change repository naming 
 
 ## V1.0.0-alpha - 18.06.2026
 Alpha Firmware release. Manually created.

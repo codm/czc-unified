@@ -1,4 +1,4 @@
-# CZC - OpenThreadBorderRouter Firmware ALPHA
+# CZC-unified ALPHA
 
 This Firmware is in the ALPHA Phase and far away from being complete!
 
@@ -267,7 +267,7 @@ This Chapter gives Architectural and specific Project coding Documentation
 ### File Structure
 
 ```
-czc_ot_firmware/
+czc-unified/
 ├── main/
 │   └── main.cpp                  Boot sequence, wires all components
 │

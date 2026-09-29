@@ -649,7 +649,7 @@ function _resetFlashStatus() {
 // var ESP_RELEASES_URL = 'https://docs.codm.de/tools/releases.php';
 
 let RCP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-rcp-fw/releases';
-let ESP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-ot-fw/releases';
+let ESP_RELEASES_URL = 'https://api.github.com/repos/codm/czc-unified/releases';
 let ZB_MANIFEST_URL  = 'https://raw.githubusercontent.com/codm/CZC/refs/heads/zb_fws/ti/manifest.json';
 
 // Returns a Promise that resolves to the download URL of the newest firmware for the given mode
