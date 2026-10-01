@@ -8,3 +8,4 @@ dependencies:
     path: ../components/esp_ot_br_server
   network:
     path: ../components/network
+  espressif/button: '*'

@@ -4,6 +4,7 @@
 #include "update_manager.h"
 #include "firmware_manager.h"
 #include "app_controller.h"
+#include "button.h"
 #include "esp_br_web.h"
 #include "esp_spiffs.h"
 #include "nvs_flash.h"
@@ -18,6 +19,8 @@ extern "C" void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_log_level_set("*", ESP_LOG_INFO); 
+
 
     // Status LEDs; initialise first so every step is visible
     StatusLightManager statusLight;
@@ -25,7 +28,12 @@ extern "C" void app_main(void)
     esp_event_post(STATUS_LED_EVENT,
                    static_cast<int32_t>(LedState::BOOTING), nullptr, 0, 0);
 
+    ESP_LOGE(TAG, "Led handler initialized");
+    meine_steuerung_init();
+    ESP_LOGE(TAG, "Button handler initialized");
     NetworkStateMachine network;
+    
+    
 
     // Mount SPIFFS for the web frontend
     esp_vfs_spiffs_conf_t spiffsConf{};
