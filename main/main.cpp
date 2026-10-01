@@ -28,9 +28,7 @@ extern "C" void app_main(void)
     esp_event_post(STATUS_LED_EVENT,
                    static_cast<int32_t>(LedState::BOOTING), nullptr, 0, 0);
 
-    ESP_LOGE(TAG, "Led handler initialized");
-    meine_steuerung_init();
-    ESP_LOGE(TAG, "Button handler initialized");
+    button_handler_init(statusLight);
     NetworkStateMachine network;
     
     

@@ -10,4 +10,5 @@ idf_component_register(
         esp_timer
         log
         button
+        status_light
 )

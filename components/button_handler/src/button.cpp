@@ -3,16 +3,19 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 
+#include "button.h"
+#include "status_light_manager.h"
+
 static const char *TAG = "BUTTON";
 
 static uint32_t press_start_time = 0;
 
+static StatusLightManager* statusLightManager = nullptr;
 
 
 
 
-
-// Irgendwie muss hier eine Zeitmessung rein also der Gedankengang ist:
+// Logik für den Button Handler:
 // button wird gedrückt->Zeitmessung startet->button wird losgelassen->handler Funktion ruft die passende Funktion auf
 
 
@@ -32,6 +35,11 @@ static uint32_t press_start_time = 0;
 static void status_led_toggle()
 {
     ESP_LOGI(TAG, "0-3 Sekunden gedrückt: Status-LED umschalten");
+    bool enabled = !statusLightManager->isLedOutputEnabled();
+
+    statusLightManager->setLedOutputEnabled(enabled);
+
+    ESP_LOGI(TAG, "Status-LED %s", enabled ? "AN" : "AUS");
 }
 
 
@@ -76,8 +84,9 @@ static void button_press_up_cb(void *arg, void *usr_data)
 }
 
 
-void meine_steuerung_init(void)
+void button_handler_init(StatusLightManager& statusLight)
 {
+    statusLightManager = &statusLight;
 
     button_config_t button_config = {
         .long_press_time = 1000,
@@ -107,7 +116,7 @@ void meine_steuerung_init(void)
         return;
     }
 
-    
+
 
     ret = iot_button_register_cb(
         btn,

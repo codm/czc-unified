@@ -1,3 +1,5 @@
 #pragma once
 
-void meine_steuerung_init(void);
+class StatusLightManager;
+
+void button_handler_init(StatusLightManager& statusLight);

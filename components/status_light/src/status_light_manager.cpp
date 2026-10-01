@@ -104,6 +104,32 @@ void StatusLightManager::mapLedsToState()
             break;
     }
 
+    if (!ledOutputEnabled) {
+        ledHal.setPwr(false);
+        ledHal.setMode(false);
+        return;
+    }
+
     ledHal.setPwr(pwrLed);
     ledHal.setMode(modeLed);
+}
+
+
+
+
+void StatusLightManager::setLedOutputEnabled(bool enabled)
+{
+    ESP_LOGI(TAG, "LED output %s", enabled ? "enabled" : "disabled");
+    ledOutputEnabled = enabled;
+
+    if (!enabled) {
+        ledHal.setPwr(false);
+        ledHal.setMode(false);
+    }
+}
+
+
+bool StatusLightManager::isLedOutputEnabled() const
+{
+    return ledOutputEnabled;
 }
