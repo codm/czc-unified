@@ -1466,6 +1466,20 @@ static esp_err_t device_nightmode_post_handler(httpd_req_t *req)
     return send_result_response(req, ret, "Night mode saved.");
 }
 
+static esp_err_t device_nightmode_clear_post_handler(httpd_req_t *req)
+{
+    esp_err_t ret = ESP_FAIL;
+    if (s_led_cbs.set_clear_night_mode)
+        ret = s_led_cbs.set_clear_night_mode(s_led_cbs.ctx);
+
+    cJSON *error    = cJSON_CreateNumber(ret == ESP_OK ? 0 : 1);
+    cJSON *result   = cJSON_CreateString(ret == ESP_OK ? "successful" : "failed");
+    cJSON *message  = cJSON_CreateString(ret == ESP_OK ? "Night-Mode successfully cleared" : "Night-Mode already cleared!");
+    cJSON *response = pack_response(error, result, message);
+    esp_err_t send_ret = httpd_send_packet(req, response);
+    cJSON_Delete(response);
+    return send_ret;
+}
 
 static esp_err_t network_wifi_get_handler(httpd_req_t *req)
 {
@@ -1649,6 +1663,7 @@ static httpd_uri_t s_device_handlers[] = {
     { .uri = "/device/led",             .method = HTTP_POST, .handler = device_led_post_handler,            .user_ctx = &s_server.data },
     { .uri = "/device/nightmode",       .method = HTTP_GET,  .handler = device_nightmode_get_handler,       .user_ctx = &s_server.data },
     { .uri = "/device/nightmode",       .method = HTTP_POST, .handler = device_nightmode_post_handler,      .user_ctx = &s_server.data },
+    { .uri = "/device/nightmode/clear", .method = HTTP_POST, .handler = device_nightmode_clear_post_handler,.user_ctx = &s_server.data },
     { .uri = "/network/wifi",           .method = HTTP_GET,  .handler = network_wifi_get_handler,           .user_ctx = &s_server.data },
     { .uri = "/network/wifi",           .method = HTTP_POST, .handler = network_wifi_post_handler,          .user_ctx = &s_server.data },
     { .uri = "/network/ethernet",       .method = HTTP_GET,  .handler = network_eth_get_handler,            .user_ctx = &s_server.data },
