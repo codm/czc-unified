@@ -2,4 +2,6 @@
 
 class StatusLightManager;
 
-void button_handler_init(StatusLightManager& statusLight);
+namespace Button {
+    void init(StatusLightManager& statusLight);
+}

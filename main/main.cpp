@@ -28,7 +28,7 @@ extern "C" void app_main(void)
     esp_event_post(STATUS_LED_EVENT,
                    static_cast<int32_t>(LedState::BOOTING), nullptr, 0, 0);
 
-    button_handler_init(statusLight);
+    Button::init(statusLight);
     NetworkStateMachine network;
     
     
