@@ -10,8 +10,8 @@
 
 static const char* TAG = "Button";
 
-Button::Button(StatusLightManager& statusLight)
-    : statusLight_(statusLight) {}
+Button::Button(StatusLightManager& statusLight, Callback on_factory_reset)
+    : statusLight_(statusLight), on_factory_reset_(on_factory_reset) {}
 
 Button::~Button() {
     if (btn_handle_) {
@@ -35,7 +35,6 @@ esp_err_t Button::init() {
     };
 
 
-    button_handle_t btn = nullptr;
 
     esp_err_t ret = iot_button_new_gpio_device(
         &button_config,
@@ -134,7 +133,12 @@ void Button::usb_network_toggle()
 void Button::trigger_factory_reset()
 {
     ESP_LOGI(TAG, "10+ Sec Press: Trigger Factory Reset");
+
+    if (on_factory_reset_) {
+        on_factory_reset_();
+    }
 }
+
 
 
 

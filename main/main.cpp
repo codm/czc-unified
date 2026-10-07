@@ -28,8 +28,6 @@ extern "C" void app_main(void)
     esp_event_post(STATUS_LED_EVENT,
                    static_cast<int32_t>(LedState::BOOTING), nullptr, 0, 0);
 
-    Button button(statusLight);
-    ESP_ERROR_CHECK(button.init());
     NetworkStateMachine network;
     
     
@@ -45,6 +43,13 @@ extern "C" void app_main(void)
     UpdateManager updateManager;
     FirmwareManager firmwareManager;
     AppController appController{updateManager, firmwareManager};
+
+
+    Button button(statusLight, [&firmwareManager]() {
+        firmwareManager.factoryReset();
+    });
+    ESP_ERROR_CHECK(button.init());
+
 
     // Start webserver 
     web_firmware_callbacks_t fwCbs{};
