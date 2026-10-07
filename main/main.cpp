@@ -45,9 +45,7 @@ extern "C" void app_main(void)
     AppController appController{updateManager, firmwareManager};
 
 
-    Button button(statusLight, [&firmwareManager]() {
-        firmwareManager.factoryReset();
-    });
+    Button button{statusLight, appController};
     ESP_ERROR_CHECK(button.init());
 
 

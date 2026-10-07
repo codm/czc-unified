@@ -11,4 +11,6 @@ idf_component_register(
         log
         button
         status_light
+        app_controller
+        firmware_manager
 )

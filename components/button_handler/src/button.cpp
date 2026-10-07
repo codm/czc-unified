@@ -5,13 +5,15 @@
 
 #include "button.h"
 #include "status_light_manager.h"
+#include "app_controller.h"
+#include "protocol_controller.h"
 #include "board_config.h"
 
 
 static const char* TAG = "Button";
 
-Button::Button(StatusLightManager& statusLight, Callback on_factory_reset)
-    : statusLight_(statusLight), on_factory_reset_(on_factory_reset) {}
+Button::Button(StatusLightManager& statusLight, AppController& appController)
+    : statusLight_(statusLight), appController_(appController) {}
 
 Button::~Button() {
     if (btn_handle_) {
@@ -127,6 +129,17 @@ void Button::status_led_toggle()
 void Button::usb_network_toggle()
 {
     ESP_LOGI(TAG, "3-5 Sec Press: Toggle USB/Network Mode");
+
+
+    DeviceMode current = appController_.getCurrentMode();
+    ESP_LOGI(TAG, "Current mode: %d", static_cast<int>(current));
+    if (current == DeviceMode::ZIGBEE_USB) {
+        ESP_LOGI(TAG, "Kurzer Druck: Wechsle zu ZIGBEE_NET");
+        appController_.requestModeChange(DeviceMode::ZIGBEE_NET);
+    } else if (current == DeviceMode::ZIGBEE_NET) {
+        ESP_LOGI(TAG, "Kurzer Druck: Wechsle zu ZIGBEE_USB");
+        appController_.requestModeChange(DeviceMode::ZIGBEE_USB);
+    }
 }
 
 
@@ -134,9 +147,7 @@ void Button::trigger_factory_reset()
 {
     ESP_LOGI(TAG, "10+ Sec Press: Trigger Factory Reset");
 
-    if (on_factory_reset_) {
-        on_factory_reset_();
-    }
+    appController_.rcpEraseNvram();
 }
 
 
