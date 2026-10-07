@@ -28,7 +28,8 @@ extern "C" void app_main(void)
     esp_event_post(STATUS_LED_EVENT,
                    static_cast<int32_t>(LedState::BOOTING), nullptr, 0, 0);
 
-    Button::init(statusLight);
+    Button button(statusLight);
+    ESP_ERROR_CHECK(button.init());
     NetworkStateMachine network;
     
     
