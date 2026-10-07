@@ -90,6 +90,19 @@ public:
     bool isLedOutputEnabled() const;
 
     /**
+     * @brief Blink both LEDs for a specified duration.
+     *
+     *        This is a blocking call that overrides the currentState and tickCount
+     *        for the duration of the blink. After the duration, the previous state
+     *        is restored.
+     *
+     * @param[in] durationMs  Duration in milliseconds to blink both LEDs
+     *
+     * @return void
+     */
+    void blinkLeds(int durationMs);
+
+    /**
      * @brief Initialise the HAL, register the event handler and start the tick timer.
      *
      * @return `ESP_OK` on success, first failing esp_err_t otherwise

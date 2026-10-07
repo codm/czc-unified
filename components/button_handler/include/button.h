@@ -1,4 +1,5 @@
-#pragma once
+#ifndef BUTTON_H_
+#define BUTTON_H_
 
 #include <functional>
 #include "driver/gpio.h"
@@ -7,17 +8,26 @@
 class StatusLightManager;
 class AppController;
 
-/** @brief A class representing a button with factory reset functionality 
+/** 
+ * @brief A class to handle button press events via GPIO on Board::BTN_PIN.
+ * There are different actions based on the duration of the button press:
  * 
-*/
+ * 0 ───── 3s ───── 5s ───────>
+ * │        │         │
+ * │  Led   │Toggle   │ Nothing
+ * │ on/off │USB/Netw.│
+ * 
+ * 
+ * @note If the button is pressed at startup for over 10 seconds, a factory reset is triggered.
+ */
 
 class Button {
 public:
-    /** @brief Construct a new Button object
+    /**
+     * @brief Constructor for the Button class
      * 
-     * @param statusLightManager Reference to the status light manager
-     * @param on_factory_reset Callback function to be called on factory reset
-     * @param on_mode_change Callback function to be called on mode change
+     * @param[in] statusLightManager Reference to the StatusLightManager instance
+     * @param[in] appController Reference to the AppController instance
      */
     Button(StatusLightManager& statusLightManager, AppController& appController);
     ~Button();
@@ -78,3 +88,6 @@ private:
     button_handle_t btn_handle_{nullptr};
     uint32_t press_start_time_{0};
 };
+
+
+#endif

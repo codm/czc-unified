@@ -75,6 +75,27 @@ esp_err_t Button::init() {
     }
 
     ESP_LOGI(TAG, "Button initialized on GPIO%d", Board::BTN_PIN);
+
+    uint8_t is_pressed = iot_button_get_key_level(btn_handle_);
+    
+    if (is_pressed == 1) {
+        ESP_LOGI(TAG, "Button is pressed at startup, triggering factory reset");
+        press_start_time_ = esp_log_timestamp();
+        for (int i = 0; i < 200; ++i) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            is_pressed = iot_button_get_key_level(btn_handle_);
+            if (is_pressed == 0) {
+                ESP_LOGI(TAG, "Button released before factory reset threshold");
+                return ESP_OK;
+            }
+        }
+        while (is_pressed == 1) {
+            ESP_LOGI(TAG, "Button held for factory reset, blinking LEDs");
+            statusLight_.blinkLeds(3000);
+            is_pressed = iot_button_get_key_level(btn_handle_);
+        }
+    }
+
     return ESP_OK;
 }
 
@@ -145,7 +166,7 @@ void Button::usb_network_toggle()
 
 void Button::trigger_factory_reset()
 {
-    ESP_LOGI(TAG, "10+ Sec Press: Trigger Factory Reset");
+    ESP_LOGI(TAG, "10+ Sec Press at startup: Trigger Factory Reset");
 
     appController_.rcpEraseNvram();
 }

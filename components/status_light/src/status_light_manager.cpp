@@ -104,14 +104,12 @@ void StatusLightManager::mapLedsToState()
             break;
     }
 
-    if (!ledOutputEnabled) {
-        ledHal.setPwr(false);
-        ledHal.setMode(false);
-        return;
+    if (ledOutputEnabled) {
+        ledHal.setPwr(pwrLed);
+        ledHal.setMode(modeLed);
     }
 
-    ledHal.setPwr(pwrLed);
-    ledHal.setMode(modeLed);
+    
 }
 
 
@@ -119,7 +117,6 @@ void StatusLightManager::mapLedsToState()
 
 void StatusLightManager::setLedOutputEnabled(bool enabled)
 {
-    ESP_LOGI(TAG, "LED output %s", enabled ? "enabled" : "disabled");
     ledOutputEnabled = enabled;
 
     if (!enabled) {
@@ -132,4 +129,15 @@ void StatusLightManager::setLedOutputEnabled(bool enabled)
 bool StatusLightManager::isLedOutputEnabled() const
 {
     return ledOutputEnabled;
+}
+
+void StatusLightManager::blinkLeds(int durationMs)
+{
+    ledOutputEnabled = false;
+    ledHal.setPwr(true);
+    ledHal.setMode(true);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    ledHal.setPwr(false);
+    ledHal.setMode(false);
+    vTaskDelay(pdMS_TO_TICKS(1500));
 }
