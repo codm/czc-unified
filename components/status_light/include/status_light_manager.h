@@ -24,10 +24,6 @@ constexpr size_t LED_COUNT = 3;
  *        A 100 ms esp_timer tick drives all blink patterns:
  *          - 1 Hz  : (tickCount % 10) < 5   → 500 ms on / 500 ms off
  *          - ~3 Hz : (tickCount % 3)  == 0  → 100 ms on / 200 ms off
- *
- * @note  Priority (highest first):
- *        ERROR > FLASHING > ZIGBEE_ERROR > ZIGBEE_CONNECTING > BOOTING >
- *        NETWORK_DOWN > THREAD_ACTIVE > ZIGBEE_USB > ZIGBEE_HOST_WAIT > ZIGBEE_NET
  */
 class StatusLightManager {
 private:
