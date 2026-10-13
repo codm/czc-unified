@@ -286,9 +286,11 @@ czc_ot_firmware/
 │   │   │                               zigbee_proxy_controller.h, proxy_transport.h
 │   │   └── src/
 │   │
-│   ├── status_light/             Event-driven LED manager (zero upstream deps)
+│   ├── status_light/             Event-driven LED manager + LED overrides + night mode
 │   │   ├── include/status_light_event.h, status_light_manager.h, status_light_hal.h
-│   │   └── src/
+│   │   ├── include/status_light_callbacks.h  ← web_led_callbacks_t + night_mode_config_t (C)
+│   │   ├── private_include/status_light_nvs.h
+│   │   └── src/status_light_manager.cpp, status_light_hal.cpp, status_light_nvs.cpp
 │   │
 │   ├── board_config/             Hardware constants in Board:: namespace
 │   │   └── include/board_config.h
@@ -306,7 +308,7 @@ czc_ot_firmware/
 │   │   └── src/cron.cpp
 │   │
 │   ├── esp_ot_br_server/         HTTP server + web frontend (C)
-│   │   ├── include/esp_br_web.h  ← web callback structs + esp_br_web_start()
+│   │   ├── include/esp_br_web.h  ← esp_br_web_start(fw, net, led callbacks)
 │   │   └── frontend/             HTML/JS/CSS (gzip-compressed into SPIFFS)
 │   │       ├── wifi_config.html  ← served instead of index.html while in Access Point mode
 │   │       └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
@@ -407,7 +409,13 @@ sequenceDiagram
 
 ##### `status_light`
 
-Event-driven LED manager. Other components post `LedState` events; the manager applies priority arbitration and drives the GPIO LEDs via a 100 ms `esp_timer` tick. See [`components/status_light/README.md`](components/status_light/README.md).
+Event-driven LED manager. Other components post `LedState` events; the manager applies priority arbitration and drives the GPIO LEDs via a 100 ms `esp_timer` tick. On top of that:
+
+- **LED overrides** — every LED (`PWR`, `MODE`, `RCP`) can be forced `ON` / `OFF` or handed back to `AUTO` (`forceLed()`), from the web UI via `/device/led`.
+- **Night mode** — a daily time range during which all LEDs are forced off. Implemented as two [`cron`](#cron) jobs (start → all `OFF`, end → all `AUTO`), configured via `/device/nightmode`.
+- **Persistence** — overrides and the night-mode range are stored in NVS (namespace `status_lights`, private `StatusLightNvs` namespace) and restored on boot; the night-mode cron jobs are re-registered in `init()`.
+
+Because `init()` re-registers the night-mode jobs, `Cron::init()` has to run **before** `StatusLightManager::init()` in `main.cpp`. The web server talks to it through the C callback struct `web_led_callbacks_t` (`status_light_callbacks.h`), filled by `fillLedCallbacks()`. See [`components/status_light/README.md`](components/status_light/README.md) for details, diagrams and the NVS layout.
 
 ##### `network`
 
@@ -424,7 +432,9 @@ not part of the early boot sequence.
 - `init(server = nullptr)` — configures `esp_netif_sntp` with `server_from_dhcp = false`,
   applies the persisted defaults and blocks up to **10 s** for the first sync
   (`ESP_OK` on success, `ESP_FAIL` on timeout). Passing `nullptr` uses the time server
-  stored in NVS, falling back to `pool.ntp.org`.
+  stored in NVS, falling back to `pool.ntp.org`. An explicitly passed `server` is used for
+  this session only — it is *not* written to NVS (only `setServer()` persists). If SNTP was
+  already initialised (`ESP_ERR_INVALID_STATE`), `init()` only waits for the sync again.
 - `setServer(server)` — validates and stores the new server, persists it to NVS, then
   restarts SNTP and waits for a sync. Used to verify a user-supplied server is actually
   reachable before accepting it.
@@ -437,8 +447,10 @@ not part of the early boot sequence.
   ESP starts at the 1970 epoch).
 
 **Persisted defaults.** Both the timezone and the time server survive a reboot, so a
-device that comes up without a reachable NTP server still uses the user's configured
-timezone. The private `TimeServiceNvs` namespace
+device whose first sync times out still uses the user's configured timezone (the TZ is
+applied in `init()` before waiting for the sync). Note that `init()` itself is only reached
+once `waitUntilInternetIsConnected()` returns — until then `TZ` is unset and
+`getCurrTime()` reports `ESP_FAIL`. The private `TimeServiceNvs` namespace
 ([`time_service_nvs.h`](components/time_service/private_include/time_service_nvs.h))
 owns the keys — same pattern as `AppNvs` / `NvsBinding`: every function opens and closes
 its own handle, and the values are read on `init()` and written on every setter.
@@ -454,17 +466,51 @@ Wall-clock job scheduler, implemented as `namespace Cron`
 ([`cron.h`](components/cron/include/cron.h)) over static file-scope state (the job list and
 the task handle). Lets other components run a callback at a given date/time instead of
 building their own timer task. Built on top of [`time_service`](#time_service) — it compares
-against `TimeService::getCurrTime()`, so it only does anything useful once SNTP has synced
-and must be started *after* `TimeService::init()`.
+against `TimeService::getCurrTime()`, so jobs only fire once SNTP has synced. The task
+itself can be started *before* the clock is synced: while `getCurrTime()` returns
+`ESP_FAIL` (year < 2024) every tick is skipped, so nothing matches against 1970. This is
+why `Cron::init()` runs at the very beginning of `app_main()` — components such as
+`StatusLightManager` register their jobs in their own `init()` long before the network
+(and therefore SNTP) is up.
 
-- `init()` — creates the `Cron_Task` FreeRTOS task (2 KB stack, priority 5). The task wakes
-  once per minute, right after the minute boundary, and runs every job that matches the
-  current time — i.e. the scheduling resolution is one minute.
-- `scheduleJob(timing, funcptr)` — appends a job to the list and returns its handle.
-  The callback takes no parameters and returns `esp_err_t`; a non-`ESP_OK` return value is
-  only logged.
-- `removeJob(handle)` — removes the job from the list again.
-- `close()` — deletes the cron task. The job list is not cleared.
+- `init()` — creates the job-list mutex and the `Cron_Task` FreeRTOS task (2 KB stack,
+  priority 5). The task wakes once per minute, right after the minute boundary
+  (+100 ms margin), and runs every job that matches the current time — i.e. the scheduling
+  resolution is one minute. Must be called exactly **once** (a second call creates a second
+  task and replaces the mutex).
+- `scheduleJob(timing, funcptr, ctx)` — appends a job to the list and returns its handle
+  (`int`, monotonically increasing). The callback has the signature
+  `esp_err_t (*)(void* ctx)` — like a FreeRTOS task function, `ctx` is handed back
+  unchanged on every call, so a class can register a `static` member function and pass
+  `this` (see `StatusLightManager::allLedsOff`). A non-`ESP_OK` return value is only logged.
+- `removeJob(handle)` — removes the job from the list again (`ESP_ERR_INVALID_ARG` if the
+  handle is unknown).
+- `close()` — deletes the cron task and the mutex. The job list is not cleared.
+
+Jobs run **on the cron task** (2 KB stack) while the job-list mutex is held — callbacks
+must be short, must not block for long and must not call `scheduleJob()` / `removeJob()`
+themselves (deadlock).
+
+```mermaid
+sequenceDiagram
+    participant C as Component (e.g. StatusLightManager)
+    participant Cron as Cron (job list + Cron_Task)
+    participant TS as TimeService
+
+    C->>Cron: scheduleJob({.minute=0, .hour=22}, allLedsOff, this)
+    Cron-->>C: handle
+    loop every minute (+100 ms)
+        Cron->>TS: getCurrTime(now)
+        alt clock not synced (ESP_FAIL)
+            Cron-->>Cron: skip tick
+        else synced, new minute
+            Cron->>Cron: take mutex, match every job
+            Cron->>C: funcptr(ctx) for each matching job
+            Cron->>Cron: give mutex
+        end
+    end
+    C->>Cron: removeJob(handle)
+```
 
 **Timing struct.** `cron_timing_t` holds the five classic cron fields, using the same value
 ranges as `struct tm` (see `localtime_r`), *not* the ones from a crontab line. Every field
@@ -498,13 +544,15 @@ persistence**:
 
 `Cron` therefore stays stateless across reboots and never needs to know what a job means;
 the NVS layout for a schedule is documented with the component that owns it, next to its
-other keys. Because `Cron` depends on a synced clock, components that register jobs have
-to be initialised *after* `Cron::init()` (which itself comes after `TimeService::init()`
-in `main.cpp`).
+other keys (see the `status_lights` namespace in the
+[`status_light` README](components/status_light/README.md#persistence-nvs) for the first
+user of this pattern — the night mode). Components that register jobs have to be
+initialised *after* `Cron::init()`, which is why it is the first call after the default
+event loop in `main.cpp`.
 
 ##### `esp_ot_br_server`
 
-HTTP server providing the OpenThread REST API and the web GUI. Defines two C callback structs (`web_firmware_callbacks_t` in `esp_br_web.h`, `web_network_callbacks_t` in `network_config.h`) that decouple it from the C++ application layer. Calls `sse_events_init()` after the HTTP server is started to register the `/events` endpoint.
+HTTP server providing the OpenThread REST API and the web GUI. Receives three C callback structs (`web_firmware_callbacks_t` in `firmware_callbacks.h`, `web_network_callbacks_t` in `network_config.h`, `web_led_callbacks_t` in `status_light_callbacks.h`) that decouple it from the C++ application layer — hence the `status_light` entry in its `REQUIRES`. Calls `sse_events_init()` after the HTTP server is started to register the `/events` endpoint.
 
 **Access Point setup page.** `index_html_get_handler` checks the current mode via `get_network_status()`; while the device is in Access Point mode, it serves `frontend/wifi_config.html` instead of `index.html`. That page is fully self-contained (inline `<style>`/`<script>`, no `static/restful.js`, no CDN-hosted jQuery/D3) because a client connected to the SoftAP has no internet access to fetch external resources with.
 
@@ -673,7 +721,34 @@ classDiagram
     }
 
     class StatusLightManager {
+        -LedState currentState
+        -array~LedOverride~ overrides
+        -int night_mode_start_handle
+        -int night_mode_end_handle
+        -night_mode_config_t night_mode_config
         +init() esp_err_t
+        +forceLed(led, mode) esp_err_t
+        +getOverride(led) int
+        +registerNightMode(config) esp_err_t
+        +getNightMode(config) esp_err_t
+        +clearNightMode() esp_err_t
+        +fillLedCallbacks(cbs) void
+        -allLedsOff(ctx)$ esp_err_t
+        -allLedsAuto(ctx)$ esp_err_t
+    }
+    class StatusLightHal {
+        +init() esp_err_t
+        +setPwr(enabled) void
+        +setMode(enabled) void
+        +setRcp(enabled) void
+    }
+    class StatusLightNvs {
+        <<namespace>>
+        +readOverrides(ovwrts, length) esp_err_t
+        +writeOverrides(ovwrts, length) esp_err_t
+        +readNightModeState(state, length) esp_err_t
+        +writeNightModeState(state, length) esp_err_t
+        +clearNightModeState() esp_err_t
     }
 
     class TimeService {
@@ -694,7 +769,7 @@ classDiagram
     class Cron {
         <<namespace>>
         +init() esp_err_t
-        +scheduleJob(timing, funcptr) int
+        +scheduleJob(timing, funcptr, ctx) int
         +removeJob(job_handle) esp_err_t
         +close() void
     }
@@ -729,7 +804,15 @@ classDiagram
     NetworkStateMachine *-- EthernetAPI
     NetworkStateMachine *-- WirelessAPI
 
+    StatusLightManager *-- StatusLightHal
+    StatusLightManager ..> StatusLightNvs : overrides + night mode
+    StatusLightManager ..> Cron : night-mode jobs
+    StatusLightHal ..> FirmwareManager : RCP_LED_EVENT
+
     WebServer ..> sse_events : sse_events_init()
+    WebServer ..> AppController : web_firmware_callbacks_t
+    WebServer ..> NetworkStateMachine : web_network_callbacks_t
+    WebServer ..> StatusLightManager : web_led_callbacks_t
     TimeService ..> TimeServiceNvs : persisted defaults
     Cron ..> TimeService : getCurrTime()
 ```
@@ -738,9 +821,11 @@ classDiagram
 
 ```mermaid
 flowchart TD
-    boot(["Boot"])
+    boot(["Boot\nnvs_flash_init + default event loop"])
+    cron["Cron::init()\n(task skips ticks until time is synced)"]
+    led["StatusLightManager ctor + init()\nrestore overrides (NVS 'ov')\nrestore night mode (NVS 'nm') → Cron jobs\npost BOOTING"]
     net["Network up\n(NetworkStateMachine)"]
-    web["Web server start"]
+    web["Web server start\n(fw / net / led callbacks)"]
     conn["Wait for routed connection\n(waitUntilInternetIsConnected)"]
     time["TimeService::init()\nSNTP sync (max 10 s, non-fatal)"]
     q2{"device_setup?"}
@@ -750,7 +835,7 @@ flowchart TD
     start["firmware_manager.start(mode)"]
     run(["Normal operation"])
 
-    boot --> net --> web --> conn --> time --> q2
+    boot --> cron --> led --> net --> web --> conn --> time --> q2
     q2 -->|"no (first boot)"| wait -->|"POST /flash/rcp\n(newest fw url + mode)"| flash --> run
     q2 -->|yes| q3 --> start --> run
 ```
@@ -758,6 +843,10 @@ flowchart TD
 `requestRcpFlash()` is the same live-flash path used both for first-boot setup and for
 any later re-flash (e.g. switching into/out of Thread mode) — there is no NVS-intent /
 reboot mechanism anymore; see [Firmware Flash](#firmware-flash).
+
+Night-mode jobs are registered during `StatusLightManager::init()` — long before
+`TimeService::init()` — but only start firing once the clock is synced (see
+[`cron`](#cron)).
 
 ### API Endpoints
 
@@ -772,6 +861,11 @@ reboot mechanism anymore; see [Firmware Flash](#firmware-flash).
 | `POST` | `/device/rcp/reboot` | Hardware-reset the RCP — Zigbee via `ZstackMt`, Thread via a direct RST pulse |
 | `POST` | `/device/rcp/erasenvram` | Erase the RCP's persisted network config — Zigbee via `ZstackMt` NVRAM clear, Thread via the OpenThread settings API (RCP itself holds no state in Thread mode) |
 | `POST` | `/device/loglevel` | Set the ESP32 runtime log level — `{"mode": <int>}`, where `0`=None, `1`=Error, `2`=Warning, `3`=Info, `4`=Debug, `5`=Verbose (matches `esp_log_level_t`) |
+| `GET` | `/device/led` | Current LED overrides — `{"pwr": <int>, "mode": <int>, "rcp": <int>}`, `0`=Auto, `1`=On, `2`=Off (matches `LedOverride`) |
+| `POST` | `/device/led` | Set one LED override — `{"led": "pwr\|mode\|rcp", "mode": <int>}`; persisted to NVS |
+| `GET` | `/device/nightmode` | Current night-mode range — `{"start": "HH:MM", "end": "HH:MM"}` |
+| `POST` | `/device/nightmode` | Set night-mode range — `{"start": "HH:MM", "end": "HH:MM"}` (crossing midnight allowed); replaces the previous range, persisted to NVS |
+| `POST` | `/device/nightmode/clear` | Remove the night-mode cron jobs and the NVS entry |
 | `GET` | `/network/wifi` | Read WiFi config from NVS |
 | `POST` | `/network/wifi` | Write WiFi config + trigger reconnect |
 | `GET` | `/network/ethernet` | Read Ethernet config from NVS |
@@ -789,17 +883,27 @@ reboot mechanism anymore; see [Firmware Flash](#firmware-flash).
 
 #### Bridging the C web server and the C++ application
 
-The web server (`esp_br_web.c`) is plain C. It receives two C callback structs at startup that forward web API requests to the C++ application layer without knowing anything about it:
+The web server (`esp_br_web.c`) is plain C. It receives three C callback structs at startup that forward web API requests to the C++ application layer without knowing anything about it:
 
 ```c
 // Filled by AppController::fillFirmwareCallbacks() — ctx = AppController*
-typedef struct { ...; void *ctx; } web_firmware_callbacks_t;  // esp_br_web.h
+typedef struct { ...; void *ctx; } web_firmware_callbacks_t;  // firmware_callbacks.h
 
 // Filled by NetworkStateMachine::fillNetworkCallbacks() — ctx = NetworkStateMachine*
 typedef struct { ...; void *ctx; } web_network_callbacks_t;   // network_config.h
+
+// Filled by StatusLightManager::fillLedCallbacks() — ctx = StatusLightManager*
+typedef struct {
+    esp_err_t (*set_override)        (void *ctx, int led, int mode);
+    esp_err_t (*get_override)        (void *ctx, int led, int *mode_out);
+    esp_err_t (*set_night_mode)      (void *ctx, const night_mode_config_t *cfg);
+    esp_err_t (*get_night_mode)      (void *ctx, night_mode_config_t *out);
+    esp_err_t (*set_clear_night_mode)(void *ctx);
+    void *ctx;
+} web_led_callbacks_t;                                         // status_light_callbacks.h
 ```
 
-`main.cpp` wires both before starting the web server:
+`main.cpp` wires all three before starting the web server:
 ```cpp
 web_firmware_callbacks_t fwCbs{};
 appController.fillFirmwareCallbacks(&fwCbs);
@@ -807,10 +911,40 @@ appController.fillFirmwareCallbacks(&fwCbs);
 web_network_callbacks_t netCbs{};
 network.fillNetworkCallbacks(&netCbs);
 
-esp_br_web_start("/spiffs", &fwCbs, &netCbs);
+web_led_callbacks_t ledCbs{};
+statusLight.fillLedCallbacks(&ledCbs);
+
+esp_br_web_start("/spiffs", &fwCbs, &netCbs, &ledCbs);
 ```
 
-HTTP handlers parse the JSON body and call the matching function pointer. `AppController` and `NetworkStateMachine` remain invisible to the web server.
+HTTP handlers parse the JSON body and call the matching function pointer. `AppController`, `NetworkStateMachine` and `StatusLightManager` remain invisible to the web server. Any pointer may be `NULL` — the handlers then answer with `ESP_ERR_NOT_SUPPORTED` / default values instead of crashing.
+
+**LED / night-mode example.** The frontend identifies LEDs by name (`"pwr"`, `"mode"`,
+`"rcp"`); `esp_br_web.c` maps the name to its index in `s_led_names[]`, which equals the
+`LedId` value, and passes it on as a plain `int`. Night-mode times travel as `"HH:MM"`
+strings (the native value format of `<input type="time">`) and are parsed by
+`parse_time_hhmm()` into the `uint8_t` fields of `night_mode_config_t` (hour ≤ 23,
+minute ≤ 59, otherwise `400 Bad Request`).
+
+```mermaid
+sequenceDiagram
+    participant UI as restful.js
+    participant Web as esp_br_web.c
+    participant SLM as StatusLightManager
+    participant Cron as Cron
+    participant NVS as StatusLightNvs
+
+    UI->>Web: POST /device/nightmode {"start":"22:00","end":"06:00"}
+    Web->>Web: parse_time_hhmm() → night_mode_config_t
+    Web->>SLM: set_night_mode(ctx, &cfg) → registerNightMode(cfg)
+    SLM->>Cron: removeJob(old start/end) (if any)
+    SLM->>NVS: clearNightModeState() (if old jobs existed)
+    SLM->>Cron: scheduleJob(22:00, allLedsOff, this)
+    SLM->>Cron: scheduleJob(06:00, allLedsAuto, this)
+    SLM->>NVS: writeNightModeState(cfg)
+    SLM-->>Web: ESP_OK
+    Web-->>UI: pack_response(0, "successful", "Night mode saved.")
+```
 
 **WiFi scan example.** `scan_shortend_record_t` (`network_config.h`) is a slimmed-down
 projection of ESP-IDF's `wifi_ap_record_t` — only the fields the frontend needs (`ssid`,
@@ -859,6 +993,9 @@ polling — not to display anything; the two global hooks own all the logging.
 |---|---|---|---|
 | Action (POST, changes state) | `/network/wifi`, `/join_network`, `/add_prefix` | Logged — real message from the backend | Logged — real message from the backend |
 | Read-only diagnostic (GET) | `/topology`, `/get_properties`, `/available_network` | **Not logged** — backend sends `message: ""` on success, since `error == 0` already says it worked | Logged — backend still sends a real failure message |
+| LED override (POST) | `/device/led` | **Not logged** — `send_result_response()` with an empty success message; the frontend only moves the tri-state highlight once `error == 0` | Logged — `esp_err_to_name()` of the callback result |
+| Night mode (POST) | `/device/nightmode`, `/device/nightmode/clear` | Logged — "Night mode saved." / "Night-Mode successfully cleared" | Logged — `esp_err_to_name()` / "Night-Mode already cleared!" |
+| Settings read (GET) | `/device/led`, `/device/nightmode` | Not logged — plain JSON object, no envelope; only used to fill the UI on page load (`led_load_settings()`) | Not logged |
 | Flash (`/flash/esp`, `/flash/rcp`) | — | Not auto-logged — different envelope (`{status, message}`, no `error` field), handler shows its own Log Box manually | same |
 | Calls with a local `error` handler | `saveNetworkConfig()` (WiFi/Ethernet) | n/a | Not auto-logged — the global `ajaxError` fallback skips it so the caller's own handling (e.g. the WiFi reconnect case below) isn't overwritten |
 
