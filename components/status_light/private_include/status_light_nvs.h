@@ -1,9 +1,10 @@
-#ifndef STATUS_LIGHTS_NVS_H_
-#define STATUS_LIGHTS_NVS_H_
+#ifndef STATUS_LIGHT_NVS_H_
+#define STATUS_LIGHT_NVS_H_
 
+#include <cstddef>
 #include "esp_err.h"
 
-namespace StatusLightsNvs
+namespace StatusLightNvs
 {
     // read write night mode 
     // read write led state 
@@ -17,7 +18,7 @@ namespace StatusLightsNvs
      * @return `ESP_OK` on success - `ESP_ERR_NVS_NOT_FOUND` if no values was stored yet -
      *         `ESP_ERR_NVS_INVALID_LENGTH` if ovwrts is too small
      */
-    esp_err_t readOverwrites(uint8_t* ovwrts, size_t& length);
+    esp_err_t readOverwrites(void* ovwrts, size_t& length);
 
     /**
      * @brief Save Led Overwrites to persistent storage
@@ -27,7 +28,7 @@ namespace StatusLightsNvs
      * 
      * @return `ESP_OK` on success - `ESP_ERR_INVALID_ARG` on nullptr
     */
-    esp_err_t writeOverwrites(const uint8_t* ovwrts, uint8_t length);
+    esp_err_t writeOverwrites(const void* ovwrts, size_t& length);
 
     /**
      * @brief Read the persisted Night mode settings
@@ -47,7 +48,7 @@ namespace StatusLightsNvs
      * 
      * @return `ESP_OK` on success - `ESP_ERR_INVALID_ARG` on nullptr
      */
-    esp_err_t writeNightModeState(void* nightModeState);
+    esp_err_t writeNightModeState(const void* nightModeState, size_t& length);
 }
 
-#endif /* STATUS_LIGHTS_NVS_H_ */
+#endif /* STATUS_LIGHT_NVS_H_ */

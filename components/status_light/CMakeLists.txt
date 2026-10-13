@@ -6,6 +6,7 @@ idf_component_register(
         board_config
         esp_driver_gpio
         cron
+        nvs_flash
 
     REQUIRES
         esp_event

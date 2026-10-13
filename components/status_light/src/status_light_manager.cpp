@@ -1,5 +1,7 @@
 #include "status_light_manager.h"
 
+#include "status_light_nvs.h"
+
 #include "esp_check.h"
 #include "esp_log.h"
 #include "cron.h"
