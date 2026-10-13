@@ -74,7 +74,6 @@ extern "C" void app_main(void)
     TimeService::getCurrTime(currTime);
     ESP_LOGW(TAG, "Current time is %d:%d", currTime.tm_hour, currTime.tm_min);
 
-    Cron::init();
     cron_timing_t timing{};
     Cron::scheduleJob(timing, printTime, nullptr);
     // --- END CRON TEST JOB
