@@ -6,7 +6,7 @@
 namespace
 {
     constexpr const char* TAG {"status_light_nvs"};
-    constexpr const char* NVS_NAMESPACE {"status_lights_defs"};
+    constexpr const char* NVS_NAMESPACE {"status_lights"};
     constexpr const char* OVERWRITES_KEY {"ov"};
     constexpr const char* NIGHT_MODE_KEY {"nm"};
 
@@ -82,8 +82,34 @@ namespace StatusLightNvs
     {
         return readBlob(NIGHT_MODE_KEY, nightModeState, length);
     }
-    esp_err_t writeNightModeState(void *nightModeState, size_t& length)
+    esp_err_t writeNightModeState(const void *nightModeState, size_t& length)
     {
         return writeBlob(NIGHT_MODE_KEY, nightModeState, length);
+    }
+    esp_err_t clearNightModeState()
+    {
+        nvs_handle_t handle;
+        esp_err_t ret{nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle)};
+        if (ret != ESP_OK)
+        {
+            ESP_LOGW(TAG, "Failed to open NVS namespace '%s': %s", NVS_NAMESPACE, esp_err_to_name(ret));
+            return ret;
+        }
+
+        ret = nvs_erase_key(handle, NIGHT_MODE_KEY);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to delete key: %s", esp_err_to_name(ret));
+            nvs_close(handle);
+            return ret;
+        }
+
+        ret = nvs_commit(handle);
+        if (ret != ESP_OK)
+        {
+            ESP_LOGW(TAG, "Failed to commit changes: '%s'", esp_err_to_name(ret));
+        }
+
+        nvs_close(handle);
+        return ret;
     }
 }

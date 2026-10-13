@@ -17,6 +17,7 @@
 
 static const char* TAG = "main";
 
+// --- CRON TEST JOB FUNCTION 
 esp_err_t printTime(void* ctx) {
     struct tm currTime {};
     TimeService::getCurrTime(currTime);
@@ -29,6 +30,7 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+    Cron::init(); // init before status light necessary 
     // Status LEDs; initialise first so every step is visible
     StatusLightManager statusLight;
     ESP_ERROR_CHECK(statusLight.init());
@@ -67,6 +69,7 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "Routed Connection available! Starting Application...");
     TimeService::init();
 
+    // --- BEGIN CRON TEST JOB --- prints time every minute
     struct tm currTime {};
     TimeService::getCurrTime(currTime);
     ESP_LOGW(TAG, "Current time is %d:%d", currTime.tm_hour, currTime.tm_min);
@@ -74,6 +77,7 @@ extern "C" void app_main(void)
     Cron::init();
     cron_timing_t timing{};
     Cron::scheduleJob(timing, printTime, nullptr);
+    // --- END CRON TEST JOB
 
     // Boot-decision-tree → normal operation (may reboot and never return)
     appController.run();

@@ -49,6 +49,13 @@ namespace StatusLightNvs
      * @return `ESP_OK` on success - `ESP_ERR_INVALID_ARG` on nullptr
      */
     esp_err_t writeNightModeState(const void* nightModeState, size_t& length);
+
+    /**
+     * @brief deletes NightModeState nvs key
+     * 
+     * @return Fail specific error message passed through from failed function 
+     */
+    esp_err_t clearNightModeState();
 }
 
 #endif /* STATUS_LIGHT_NVS_H_ */

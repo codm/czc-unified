@@ -15,8 +15,12 @@ StatusLightManager::StatusLightManager()
     : ledHal{}, tickTimer{nullptr}, currentState{LedState::BOOTING}, tickCount{0}, overrides{},
       night_mode_start_handle{-1}, night_mode_end_handle{-1}, night_mode_config{}
 {
-    StatusLightNvs::readOverrides(static_cast<void*>(overrides))
-    overrides.fill(LedOverride::AUTO);
+    size_t overrides_size {sizeof(overrides)};
+    esp_err_t ret {StatusLightNvs::readOverrides(static_cast<void*>(overrides.data()), overrides_size)};
+    if (ret != ESP_OK) {
+        ESP_LOGD(TAG, "Could not read Overrides status from NVS - filling with zeros");
+        overrides.fill(LedOverride::AUTO);
+    }
 }
 
 esp_err_t StatusLightManager::init()
@@ -38,6 +42,16 @@ esp_err_t StatusLightManager::init()
     ESP_RETURN_ON_ERROR(esp_timer_start_periodic(tickTimer, 100 * 1000 /* 100 ms */),
                         TAG, "Timer start failed");
 
+    night_mode_config_t stored_night_mode {};
+    size_t config_size {sizeof(night_mode_config_t)};
+    esp_err_t ret {StatusLightNvs::readNightModeState(static_cast<void*>(&stored_night_mode), config_size)};
+    if (ret == ESP_OK) {
+        ESP_LOGD(TAG, "Retrieved Night-Mode config from NVS - continuing to setup cron jobs");
+        registerNightMode(stored_night_mode);
+    }
+    else 
+        ESP_LOGD(TAG, "No Night-Mode config found in NVS");
+
     ESP_LOGI(TAG, "Initialised");
     return ESP_OK;
 }
@@ -57,6 +71,9 @@ esp_err_t StatusLightManager::forceLed(LedId led, LedOverride mode)
     if (led == LedId::RCP && mode != LedOverride::AUTO) {
         ledHal.setRcp(mode == LedOverride::ON);
     }
+
+    size_t overrides_size {sizeof(overrides)};
+    StatusLightNvs::writeOverrides(overrides.data(), overrides_size);
 
     return ESP_OK;
 }
@@ -98,6 +115,10 @@ esp_err_t StatusLightManager::registerNightMode(night_mode_config_t config)
     night_mode_config = config;
     ESP_LOGD(TAG, "Registered night mode end cron job for: %0d:%0d", night_mode_timing.hour, night_mode_timing.minute);
 
+    size_t config_size {sizeof(config)};
+    StatusLightNvs::writeNightModeState(static_cast<void*>(&config), config_size);
+    ESP_LOGD(TAG, "Written Night-Mode config to NVS");
+
     return ESP_OK;
 }
 
@@ -119,6 +140,9 @@ esp_err_t StatusLightManager::clearNightMode()
     night_mode_start_handle = -1;
     night_mode_end_handle = -1;
     ESP_LOGD(TAG, "Successfully cleared Night Mode cron job");
+
+    StatusLightNvs::clearNightModeState();
+    ESP_LOGD(TAG, "Cleared Night-Mode nvs entry");
     return ESP_OK;
 }
 
