@@ -70,11 +70,11 @@ namespace
 }
 namespace StatusLightNvs
 {
-    esp_err_t readOverwrites(void* ovwrts, size_t &length)
+    esp_err_t readOverrides(void* ovwrts, size_t &length)
     {
         return readBlob(OVERWRITES_KEY, ovwrts, length);
     }
-    esp_err_t writeOverwrites(const void *ovwrts, size_t& length)
+    esp_err_t writeOverrides(const void *ovwrts, size_t& length)
     {
         return writeBlob(OVERWRITES_KEY, ovwrts, length);
     }

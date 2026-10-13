@@ -15,6 +15,7 @@ StatusLightManager::StatusLightManager()
     : ledHal{}, tickTimer{nullptr}, currentState{LedState::BOOTING}, tickCount{0}, overrides{},
       night_mode_start_handle{-1}, night_mode_end_handle{-1}, night_mode_config{}
 {
+    StatusLightNvs::readOverrides(static_cast<void*>(overrides))
     overrides.fill(LedOverride::AUTO);
 }
 

@@ -10,25 +10,25 @@ namespace StatusLightNvs
     // read write led state 
 
     /**
-     * @brief Read the persisted Led Overwrites
+     * @brief Read the persisted Led overrides
      * 
-     * @param[out] ovwrts Destination buffer for the stored overwrites
+     * @param[out] ovwrts Destination buffer for the stored overrides
      * @param[in,out] length In: size of `ovwrts` in bytes - Out: length of read data 
      * 
      * @return `ESP_OK` on success - `ESP_ERR_NVS_NOT_FOUND` if no values was stored yet -
      *         `ESP_ERR_NVS_INVALID_LENGTH` if ovwrts is too small
      */
-    esp_err_t readOverwrites(void* ovwrts, size_t& length);
+    esp_err_t readOverrides(void* ovwrts, size_t& length);
 
     /**
-     * @brief Save Led Overwrites to persistent storage
+     * @brief Save Led overrides to persistent storage
      * 
      * @param[in] ovwrts pointer to Array of Values to store
      * @param[in] length number of Values to store (size of array)
      * 
      * @return `ESP_OK` on success - `ESP_ERR_INVALID_ARG` on nullptr
     */
-    esp_err_t writeOverwrites(const void* ovwrts, size_t& length);
+    esp_err_t writeOverrides(const void* ovwrts, size_t& length);
 
     /**
      * @brief Read the persisted Night mode settings
