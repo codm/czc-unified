@@ -2,6 +2,7 @@
 #define CZC_STATUS_LIGHT_MANAGER_H_
 
 #include <array>
+#include <atomic>
 
 #include "esp_err.h"
 #include "esp_event.h"
@@ -39,6 +40,7 @@ private:
     int night_mode_start_handle;
     int night_mode_end_handle;
     night_mode_config_t night_mode_config;
+    std::atomic<bool> night_mode_active; ///< written by the cron task, read by the timer task
 
     /**
      * @brief ESP event handler — updates `currentState` if the incoming state has
@@ -82,19 +84,25 @@ private:
      */
     bool resolveOverride(LedId led, bool autoLevel) const;
 
-    /** 
-     * @brief Cron job function - sets all LEDs to OFF
-     * 
+    /**
+     * @brief Cron job function - night mode start, masks all LEDs to OFF
+     *
+     *        Overrides stay untouched (also in NVS) - resolveOverride() returns
+     *        `false` while `night_mode_active` is set.
+     *
      * @return `ESP_OK`
      */
     static esp_err_t allLedsOff(void* ctx);
 
-    /** 
-     * @brief Cron job function - sets all LEDs to AUTO 
-     * 
+    /**
+     * @brief Cron job function - night mode end, removes the mask again
+     *
+     *        PWR / MODE follow their override on the next tick. The RCP LED has no
+     *        automatic level, so a non-AUTO override is sent to the RCP again.
+     *
      * @return `ESP_OK`
      */
-    static esp_err_t allLedsAuto(void* ctx);
+    static esp_err_t restoreLedStates(void* ctx);
 
 public:
     /**
@@ -144,14 +152,18 @@ public:
 
     /** 
      * @brief Get currently active nightmode config
-     * 
-     * @return `ESP_OK` on success
+     *
+     * @param[out] config Night mode range - only written on success
+     *
+     * @return `ESP_OK` on success - `ESP_ERR_NOT_FOUND` if no night mode is registered
      */
     esp_err_t getNightMode(night_mode_config_t& config);
 
-    /** 
+    /**
      * @brief deletes nightmode cron jobs and resets internal values
-     * 
+     *
+     *        Ends a currently running night mode, so the LEDs come back immediately.
+     *
      * @return `ESP_OK` on successful remove - `ESP_ERR_INVALID_ARG` if handles are not found -
      *         `ESP_FAIL` handles are not set e.g -1
      */

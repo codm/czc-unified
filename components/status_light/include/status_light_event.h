@@ -5,15 +5,11 @@
 
 ESP_EVENT_DECLARE_BASE(STATUS_LED_EVENT);
 
-/** @brief Posted with the arbitrated `LedState` whenever it changes. */
+/** @brief Posted to change and react to changes of the RCP LED in the firmware manager */
 ESP_EVENT_DECLARE_BASE(RCP_LED_EVENT);
 
 /**
  * @brief LED states posted as events into the default event loop.
- *
- * Higher numeric value = higher display priority.
- * The StatusLightManager ignores events with lower priority than the
- * currently active state.
  *
  * Usage:
  *   esp_event_post(STATUS_LED_EVENT, static_cast<int32_t>(LedState::FLASHING),

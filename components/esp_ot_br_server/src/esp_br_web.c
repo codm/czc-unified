@@ -1408,17 +1408,21 @@ static esp_err_t device_led_post_handler(httpd_req_t *req)
 static esp_err_t device_nightmode_get_handler(httpd_req_t *req)
 {
     night_mode_config_t cfg = {0};
+    esp_err_t cb_ret = ESP_ERR_NOT_SUPPORTED;
     if (s_led_cbs.get_night_mode) {
-        s_led_cbs.get_night_mode(s_led_cbs.ctx, &cfg);
+        cb_ret = s_led_cbs.get_night_mode(s_led_cbs.ctx, &cfg);
     }
 
-    char start[8], end[8];  /* worst case "255:255" — hour / minute are uint8_t */
-    snprintf(start, sizeof(start), "%02u:%02u", cfg.start_hour, cfg.start_minute);
-    snprintf(end,   sizeof(end),   "%02u:%02u", cfg.end_hour,   cfg.end_minute);
-
+    /* start / end are only sent for an active night mode - the frontend keeps its defaults otherwise */
     cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "start", start);
-    cJSON_AddStringToObject(root, "end",   end);
+    cJSON_AddBoolToObject(root, "enabled", cb_ret == ESP_OK);
+    if (cb_ret == ESP_OK) {
+        char start[8], end[8];  /* worst case "255:255" — hour / minute are uint8_t */
+        snprintf(start, sizeof(start), "%02u:%02u", cfg.start_hour, cfg.start_minute);
+        snprintf(end,   sizeof(end),   "%02u:%02u", cfg.end_hour,   cfg.end_minute);
+        cJSON_AddStringToObject(root, "start", start);
+        cJSON_AddStringToObject(root, "end",   end);
+    }
     esp_err_t ret = httpd_send_packet(req, root);
     cJSON_Delete(root);
     return ret;

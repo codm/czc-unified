@@ -17,7 +17,7 @@ The two GPIO LEDs are driven directly by this component. The Zigbee LED is only
 On top of the automatic state display the component offers:
 
 - **[LED overrides](#led-overrides)** — force any LED `ON` / `OFF`, or hand it back to `AUTO`.
-- **[Night mode](#night-mode)** — a daily time range in which all LEDs are forced off, driven by two [`cron`](../cron) jobs.
+- **[Night mode](#night-mode)** — a daily time range in which all LEDs are masked off (overrides stay untouched), driven by two [`cron`](../cron) jobs.
 - **[Persistence](#persistence-nvs)** — overrides and the night-mode range survive a reboot.
 
 All three are reachable from the web UI (*Debug → LEDs / Night-Mode*) through
@@ -44,10 +44,11 @@ flowchart LR
         EH["eventHandler()<br/>priority arbitration"]
         CS[("currentState")]
         OV[("overrides[3]")]
+        NMA[("night_mode_active")]
         TICK["timerCallback() — 100 ms<br/>mapLedsToState()<br/>resolveOverride()"]
         FL["forceLed()"]
         NM["registerNightMode()<br/>clearNightMode()"]
-        JOBS["allLedsOff() / allLedsAuto()"]
+        JOBS["allLedsOff() / restoreLedStates()"]
     end
     HAL["StatusLightHal"]
     GPIO["GPIO 14 / 12<br/>(green / red)"]
@@ -58,16 +59,20 @@ flowchart LR
 
     P --> EH --> CS --> TICK
     OV --> TICK
+    NMA --> TICK
     TICK -->|setPwr / setMode| HAL --> GPIO
     W -->|set_override| FL
     W -->|set_night_mode / set_clear_night_mode| NM
     FL --> OV
     FL -->|writeOverrides| NVS
-    FL -->|RCP only, ON/OFF| HAL
+    FL -->|"RCP only, ON/OFF<br/>(not during night mode)"| HAL
     HAL -->|"RCP_LED_EVENT (0/1)"| FM --> RCP
     NM -->|scheduleJob / removeJob| CRON
     NM -->|write / clear| NVS
-    CRON -->|start / end time| JOBS --> FL
+    NM -->|"clear → restoreLedStates()"| JOBS
+    CRON -->|start / end time| JOBS
+    JOBS -->|set / reset| NMA
+    JOBS -->|"setRcp(off) / setRcp(override)"| HAL
 ```
 
 The Zigbee LED path is described in detail in [Zigbee LED](#zigbee-led-cc2652p7-yellow).
@@ -174,8 +179,8 @@ lower-priority events.
 | State | Value / priority | Power LED (green) | Mode LED (red) | When to post |
 |-------|------------------|-------------------|----------------|--------------|
 | `ERROR` | 8 (highest) | blink 3 Hz | blink 3 Hz | Unrecoverable fault |
-| `FLASHING` | 7 | blink 3 Hz | blink 3 Hz | RCP or ESP firmware update in progress |
-| `ZIGBEE_ERROR` | 6 | blink 1 Hz | blink 3 Hz | Communication failure with the Zigbee chip |
+| `FLASHING` | 7 | blink 1 Hz | blink 1 Hz | RCP or ESP firmware update in progress |
+| `ZIGBEE_ERROR` | 6 | on | blink 3 Hz | Communication failure with the Zigbee chip |
 | `BOOTING` | 5 | on | off | System starting up (initial state set in the constructor) |
 | `NETWORK_DOWN` | 4 | blink 3 Hz | off | No network connection available |
 | `ZIGBEE_HOST_WAIT` | 3 | blink 1 Hz | off | Zigbee mode, waiting for host application |
@@ -183,9 +188,9 @@ lower-priority events.
 | `ZIGBEE_USB` | 1 | on | on | Zigbee mode, USB host connected |
 | `ZIGBEE_NET` | 0 (lowest) | on | off | Zigbee mode, network host connected |
 
-The table reflects `mapLedsToState()`, which is the source of truth — the per-value comments
-in `status_light_event.h` are partly outdated. LED overrides are applied *after* this
-mapping (see [LED overrides](#led-overrides)). The yellow Zigbee LED is **not** part of the
+The table reflects `mapLedsToState()` (the per-value comments in `status_light_event.h`
+describe the same patterns). LED overrides and the night-mode mask are applied *after*
+this mapping (see [LED overrides](#led-overrides) and [Night mode](#night-mode)). The yellow Zigbee LED is **not** part of the
 automatic mapping (see [Zigbee LED](#zigbee-led-cc2652p7-yellow)).
 
 ### Blink timing
@@ -232,18 +237,22 @@ The same numeric values are used by `web_led_callbacks_t` and the web frontend
   level computed by `mapLedsToState()`, so blinking and overrides never fight.
 - **Zigbee LED** — has no automatic level. `forceLed(RCP, ON|OFF)` calls
   `ledHal.setRcp()` **once**, which posts `RCP_LED_EVENT`. `forceLed(RCP, AUTO)` sends
-  nothing — the LED keeps its last physical state.
+  nothing — the LED keeps its last physical state. While the night mode is active the new
+  override is only stored; `restoreLedStates()` sends it when the night ends.
+
+Overrides are only ever changed by the user (`forceLed()`) — the night mode does **not**
+touch them (see below).
 
 ```mermaid
 stateDiagram-v2
     direction LR
     [*] --> AUTO : no NVS entry
     AUTO --> ON : forceLed(ON)
-    AUTO --> OFF : forceLed(OFF) / night-mode start
-    ON --> OFF : forceLed(OFF) / night-mode start
+    AUTO --> OFF : forceLed(OFF)
+    ON --> OFF : forceLed(OFF)
     OFF --> ON : forceLed(ON)
-    ON --> AUTO : forceLed(AUTO) / night-mode end
-    OFF --> AUTO : forceLed(AUTO) / night-mode end
+    ON --> AUTO : forceLed(AUTO)
+    OFF --> AUTO : forceLed(AUTO)
 ```
 
 ---
@@ -252,6 +261,12 @@ stateDiagram-v2
 
 A daily time range during which all three LEDs are switched off. A range crossing midnight
 (e.g. 22:00 → 06:00) is valid, because start and end are two independent daily jobs.
+
+The night mode is a **mask on top of the overrides**, not an override itself: the flag
+`night_mode_active` (`std::atomic<bool>` — written by the cron task, read by the
+`esp_timer` task) makes `resolveOverride()` return `false` for every LED. The user's
+overrides — in RAM and in NVS — stay untouched, so after the night every LED comes back
+exactly as it was configured.
 
 ```c
 typedef struct {
@@ -264,50 +279,53 @@ typedef struct {
 
 | Method | Behaviour |
 |---|---|
-| `registerNightMode(cfg)` | Calls `clearNightMode()` first (replacing a previous range), then schedules two cron jobs — `{start_minute, start_hour, *, *, *}` → `allLedsOff()`, `{end_minute, end_hour, *, *, *}` → `allLedsAuto()` — and writes `cfg` to NVS (`nm`). Returns `ESP_FAIL` if a job could not be scheduled. |
-| `getNightMode(cfg)` | Returns the last registered range (`00:00`–`00:00` if none was ever registered). |
-| `clearNightMode()` | Removes both cron jobs, resets the handles to `-1` and erases the NVS entry. Returns `ESP_FAIL` if no night mode is active (the web UI shows "Night-Mode already cleared!"). |
+| `registerNightMode(cfg)` | Calls `clearNightMode()` first (replacing a previous range), then schedules two cron jobs — `{start_minute, start_hour, *, *, *}` → `allLedsOff()`, `{end_minute, end_hour, *, *, *}` → `restoreLedStates()` — and writes `cfg` to NVS (`nm`). Returns `ESP_FAIL` if a job could not be scheduled. |
+| `getNightMode(cfg)` | Copies the registered range into `cfg` and returns `ESP_OK`. Returns `ESP_ERR_NOT_FOUND` (and leaves `cfg` untouched) if no night mode is registered — `GET /device/nightmode` then answers `{"enabled": false}`. |
+| `clearNightMode()` | Removes both cron jobs, resets the handles to `-1` and `night_mode_config` to `{}`, calls `restoreLedStates()` (so a night mode cleared mid-night ends immediately) and erases the NVS entry. Returns `ESP_FAIL` if no night mode is registered (the web UI shows "Night-Mode already cleared!"). |
 
 The jobs are static member functions with `ctx = this`:
 
-- **`allLedsOff(ctx)`** — `forceLed(i, OFF)` for every LED.
-- **`allLedsAuto(ctx)`** — `forceLed(i, AUTO)` for every LED.
+- **`allLedsOff(ctx)`** — sets `night_mode_active` and sends `setRcp(false)` once. Green and
+  red go off on the next 100 ms tick.
+- **`restoreLedStates(ctx)`** — clears `night_mode_active`. Green and red follow their
+  override / `LedState` again on the next tick. The Zigbee LED has no automatic level, so
+  a non-`AUTO` RCP override is sent again via `setRcp()`; with `AUTO` it stays off.
 
 ```mermaid
 sequenceDiagram
     participant Cron as Cron_Task
     participant SLM as StatusLightManager
-    participant NVS as StatusLightNvs
+    participant Tick as 100 ms tick
     participant FM as FirmwareManager
 
     Note over Cron: 22:00 (start)
     Cron->>SLM: allLedsOff(this)
-    loop PWR, MODE, RCP
-        SLM->>SLM: forceLed(led, OFF)
-        SLM->>NVS: writeOverrides()
-    end
-    SLM->>FM: RCP_LED_EVENT (0) — via ledHal.setRcp(false)
-    Note over SLM: next 100 ms tick: green + red off
+    SLM->>SLM: night_mode_active = true
+    SLM->>FM: RCP_LED_EVENT (0) — ledHal.setRcp(false)
+    Tick->>SLM: resolveOverride() → false for every LED
+
+    Note over SLM: forceLed() during the night:<br/>override stored + NVS, RCP not sent
 
     Note over Cron: 06:00 (end)
-    Cron->>SLM: allLedsAuto(this)
-    loop PWR, MODE, RCP
-        SLM->>SLM: forceLed(led, AUTO)
-        SLM->>NVS: writeOverrides()
+    Cron->>SLM: restoreLedStates(this)
+    SLM->>SLM: night_mode_active = false
+    alt RCP override is ON / OFF
+        SLM->>FM: RCP_LED_EVENT (1/0) — ledHal.setRcp(override)
     end
-    Note over SLM: green + red follow LedState again,<br/>yellow stays off (AUTO sends nothing)
+    Tick->>SLM: resolveOverride() → override / LedState again
 ```
 
 **Behaviour to be aware of:**
 
-- Night mode works **through the overrides**. Its start overwrites any manual override with
-  `OFF`, its end resets *all* LEDs to `AUTO` — manual `ON`/`OFF` overrides set before the
-  night are not restored.
-- Because the overrides are persisted, a reboot during the night keeps the LEDs off until
-  the end job fires.
-- Clearing the night mode while it is active leaves the LEDs `OFF` — only the jobs are
-  removed; set the overrides back to `AUTO` manually.
-- The yellow Zigbee LED is only switched back on by an explicit `forceLed(RCP, ON)`.
+- `night_mode_active` is **not persisted**. After a reboot during the night the LEDs are
+  on again until the next start job fires — the cron jobs are re-registered on boot, but
+  `init()` does not check whether the current time lies inside the range (the clock is not
+  synced at that point).
+- Re-registering a range during the night (`POST /device/nightmode`) ends the current
+  night, because `registerNightMode()` calls `clearNightMode()` first. The new range only
+  takes effect at its next start time.
+- With the RCP override on `AUTO` the yellow LED stays off after the night, since there is
+  no automatic level to return to.
 
 ---
 
@@ -350,13 +368,14 @@ RCP and the host. Because that UART is a single, exclusively-owned resource, thi
 never talks to it directly.
 
 Instead, `StatusLightHal::setRcp()` posts a separate event, `RCP_LED_EVENT`, whose
-`event_id` is the requested on/off value (0 or 1). It is called **only** from `forceLed()`
-when the RCP override changes to `ON` or `OFF` (manually via `/device/led` or by the night
-mode) — the automatic `LedState` mapping does not drive the Zigbee LED.
+`event_id` is the requested on/off value (0 or 1). It is called from `forceLed()` when the
+RCP override changes to `ON` or `OFF` via `/device/led` (outside the night mode), and from
+the night-mode jobs `allLedsOff()` / `restoreLedStates()` — the automatic `LedState`
+mapping does not drive the Zigbee LED.
 
 ```mermaid
 sequenceDiagram
-    participant SLM as StatusLightManager::forceLed(RCP, ON/OFF)
+    participant SLM as StatusLightManager (forceLed / night-mode jobs)
     participant Loop as Default event loop
     participant FM as FirmwareManager
     participant Task as rcpLedTask
