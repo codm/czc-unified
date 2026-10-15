@@ -412,7 +412,7 @@ sequenceDiagram
 Event-driven LED manager. Other components post `LedState` events; the manager applies priority arbitration and drives the GPIO LEDs via a 100 ms `esp_timer` tick. On top of that:
 
 - **LED overrides** — every LED (`PWR`, `MODE`, `RCP`) can be forced `ON` / `OFF` or handed back to `AUTO` (`forceLed()`), from the web UI via `/device/led`.
-- **Night mode** — a daily time range during which all LEDs are forced off. Implemented as two [`cron`](#cron) jobs (start → all `OFF`, end → all `AUTO`), configured via `/device/nightmode`.
+- **Night mode** — a daily time range during which all LEDs are off. Implemented as two [`cron`](#cron) jobs that set / reset a mask flag (`night_mode_active`) on top of the overrides — the user's overrides stay untouched and apply again after the night. Configured via `/device/nightmode`.
 - **Persistence** — overrides and the night-mode range are stored in NVS (namespace `status_lights`, private `StatusLightNvs` namespace) and restored on boot; the night-mode cron jobs are re-registered in `init()`.
 
 Because `init()` re-registers the night-mode jobs, `Cron::init()` has to run **before** `StatusLightManager::init()` in `main.cpp`. The web server talks to it through the C callback struct `web_led_callbacks_t` (`status_light_callbacks.h`), filled by `fillLedCallbacks()`. See [`components/status_light/README.md`](components/status_light/README.md) for details, diagrams and the NVS layout.
@@ -726,6 +726,7 @@ classDiagram
         -int night_mode_start_handle
         -int night_mode_end_handle
         -night_mode_config_t night_mode_config
+        -atomic~bool~ night_mode_active
         +init() esp_err_t
         +forceLed(led, mode) esp_err_t
         +getOverride(led) int
@@ -734,7 +735,7 @@ classDiagram
         +clearNightMode() esp_err_t
         +fillLedCallbacks(cbs) void
         -allLedsOff(ctx)$ esp_err_t
-        -allLedsAuto(ctx)$ esp_err_t
+        -restoreLedStates(ctx)$ esp_err_t
     }
     class StatusLightHal {
         +init() esp_err_t
@@ -863,9 +864,9 @@ Night-mode jobs are registered during `StatusLightManager::init()` — long befo
 | `POST` | `/device/loglevel` | Set the ESP32 runtime log level — `{"mode": <int>}`, where `0`=None, `1`=Error, `2`=Warning, `3`=Info, `4`=Debug, `5`=Verbose (matches `esp_log_level_t`) |
 | `GET` | `/device/led` | Current LED overrides — `{"pwr": <int>, "mode": <int>, "rcp": <int>}`, `0`=Auto, `1`=On, `2`=Off (matches `LedOverride`) |
 | `POST` | `/device/led` | Set one LED override — `{"led": "pwr\|mode\|rcp", "mode": <int>}`; persisted to NVS |
-| `GET` | `/device/nightmode` | Current night-mode range — `{"start": "HH:MM", "end": "HH:MM"}` |
+| `GET` | `/device/nightmode` | Current night-mode range — `{"enabled": true, "start": "HH:MM", "end": "HH:MM"}`, or `{"enabled": false}` if none is registered |
 | `POST` | `/device/nightmode` | Set night-mode range — `{"start": "HH:MM", "end": "HH:MM"}` (crossing midnight allowed); replaces the previous range, persisted to NVS |
-| `POST` | `/device/nightmode/clear` | Remove the night-mode cron jobs and the NVS entry |
+| `POST` | `/device/nightmode/clear` | Remove the night-mode cron jobs and the NVS entry; ends a currently running night immediately |
 | `GET` | `/network/wifi` | Read WiFi config from NVS |
 | `POST` | `/network/wifi` | Write WiFi config + trigger reconnect |
 | `GET` | `/network/ethernet` | Read Ethernet config from NVS |
@@ -940,7 +941,7 @@ sequenceDiagram
     SLM->>Cron: removeJob(old start/end) (if any)
     SLM->>NVS: clearNightModeState() (if old jobs existed)
     SLM->>Cron: scheduleJob(22:00, allLedsOff, this)
-    SLM->>Cron: scheduleJob(06:00, allLedsAuto, this)
+    SLM->>Cron: scheduleJob(06:00, restoreLedStates, this)
     SLM->>NVS: writeNightModeState(cfg)
     SLM-->>Web: ESP_OK
     Web-->>UI: pack_response(0, "successful", "Night mode saved.")
@@ -995,7 +996,7 @@ polling — not to display anything; the two global hooks own all the logging.
 | Read-only diagnostic (GET) | `/topology`, `/get_properties`, `/available_network` | **Not logged** — backend sends `message: ""` on success, since `error == 0` already says it worked | Logged — backend still sends a real failure message |
 | LED override (POST) | `/device/led` | **Not logged** — `send_result_response()` with an empty success message; the frontend only moves the tri-state highlight once `error == 0` | Logged — `esp_err_to_name()` of the callback result |
 | Night mode (POST) | `/device/nightmode`, `/device/nightmode/clear` | Logged — "Night mode saved." / "Night-Mode successfully cleared" | Logged — `esp_err_to_name()` / "Night-Mode already cleared!" |
-| Settings read (GET) | `/device/led`, `/device/nightmode` | Not logged — plain JSON object, no envelope; only used to fill the UI on page load (`led_load_settings()`) | Not logged |
+| Settings read (GET) | `/device/led`, `/device/nightmode` | Not logged — plain JSON object, no envelope; only used to fill the UI on page load (`led_load_settings()`). Without an active night mode `start`/`end` are omitted, so the time inputs keep their HTML defaults (22:00 / 06:00) | Not logged |
 | Flash (`/flash/esp`, `/flash/rcp`) | — | Not auto-logged — different envelope (`{status, message}`, no `error` field), handler shows its own Log Box manually | same |
 | Calls with a local `error` handler | `saveNetworkConfig()` (WiFi/Ethernet) | n/a | Not auto-logged — the global `ajaxError` fallback skips it so the caller's own handling (e.g. the WiFi reconnect case below) isn't overwritten |
 
