@@ -5,8 +5,8 @@
 #include "driver/gpio.h"
 #include "iot_button.h"
 
-class StatusLightManager;
-class AppController;
+#include "status_light_manager.h"
+#include "app_controller.h"
 
 /** 
  * @brief A class to handle button press events via GPIO on Board::BTN_PIN.

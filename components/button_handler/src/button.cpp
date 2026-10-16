@@ -153,22 +153,23 @@ void Button::usb_network_toggle()
 
 
     DeviceMode current = appController_.getCurrentMode();
-    ESP_LOGI(TAG, "Current mode: %d", static_cast<int>(current));
     if (current == DeviceMode::ZIGBEE_USB) {
-        ESP_LOGI(TAG, "Kurzer Druck: Wechsle zu ZIGBEE_NET");
+        ESP_LOGI(TAG, "ZIGBEE_NET");
         appController_.requestModeChange(DeviceMode::ZIGBEE_NET);
     } else if (current == DeviceMode::ZIGBEE_NET) {
-        ESP_LOGI(TAG, "Kurzer Druck: Wechsle zu ZIGBEE_USB");
+        ESP_LOGI(TAG, "ZIGBEE_USB");
         appController_.requestModeChange(DeviceMode::ZIGBEE_USB);
     }
+    appController_.espReboot();
 }
 
 
 void Button::trigger_factory_reset()
 {
     ESP_LOGI(TAG, "10+ Sec Press at startup: Trigger Factory Reset");
-
+    appController_.espEraseNvs();
     appController_.rcpEraseNvram();
+    appController_.espReboot();
 }
 
 
