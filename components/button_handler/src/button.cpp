@@ -79,13 +79,13 @@ esp_err_t Button::init() {
     uint8_t is_pressed = iot_button_get_key_level(btn_handle_);
     
     if (is_pressed == 1) {
-        ESP_LOGI(TAG, "Button is pressed at startup, triggering factory reset");
+        ESP_LOGW(TAG, "Button is pressed at startup, triggering factory reset");
         press_start_time_ = esp_log_timestamp();
         for (int i = 0; i < 200; ++i) {
             vTaskDelay(pdMS_TO_TICKS(50));
             is_pressed = iot_button_get_key_level(btn_handle_);
             if (is_pressed == 0) {
-                ESP_LOGI(TAG, "Button released before factory reset threshold");
+                ESP_LOGW(TAG, "Button released before factory reset threshold");
                 return ESP_OK;
             }
         }
@@ -124,7 +124,7 @@ void Button::on_press_up(void) {
 
 void Button::handle_long_press(uint32_t press_time_ms)
 {
-    ESP_LOGI(TAG, "Button held for: %d ms", press_time_ms);
+    ESP_LOGD(TAG, "Button held for: %d ms", press_time_ms);
     if (press_time_ms < 3000) {
         status_led_toggle();
     }
@@ -138,35 +138,30 @@ void Button::handle_long_press(uint32_t press_time_ms)
 
 void Button::status_led_toggle()
 {
-    ESP_LOGI(TAG, "0-3 Sec Press: Toggle Status-LED");
+    ESP_LOGI(TAG, "Toggle Status-LED");
     bool enabled = !statusLight_.isLedOutputEnabled();
 
     statusLight_.setLedOutputEnabled(enabled);
 
-    ESP_LOGI(TAG, "Status-LED %s", enabled ? "ON" : "OFF");
 }
 
 
 void Button::usb_network_toggle()
 {
-    ESP_LOGI(TAG, "3-5 Sec Press: Toggle USB/Network Mode");
+    ESP_LOGI(TAG, "Toggle USB/Network Mode");
 
 
     DeviceMode current = appController_.getCurrentMode();
     if (current == DeviceMode::ZIGBEE_USB) {
-        ESP_LOGI(TAG, "ZIGBEE_NET");
         appController_.requestModeChange(DeviceMode::ZIGBEE_NET);
     } else if (current == DeviceMode::ZIGBEE_NET) {
-        ESP_LOGI(TAG, "ZIGBEE_USB");
-        appController_.requestModeChange(DeviceMode::ZIGBEE_USB);
-    }
-    appController_.espReboot();
+        appController_.requestModeChange(DeviceMode::ZIGBEE_USB);    }
 }
 
 
 void Button::trigger_factory_reset()
 {
-    ESP_LOGI(TAG, "10+ Sec Press at startup: Trigger Factory Reset");
+    ESP_LOGI(TAG, "Trigger Factory Reset");
     appController_.espEraseNvs();
     appController_.rcpEraseNvram();
     appController_.espReboot();
