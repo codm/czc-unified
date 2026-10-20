@@ -2,6 +2,8 @@
 
 #include "status_light_nvs.h"
 
+#include <bit>
+
 #include "esp_check.h"
 #include "esp_log.h"
 #include "cron.h"
@@ -12,10 +14,12 @@ ESP_EVENT_DEFINE_BASE(STATUS_LED_EVENT);
 ESP_EVENT_DEFINE_BASE(RCP_LED_EVENT);
 
 StatusLightManager::StatusLightManager()
-    : ledHal{}, tickTimer{nullptr}, currentState{LedState::BOOTING}, tickCount{0}, overrides{},
+    : ledHal{}, tickTimer{nullptr}, tickCount{0}, overrides{}, currentState{},
       night_mode_start_handle{-1}, night_mode_end_handle{-1}, night_mode_config{},
       night_mode_active{false}
 {
+    currentState = 1u << static_cast<uint32_t>(LedState::BOOTING);
+
     size_t overrides_size {sizeof(overrides)};
     esp_err_t ret {StatusLightNvs::readOverrides(static_cast<void*>(overrides.data()), overrides_size)};
     if (ret != ESP_OK) {
@@ -213,14 +217,28 @@ esp_err_t StatusLightManager::restoreLedStates(void* ctx)
     return ESP_OK;
 }
 
-void StatusLightManager::eventHandler(void* arg, esp_event_base_t, int32_t event_id, void*)
+void StatusLightManager::eventHandler(void* arg, esp_event_base_t, int32_t event_id, void* event_data)
 {
-    auto* self             = static_cast<StatusLightManager*>(arg);
-    auto  incomingLedState = static_cast<LedState>(event_id);
+    auto* self = static_cast<StatusLightManager*>(arg);
+    const auto changingState = static_cast<LedState>(event_id);
+    if (changingState >= LedState::ELEMENT_COUNT) 
+        return; 
+    
+    const bool changeValue {event_data ? *static_cast<bool*>(event_data) : true};  
 
-    if (static_cast<int32_t>(incomingLedState) >= static_cast<int32_t>(self->currentState)) {
-        self->currentState = incomingLedState;
+    constexpr uint32_t OPERATING_MODES_MASK {(1u << OPERATING_MODES_COUNT) - 1};
+    const uint32_t stateBit {1u << static_cast<uint32_t>(changingState)};
+
+    uint32_t states {self->currentState.load()};
+    if (changeValue == true) {
+        if (stateBit & OPERATING_MODES_MASK) {
+            states &= ~OPERATING_MODES_MASK;
+        }
+        states |= stateBit;
+    } else {
+        states &= ~stateBit;
     }
+    self->currentState.store(states);
 }
 
 void StatusLightManager::timerCallback(void* arg)
@@ -228,6 +246,16 @@ void StatusLightManager::timerCallback(void* arg)
     auto* self = static_cast<StatusLightManager*>(arg);
     self->tickCount++;
     self->mapLedsToState();
+}
+
+LedState StatusLightManager::resolveCurrentState()
+{
+    const uint32_t states {currentState.load()};
+    if (states == 0)
+        return LedState::BOOTING;
+
+    // highest set bit = highest priority
+    return static_cast<LedState>(std::bit_width(states) - 1);
 }
 
 void StatusLightManager::mapLedsToState()
@@ -241,8 +269,9 @@ void StatusLightManager::mapLedsToState()
     bool pwrLed{false};
     bool modeLed{false};
 
-    switch (currentState) {
+    switch (resolveCurrentState()) {
         case LedState::ZIGBEE_NET:
+        case LedState::ZIGBEE_ROUTER:
             pwrLed  = true;
             modeLed = false;
             break;
@@ -283,6 +312,8 @@ void StatusLightManager::mapLedsToState()
             break;
 
         case LedState::ERROR:
+        case LedState::ELEMENT_COUNT:
+        default:
             pwrLed  = blink3Hz;
             modeLed = blink3Hz;
             break;

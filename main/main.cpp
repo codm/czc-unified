@@ -1,6 +1,5 @@
 #include "NetworkStateMachine.h"
 #include "status_light_manager.h"
-#include "status_light_event.h"
 #include "update_manager.h"
 #include "firmware_manager.h"
 #include "app_controller.h"
@@ -31,11 +30,9 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     Cron::init(); // init before status light necessary 
-    // Status LEDs; initialise first so every step is visible
+    // Status LEDs; initialise first so every step is visible - starts in BOOTING
     StatusLightManager statusLight;
     ESP_ERROR_CHECK(statusLight.init());
-    esp_event_post(STATUS_LED_EVENT,
-                   static_cast<int32_t>(LedState::BOOTING), nullptr, 0, 0);
 
     NetworkStateMachine network;
 

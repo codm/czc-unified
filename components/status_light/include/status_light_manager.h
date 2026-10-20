@@ -32,10 +32,12 @@ private:
 
     StatusLightHal     ledHal;
     esp_timer_handle_t tickTimer;
-    LedState           currentState;
     uint32_t           tickCount;
 
     std::array<LedOverride, LED_COUNT> overrides;
+
+    std::atomic<uint32_t> currentState; // prio bitmask - bit n = LedState n
+    static_assert(static_cast<size_t>(LedState::ELEMENT_COUNT) <= 32, "LedState does not fit into currentState");
 
     int night_mode_start_handle;
     int night_mode_end_handle;
@@ -43,13 +45,15 @@ private:
     std::atomic<bool> night_mode_active; ///< written by the cron task, read by the timer task
 
     /**
-     * @brief ESP event handler — updates `currentState` if the incoming state has
-     *        equal or higher priority than the active one.
+     * @brief ESP event handler — sets or clears the bit of the given `LedState` in `currentState`.
+     *
+     *        Setting an operating mode (value < `OPERATING_MODES_COUNT`) clears all other
+     *        operating modes first - only one of them can be active at a time.
      *
      * @param[in] arg        Pointer to the owning `StatusLightManager` instance
      * @param[in] event_base Must be `STATUS_LED_EVENT`
      * @param[in] event_id   `LedState` cast to `int32_t`
-     * @param[in] event_data Unused
+     * @param[in] event_data `bool` - true = set, false = clear (`nullptr` = set)
      *
      * @return void
      */
@@ -103,6 +107,13 @@ private:
      * @return `ESP_OK`
      */
     static esp_err_t restoreLedStates(void* ctx);
+
+    /**
+     * @brief Returns highest priority LED state of the currentState bitset
+     * 
+     * @return LedState corresponding to the highest prio bit set in currentState
+     */
+    LedState resolveCurrentState();
 
 public:
     /**
