@@ -1,6 +1,7 @@
 #include "proxy_transport.h"
 
 #include "board_config.h"
+#include "status_light_event.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_check.h"
@@ -120,15 +121,17 @@ esp_err_t TcpTransport::open()
     }
 
     ESP_LOGI(TAG, "TCP server listening on port %u", port);
+    StatusLedMode::set(LedState::ZIGBEE_HOST_WAIT);
     return ESP_OK;
 }
 
 esp_err_t TcpTransport::close()
 {
-    if (clientFd >= 0) 
-    { 
-        ::close(clientFd); 
-        clientFd = -1; 
+    if (clientFd >= 0)
+    {
+        ::close(clientFd);
+        clientFd = -1;
+        StatusLedMode::set(LedState::ZIGBEE_HOST_WAIT);
     }
 
     if (serverFd >= 0) 
@@ -156,6 +159,7 @@ int TcpTransport::read(uint8_t* buf, size_t len)
             return -1;
         }
         ESP_LOGI(TAG, "TCP client connected");
+        StatusLedMode::set(LedState::ZIGBEE_NET);
     }
 
     int n = recv(clientFd, buf, len, 0);
@@ -163,6 +167,7 @@ int TcpTransport::read(uint8_t* buf, size_t len)
         ESP_LOGI(TAG, "TCP client disconnected");
         ::close(clientFd);
         clientFd = -1;
+        StatusLedMode::set(LedState::ZIGBEE_HOST_WAIT);
     }
     return n;
 }

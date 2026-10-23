@@ -64,7 +64,16 @@ esp_err_t FirmwareManager::start(DeviceMode mode)
     }
     ESP_LOGD(TAG, "Protocol Interface setup! Starting...");
 
-    ESP_RETURN_ON_ERROR(protocol->start(), TAG, "Error starting protocol");
+    const LedState errorState {(mode == DeviceMode::THREAD) ? LedState::ERROR : LedState::ZIGBEE_ERROR};
+    esp_err_t ret {protocol->start()};
+    if (ret != ESP_OK) {
+        StatusLedMode::set(errorState);
+        ESP_LOGE(TAG, "Error starting protocol: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    StatusLedMode::clear(errorState);
+    if (mode != DeviceMode::ZIGBEE_NET) // set by TcpTransport - a host may already be connected here
+        StatusLedMode::set(ledStateForMode(mode));
 
     activeMode = mode;
     return ESP_OK;
@@ -73,6 +82,16 @@ esp_err_t FirmwareManager::start(DeviceMode mode)
 esp_err_t FirmwareManager::stop()
 {
     return protocol->stop();
+}
+
+LedState FirmwareManager::ledStateForMode(DeviceMode mode)
+{
+    switch (mode) {
+        case DeviceMode::THREAD:        return LedState::THREAD_ACTIVE;
+        case DeviceMode::ZIGBEE_USB:    return LedState::ZIGBEE_USB;
+        case DeviceMode::ZIGBEE_ROUTER: return LedState::ZIGBEE_ROUTER;
+        default:                        return LedState::BOOTING;
+    }
 }
 
 DeviceMode FirmwareManager::getActiveMode()

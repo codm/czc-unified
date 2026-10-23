@@ -409,7 +409,7 @@ sequenceDiagram
 
 ##### `status_light`
 
-Event-driven LED manager. Other components post `LedState` events; the manager applies priority arbitration and drives the GPIO LEDs via a 100 ms `esp_timer` tick. On top of that:
+Event-driven LED manager. Other components set and clear `LedState`s via `StatusLedMode::set()` / `clear()` (or the RAII helper `StatusLedModeScope`), which post `STATUS_LED_EVENT` into the default event loop. The manager keeps every active state in an atomic bitmask and shows the highest one: operating modes (`BOOTING`, `THREAD_ACTIVE`, `ZIGBEE_*`) replace each other, faults (`NETWORK_DOWN`, `ZIGBEE_ERROR`, `FLASHING`, `ERROR`) are layered on top and cleared by whoever set them. The GPIO LEDs are driven via a 100 ms `esp_timer` tick. On top of that:
 
 - **LED overrides** — every LED (`PWR`, `MODE`, `RCP`) can be forced `ON` / `OFF` or handed back to `AUTO` (`forceLed()`), from the web UI via `/device/led`.
 - **Night mode** — a daily time range during which all LEDs are off. Implemented as two [`cron`](#cron) jobs that set / reset a mask flag (`night_mode_active`) on top of the overrides — the user's overrides stay untouched and apply again after the night. Configured via `/device/nightmode`.
@@ -721,7 +721,7 @@ classDiagram
     }
 
     class StatusLightManager {
-        -LedState currentState
+        -atomic~uint32_t~ currentState
         -array~LedOverride~ overrides
         -int night_mode_start_handle
         -int night_mode_end_handle
@@ -736,6 +736,17 @@ classDiagram
         +fillLedCallbacks(cbs) void
         -allLedsOff(ctx)$ esp_err_t
         -restoreLedStates(ctx)$ esp_err_t
+        -resolveCurrentState() LedState
+    }
+    class StatusLedMode {
+        <<namespace>>
+        +set(state) void
+        +clear(state) void
+    }
+    class StatusLedModeScope {
+        <<RAII>>
+        +StatusLedModeScope(state)
+        +~StatusLedModeScope()
     }
     class StatusLightHal {
         +init() esp_err_t
@@ -808,6 +819,8 @@ classDiagram
     StatusLightManager *-- StatusLightHal
     StatusLightManager ..> StatusLightNvs : overrides + night mode
     StatusLightManager ..> Cron : night-mode jobs
+    StatusLedModeScope ..> StatusLedMode : set / clear
+    StatusLedMode ..> StatusLightManager : STATUS_LED_EVENT
     StatusLightHal ..> FirmwareManager : RCP_LED_EVENT
 
     WebServer ..> sse_events : sse_events_init()
@@ -824,7 +837,7 @@ classDiagram
 flowchart TD
     boot(["Boot\nnvs_flash_init + default event loop"])
     cron["Cron::init()\n(task skips ticks until time is synced)"]
-    led["StatusLightManager ctor + init()\nrestore overrides (NVS 'ov')\nrestore night mode (NVS 'nm') → Cron jobs\npost BOOTING"]
+    led["StatusLightManager ctor + init()\nrestore overrides (NVS 'ov')\nrestore night mode (NVS 'nm') → Cron jobs\nstarts in BOOTING"]
     net["Network up\n(NetworkStateMachine)"]
     web["Web server start\n(fw / net / led callbacks)"]
     conn["Wait for routed connection\n(waitUntilInternetIsConnected)"]

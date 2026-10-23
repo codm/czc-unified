@@ -1,6 +1,7 @@
 #include "zigbee_proxy_controller.h"
 
 #include "board_config.h"
+#include "status_light_event.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_check.h"
@@ -197,6 +198,7 @@ esp_err_t ZigbeeProxyController::resetRcp()
         }
         err = (err == ESP_OK) ? startErr : err;
     }
+    (err == ESP_OK) ? StatusLedMode::clear(LedState::ZIGBEE_ERROR) : StatusLedMode::set(LedState::ZIGBEE_ERROR);
 
     xSemaphoreGive(rcpAccessMutex);
     return err;
@@ -227,6 +229,7 @@ esp_err_t ZigbeeProxyController::factoryReset()
         }
         err = (err == ESP_OK) ? startErr : err;
     }
+    (err == ESP_OK) ? StatusLedMode::clear(LedState::ZIGBEE_ERROR) : StatusLedMode::set(LedState::ZIGBEE_ERROR);
 
     xSemaphoreGive(rcpAccessMutex);
     return err;

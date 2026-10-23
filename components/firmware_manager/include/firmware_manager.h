@@ -107,6 +107,17 @@ private:
     static void ledEventHandler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data);
     static void rcpLedTaskFunc(void* arg);
+
+    /**
+     * @brief Maps a device mode to the status LED operating mode shown after a successful start.
+     *
+     * @param[in] mode  Started device mode
+     *
+     * @return `LedState` operating mode - `BOOTING` for unknown modes
+     *
+     * @note `ZIGBEE_NET` is not mapped - `TcpTransport` sets `ZIGBEE_HOST_WAIT` / `ZIGBEE_NET` itself
+     */
+    static LedState ledStateForMode(DeviceMode mode);
 };
 
 #endif // CZC_FIRMWARE_MANAGER_H_

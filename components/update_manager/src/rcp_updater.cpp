@@ -11,6 +11,7 @@
 #include "freertos/task.h"
 
 #include "sse_events.hpp"
+#include "status_light_event.h"
 
 static const char* TAG = "RcpUpdater";
 
@@ -27,6 +28,7 @@ RcpUpdater::RcpUpdater()
 
 esp_err_t RcpUpdater::flash(const char* url)
 {
+    StatusLedModeScope flashing{LedState::FLASHING};
     Sse_events::flash::post_device_state(SseDeviceMode::FLASHING, nullptr);
 
     esp_err_t initRet = cc_bsl.init(Board::RCP_UART);

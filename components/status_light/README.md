@@ -28,21 +28,22 @@ All three are reachable from the web UI (*Debug → LEDs / Night-Mode*) through
 ## Architecture
 
 The automatic LED display is a pure **event subscriber** — other components never call
-the manager directly, they post `LedState` events into the default ESP event loop.
-Overrides and night mode are the only direct entry points, and they are only used by the
-web server (via C callbacks) and by the manager's own cron jobs.
+the manager directly, they set and clear `LedState`s via `StatusLedMode::set()` /
+`clear()`, which post into the default ESP event loop. Overrides and night mode are the
+only direct entry points, and they are only used by the web server (via C callbacks) and
+by the manager's own cron jobs.
 
 ```mermaid
 flowchart LR
     subgraph producers["any component"]
-        P["esp_event_post(STATUS_LED_EVENT, LedState)"]
+        P["StatusLedMode::set / clear(LedState)<br/>StatusLedModeScope"]
     end
     subgraph web["esp_ot_br_server"]
         W["/device/led<br/>/device/nightmode"]
     end
     subgraph slm["StatusLightManager"]
-        EH["eventHandler()<br/>priority arbitration"]
-        CS[("currentState")]
+        EH["eventHandler()<br/>set / clear bit"]
+        CS[("currentState<br/>atomic bitmask")]
         OV[("overrides[3]")]
         NMA[("night_mode_active")]
         TICK["timerCallback() — 100 ms<br/>mapLedsToState()<br/>resolveOverride()"]
@@ -57,7 +58,7 @@ flowchart LR
     CRON["Cron"]
     NVS[("NVS 'status_lights'<br/>ov / nm")]
 
-    P --> EH --> CS --> TICK
+    P -->|"STATUS_LED_EVENT<br/>(id = LedState, data = bool)"| EH --> CS -->|"resolveCurrentState()<br/>highest bit"| TICK
     OV --> TICK
     NMA --> TICK
     TICK -->|setPwr / setMode| HAL --> GPIO
@@ -81,7 +82,7 @@ The Zigbee LED path is described in detail in [Zigbee LED](#zigbee-led-cc2652p7-
 
 | File | Role |
 |------|------|
-| `include/status_light_event.h` | Public — `LedState` enum + `STATUS_LED_EVENT` base (post into it) and `RCP_LED_EVENT` base (subscribe to it to drive the Zigbee LED). |
+| `include/status_light_event.h` | Public — `LedState` enum, `StatusLedMode::set()` / `clear()`, `StatusLedModeScope`, `STATUS_LED_EVENT` base and `RCP_LED_EVENT` base (subscribe to it to drive the Zigbee LED). The only header a producer needs. |
 | `include/status_light_manager.h` | Public — `StatusLightManager` class, `LedId` / `LedOverride` enums. Include this in `main` to call `init()` / `fillLedCallbacks()`. |
 | `include/status_light_callbacks.h` | Public, C-compatible — `night_mode_config_t` and `web_led_callbacks_t`, included by `esp_br_web.h`. |
 | `include/status_light_hal.h` | `StatusLightHal` — raw LED control (`setPwr()`, `setMode()`, `setRcp()`). Only used by the manager. |
@@ -129,6 +130,7 @@ sequenceDiagram
 
     Main->>Cron: Cron::init()
     Main->>SLM: StatusLightManager()
+    SLM->>SLM: currentState = BOOTING
     SLM->>NVS: readOverrides(overrides, 3)
     alt not found
         SLM->>SLM: overrides.fill(AUTO)
@@ -140,79 +142,133 @@ sequenceDiagram
         SLM->>Cron: registerNightMode(cfg) → 2× scheduleJob()
         SLM->>NVS: writeNightModeState(cfg)
     end
-    Main->>SLM: esp_event_post(STATUS_LED_EVENT, BOOTING)
 ```
+
+The constructor starts in `BOOTING` — `main` does not need to post anything. `BOOTING`
+stays visible until the first operating mode is set (see [LED states](#led-states)).
 
 The cron jobs only fire once `TimeService` has synced the clock — until then the night
 mode is registered but inactive.
 
 ---
 
-## Posting state changes
+## Setting and clearing states
 
-Include `status_light_event.h` in any component that needs to report a state. No other header is needed.
+Include `status_light_event.h` in any component that needs to report a state. No other
+header is needed — and no reference to the manager.
 
 ```cpp
 #include "status_light_event.h"
 
-// Signal that flashing has started
-esp_event_post(STATUS_LED_EVENT,
-               static_cast<int32_t>(LedState::FLASHING),
-               nullptr, 0, 0);
+// Operating mode - replaces the previous one, no clear needed
+StatusLedMode::set(LedState::THREAD_ACTIVE);
 
-// Signal that the Thread stack is up
-esp_event_post(STATUS_LED_EVENT,
-               static_cast<int32_t>(LedState::THREAD_ACTIVE),
-               nullptr, 0, 0);
+// Fault - set and cleared by the code that caused it
+StatusLedMode::set(LedState::NETWORK_DOWN);
+StatusLedMode::clear(LedState::NETWORK_DOWN);
+
+// Fault for the duration of a scope - cleared on every return path
+esp_err_t RcpUpdater::flash(const char* url)
+{
+    StatusLedModeScope flashing{LedState::FLASHING};
+    ...
+}
 ```
 
-> **Note:** `esp_event_post` is fire-and-forget and safe to call from any task (use `esp_event_isr_post` from an ISR context).
+`set()` / `clear()` post `STATUS_LED_EVENT` with `event_id` = `LedState` and `event_data`
+= `bool` (`true` = set, `false` = clear). The old format without data (`nullptr`) is still
+accepted and treated as *set*. Unknown ids (`>= ELEMENT_COUNT`) are ignored.
+
+> **Notes**
+> - Posting uses timeout `0`, so the call never blocks — it is safe from any task, including
+>   handlers running on the default event loop itself. If the event queue is full the event
+>   is dropped and a warning (`Dropped LED state …`) is logged; a lost `clear()` would leave
+>   the fault visible.
+> - `StatusLedModeScope` relies on its destructor. `vTaskDelete(nullptr)` ends a task
+>   **without** running destructors — in task functions that end that way, call `clear()`
+>   explicitly before `vTaskDelete()`.
 
 ---
 
 ## LED states
 
-States are prioritised: `eventHandler()` only accepts an incoming state whose numeric value
-is **greater than or equal to** the current one. A higher-priority state therefore blocks
-lower-priority events.
+The manager does not keep a single current state but **every state that currently
+applies**: `currentState` is a bitmask, bit *n* = `LedState` with value *n*. The LEDs show
+the **highest set bit** — the enum order *is* the priority.
 
-| State | Value / priority | Power LED (green) | Mode LED (red) | When to post |
-|-------|------------------|-------------------|----------------|--------------|
-| `ERROR` | 8 (highest) | blink 3 Hz | blink 3 Hz | Unrecoverable fault |
-| `FLASHING` | 7 | blink 1 Hz | blink 1 Hz | RCP or ESP firmware update in progress |
-| `ZIGBEE_ERROR` | 6 | on | blink 3 Hz | Communication failure with the Zigbee chip |
-| `BOOTING` | 5 | on | off | System starting up (initial state set in the constructor) |
-| `NETWORK_DOWN` | 4 | blink 3 Hz | off | No network connection available |
-| `ZIGBEE_HOST_WAIT` | 3 | blink 1 Hz | off | Zigbee mode, waiting for host application |
-| `THREAD_ACTIVE` | 2 | on | blink 1 Hz | Thread/OTBR stack running |
-| `ZIGBEE_USB` | 1 | on | on | Zigbee mode, USB host connected |
-| `ZIGBEE_NET` | 0 (lowest) | on | off | Zigbee mode, network host connected |
+There are two kinds of states:
 
-The table reflects `mapLedsToState()` (the per-value comments in `status_light_event.h`
-describe the same patterns). LED overrides and the night-mode mask are applied *after*
-this mapping (see [LED overrides](#led-overrides) and [Night mode](#night-mode)). The yellow Zigbee LED is **not** part of the
-automatic mapping (see [Zigbee LED](#zigbee-led-cc2652p7-yellow)).
+- **Operating modes** — every value up to and including `BOOTING`
+  (`OPERATING_MODES_COUNT = BOOTING + 1`). Exactly one is active. Setting one clears all
+  other operating-mode bits first, so a mode is never cleared explicitly.
+- **Faults** — every value above `BOOTING`. They are independent of the mode and of each
+  other; each is set **and cleared** by the code that causes it. While a fault is active it
+  hides the mode underneath; once it is cleared, the mode becomes visible again
+  automatically.
+
+| State | Value | Kind | Power LED (green) | Mode LED (red) | Set / cleared when |
+|-------|-------|------|-------------------|----------------|--------------------|
+| `ERROR` | 9 (highest) | fault | blink 3 Hz | blink 3 Hz | Unrecoverable fault — e.g. failed RCP flash in `AppController::requestRcpFlash()` (protocol stopped, RCP firmware possibly incomplete); cleared by the next successful flash |
+| `FLASHING` | 8 | fault | blink 1 Hz | blink 1 Hz | RCP or ESP firmware update in progress |
+| `ZIGBEE_ERROR` | 7 | fault | on | blink 3 Hz | Communication failure with the Zigbee chip |
+| `NETWORK_DOWN` | 6 | fault | blink 3 Hz | off | No network connection available |
+| `BOOTING` | 5 | mode | on | off | Initial state (constructor) until a protocol is started |
+| `ZIGBEE_ROUTER` | 4 | mode | on | off | Zigbee router mode — RCP runs standalone |
+| `ZIGBEE_HOST_WAIT` | 3 | mode | blink 1 Hz | off | Zigbee network mode, waiting for a TCP host |
+| `THREAD_ACTIVE` | 2 | mode | on | blink 1 Hz | Thread/OTBR stack running |
+| `ZIGBEE_USB` | 1 | mode | on | on | Zigbee USB mode |
+| `ZIGBEE_NET` | 0 (lowest) | mode | on | off | Zigbee network mode, TCP host connected |
+
+An empty mask (all modes cleared) is shown as `BOOTING`. The table reflects
+`mapLedsToState()` (the per-value comments in `status_light_event.h` describe the same
+patterns). LED overrides and the night-mode mask are applied *after* this mapping (see
+[LED overrides](#led-overrides) and [Night mode](#night-mode)). The yellow Zigbee LED is
+**not** part of the automatic mapping (see [Zigbee LED](#zigbee-led-cc2652p7-yellow)).
+
+Example — RCP update in Thread mode, network drops meanwhile:
+
+| Event | Mask | Shown |
+|---|---|---|
+| Boot | `BOOTING` | BOOTING |
+| Thread started | `THREAD_ACTIVE` | THREAD_ACTIVE |
+| Flash starts | `THREAD_ACTIVE`, `FLASHING` | FLASHING |
+| Network lost | `THREAD_ACTIVE`, `NETWORK_DOWN`, `FLASHING` | FLASHING |
+| Flash done (scope ends) | `THREAD_ACTIVE`, `NETWORK_DOWN` | NETWORK_DOWN |
+| Network back | `THREAD_ACTIVE` | THREAD_ACTIVE |
+
+### Who sets which state
+
+| State | Set by | Cleared / replaced by |
+|---|---|---|
+| `BOOTING` | `StatusLightManager` constructor | first protocol start |
+| `THREAD_ACTIVE`, `ZIGBEE_USB`, `ZIGBEE_ROUTER` | `FirmwareManager::start()` after a successful `protocol->start()` (`ledStateForMode()`) | next operating mode |
+| `ZIGBEE_HOST_WAIT` | `TcpTransport::open()`, `TcpTransport::read()` on disconnect, `TcpTransport::close()` with a client connected | `ZIGBEE_NET` / next operating mode |
+| `ZIGBEE_NET` | `TcpTransport::read()` after `accept()` | `ZIGBEE_HOST_WAIT` / next operating mode |
+| `ZIGBEE_ERROR` | `FirmwareManager::start()` failed (Zigbee modes), `ZigbeeProxyController::resetRcp()` / `factoryReset()` failed | successful start / reset / erase |
+| `ERROR` | `FirmwareManager::start()` failed (Thread), `AppController::requestRcpFlash()` failed | successful start (Thread) / successful flash |
+| `FLASHING` | `RcpUpdater::flash()` (`StatusLedModeScope`), `OtaUpdater::otaTask()` | end of `flash()` / every OTA error path (success reboots) |
+| `NETWORK_DOWN` | *not yet — follows with the `NetworkStateMachine` refactor* | |
+
+`ZIGBEE_NET` mode is the one operating mode not set by `FirmwareManager`: the proxy tasks
+start inside `protocol->start()`, so a host that reconnects immediately could post
+`ZIGBEE_NET` before `start()` returns. `TcpTransport::open()` runs before the tasks are
+created, so its `ZIGBEE_HOST_WAIT` is always queued first.
+
+### Thread safety
+
+`eventHandler()` runs on the default event loop task, `mapLedsToState()` on the
+`esp_timer` task. `currentState` is therefore a `std::atomic<uint32_t>`. The handler is the
+only writer: it loads the mask, computes the new value locally and writes it back with a
+single `store()` — the timer never sees an intermediate value (e.g. the moment between
+clearing the old mode and setting the new one). `resolveCurrentState()` reads the mask once
+and takes the highest bit via `std::bit_width(mask) - 1`. A `static_assert` ensures that
+`LedState` fits into 32 bits.
 
 ### Blink timing
 
 The internal timer fires every **100 ms**. Blink patterns:
 - **1 Hz** — 500 ms on / 500 ms off (`(tickCount % 10) < 5`)
 - **~3 Hz** — 100 ms on / 200 ms off, ≈ 3.3 Hz (`(tickCount % 3) == 0`)
-
-### Clearing a state
-
-There is no explicit "clear" call. When a condition resolves, post the state that reflects the new situation:
-
-```cpp
-// Flash finished → post whatever the normal operating state is now
-esp_event_post(STATUS_LED_EVENT,
-               static_cast<int32_t>(LedState::THREAD_ACTIVE),
-               nullptr, 0, 0);
-```
-
-Note that because of the `>=` rule a lower-priority follow-up state is **ignored** while a
-higher one is active — the caller is responsible for posting the correct follow-up state
-and for the arbitration to allow it.
 
 ---
 
@@ -351,11 +407,16 @@ are stored as raw blobs of the in-memory structures.
 
 ## Adding a new LED state
 
-1. Add a value to the `LedState` enum in `status_light_event.h`. Choose a numeric value
-   that reflects the desired priority relative to existing states.
+1. Add a value to the `LedState` enum in `status_light_event.h`. Its position is its
+   priority — the values are implicit, so inserting shifts every state above it.
+   - An **operating mode** goes *below* `BOOTING` (`OPERATING_MODES_COUNT` follows
+     automatically, since it is derived from `BOOTING`).
+   - A **fault** goes *above* `BOOTING`.
+   - `ELEMENT_COUNT` must stay last; the `static_assert` fails once there are more than 32 states.
 2. Add a `case` branch in `StatusLightManager::mapLedsToState()` in
    `status_light_manager.cpp` defining the LED pattern for the new state.
-3. Update the [LED states](#led-states) table in this README.
+3. Add the matching `set()` / `clear()` calls in the producing component.
+4. Update the [LED states](#led-states) table in this README.
 
 ---
 
