@@ -4,6 +4,7 @@
 #include "update_manager.h"
 #include "firmware_manager.h"
 #include "app_controller.h"
+#include "button.h"
 #include "esp_br_web.h"
 #include "esp_spiffs.h"
 #include "nvs_flash.h"
@@ -19,6 +20,7 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+
     // Status LEDs; initialise first so every step is visible
     StatusLightManager statusLight;
     ESP_ERROR_CHECK(statusLight.init());
@@ -26,6 +28,8 @@ extern "C" void app_main(void)
                    static_cast<int32_t>(LedState::BOOTING), nullptr, 0, 0);
 
     NetworkStateMachine network;
+    
+    
 
     // Mount SPIFFS for the web frontend
     esp_vfs_spiffs_conf_t spiffsConf{};
@@ -38,6 +42,11 @@ extern "C" void app_main(void)
     UpdateManager updateManager;
     FirmwareManager firmwareManager;
     AppController appController{updateManager, firmwareManager};
+
+
+    Button button{statusLight, appController};
+    ESP_ERROR_CHECK(button.init());
+
 
     // Start webserver 
     web_firmware_callbacks_t fwCbs{};

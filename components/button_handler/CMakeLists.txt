@@ -1,0 +1,16 @@
+idf_component_register(
+    SRC_DIRS src
+    INCLUDE_DIRS include
+    PRIV_REQUIRES
+        board_config
+        esp_driver_gpio
+
+    REQUIRES
+        esp_event
+        esp_timer
+        log
+        button
+        status_light
+        app_controller
+        firmware_manager
+)

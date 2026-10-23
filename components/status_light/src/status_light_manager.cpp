@@ -104,6 +104,40 @@ void StatusLightManager::mapLedsToState()
             break;
     }
 
-    ledHal.setPwr(pwrLed);
-    ledHal.setMode(modeLed);
+    if (ledOutputEnabled) {
+        ledHal.setPwr(pwrLed);
+        ledHal.setMode(modeLed);
+    }
+
+    
+}
+
+
+
+
+void StatusLightManager::setLedOutputEnabled(bool enabled)
+{
+    ledOutputEnabled = enabled;
+
+    if (!enabled) {
+        ledHal.setPwr(false);
+        ledHal.setMode(false);
+    }
+}
+
+
+bool StatusLightManager::isLedOutputEnabled() const
+{
+    return ledOutputEnabled;
+}
+
+void StatusLightManager::blinkLeds(int durationMs)
+{
+    ledOutputEnabled = false;
+    ledHal.setPwr(true);
+    ledHal.setMode(true);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    ledHal.setPwr(false);
+    ledHal.setMode(false);
+    vTaskDelay(pdMS_TO_TICKS(1500));
 }

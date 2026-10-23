@@ -30,6 +30,7 @@ private:
     esp_timer_handle_t tickTimer;
     LedState           currentState;
     uint32_t           tickCount;
+    bool ledOutputEnabled{true};
 
     /**
      * @brief ESP event handler — updates `currentState` if the incoming state has
@@ -68,6 +69,38 @@ public:
      * @brief Constructor — initialises all members to safe defaults.
      */
     StatusLightManager();
+
+    /**
+     * @brief Enable or disable LED output.
+     *
+     *        When disabled, both LEDs are forced off regardless of currentState.
+     *
+     * @param[in] enabled  true = enable LED output, false = force both LEDs off
+     *
+     * @return void
+     */
+    void setLedOutputEnabled(bool enabled);
+
+
+    /**
+     * @brief Check if LED output is enabled.
+     *
+     * @return true if LED output is enabled, false if both LEDs are forced off
+     */
+    bool isLedOutputEnabled() const;
+
+    /**
+     * @brief Blink both LEDs for a specified duration.
+     *
+     *        This is a blocking call that overrides the currentState and tickCount
+     *        for the duration of the blink. After the duration, the previous state
+     *        is restored.
+     *
+     * @param[in] durationMs  Duration in milliseconds to blink both LEDs
+     *
+     * @return void
+     */
+    void blinkLeds(int durationMs);
 
     /**
      * @brief Initialise the HAL, register the event handler and start the tick timer.
