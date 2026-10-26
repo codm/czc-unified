@@ -1,4 +1,4 @@
-# CZC - OpenThreadBorderRouter Firmware ALPHA
+# CZC-unified ALPHA
 
 This Firmware is in the ALPHA Phase and far away from being complete!
 
@@ -11,6 +11,9 @@ as possible (firmware version, steps to reproduce, log output).
 
 Known Issues:
 
+- Thread stack shutdown does not work reliably! This affects switching
+from Thread to any other protocol. Workaround: factory reset the ESP (debug options) the setup dialog will appear again and you can easily switch to any other mode. 
+- ZigBee Router mode is not properly implemented.
 - The web interface is unreachable if the RCP is not configured correctly (Only Thread mode is affected - this is an IDF Issue).
 
 ### Capturing Debug Output
@@ -257,7 +260,7 @@ This Chapter gives Architectural and specific Project coding Documentation
 ### File Structure
 
 ```
-czc_ot_firmware/
+czc-unified/
 ├── main/
 │   └── main.cpp                  Boot sequence, wires all components
 │

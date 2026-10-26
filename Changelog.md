@@ -5,7 +5,6 @@
     - CZC State feedback via the on board LEDs 
     - Frontend LED control 
     - Configurable Night-Mode 
-- 
 
 ## V2.0.0-alpha - 29.09.2026
 
