@@ -5,7 +5,6 @@
 #include "driver/gpio.h"
 #include "iot_button.h"
 
-#include "status_light_manager.h"
 #include "app_controller.h"
 
 /** 
@@ -26,10 +25,9 @@ public:
     /**
      * @brief Constructor for the Button class
      * 
-     * @param[in] statusLightManager Reference to the StatusLightManager instance
      * @param[in] appController Reference to the AppController instance
      */
-    Button(StatusLightManager& statusLightManager, AppController& appController);
+    Button(AppController& appController);
     ~Button();
 
     Button(const Button&) = delete;
@@ -83,7 +81,6 @@ private:
     static void press_up_cb_adapter(void *arg, void *usr_data);
 
     gpio_num_t pin_;
-    StatusLightManager& statusLight_;
     AppController& appController_;
     button_handle_t btn_handle_{nullptr};
     uint32_t press_start_time_{0};

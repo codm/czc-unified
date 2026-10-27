@@ -17,8 +17,13 @@ esp_err_t StatusLightManager::init()
 
     ESP_RETURN_ON_ERROR(
         esp_event_handler_register(STATUS_LED_EVENT, ESP_EVENT_ANY_ID,
-                                   &eventHandler, this),
-        TAG, "Event handler register failed");
+                                   &ledEventHandler, this),
+        TAG, "LED Event handler register failed");
+
+    ESP_RETURN_ON_ERROR(
+        esp_event_handler_register(BUTTON_EVENTS, ESP_EVENT_ANY_ID,
+                                   &buttonEventHandler, this),
+        TAG, "Button Event handler register failed");
 
     esp_timer_create_args_t timerArgs{};
     timerArgs.callback = &timerCallback;
@@ -35,7 +40,7 @@ esp_err_t StatusLightManager::init()
     return ESP_OK;
 }
 
-void StatusLightManager::eventHandler(void* arg, esp_event_base_t /*event_base*/,
+void StatusLightManager::ledEventHandler(void* arg, esp_event_base_t /*event_base*/,
                                       int32_t event_id, void* /*event_data*/)
 {
     auto* self             = static_cast<StatusLightManager*>(arg);
@@ -43,6 +48,18 @@ void StatusLightManager::eventHandler(void* arg, esp_event_base_t /*event_base*/
 
     if (static_cast<int32_t>(incomingLedState) >= static_cast<int32_t>(self->currentState)) {
         self->currentState = incomingLedState;
+    }
+}
+
+void StatusLightManager::buttonEventHandler(void* arg, esp_event_base_t /*event_base*/,
+                                      int32_t event_id, void* /*event_data*/)
+{
+    auto* self             = static_cast<StatusLightManager*>(arg);
+
+    if (event_id == BUTTON_EVENT_TOGGLE_LED) {
+        self->setLedOutputEnabled(!self->isLedOutputEnabled());
+    } else if (event_id == BUTTON_EVENT_BLINK_LED) {
+        self->blinkLeds(1500);
     }
 }
 

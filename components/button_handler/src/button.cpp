@@ -2,18 +2,22 @@
 #include "button_gpio.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
+#include "esp_event.h"
 
 #include "button.h"
-#include "status_light_manager.h"
 #include "app_controller.h"
 #include "protocol_controller.h"
 #include "board_config.h"
+#include "status_light_event.h"
+
 
 
 static const char* TAG = "Button";
 
-Button::Button(StatusLightManager& statusLight, AppController& appController)
-    : statusLight_(statusLight), appController_(appController) {}
+ESP_EVENT_DEFINE_BASE(BUTTON_EVENTS);
+
+Button::Button(AppController& appController)
+    : appController_(appController) {}
 
 Button::~Button() {
     if (btn_handle_) {
@@ -91,7 +95,13 @@ esp_err_t Button::init() {
         }
         while (is_pressed == 1) {
             ESP_LOGI(TAG, "Button held for factory reset, blinking LEDs");
-            statusLight_.blinkLeds(3000);
+            esp_event_post(
+                BUTTON_EVENTS,
+                BUTTON_EVENT_BLINK_LED,
+                nullptr,
+                0,
+                portMAX_DELAY
+            );
             is_pressed = iot_button_get_key_level(btn_handle_);
         }
     }
@@ -139,9 +149,13 @@ void Button::handle_long_press(uint32_t press_time_ms)
 void Button::status_led_toggle()
 {
     ESP_LOGI(TAG, "Toggle Status-LED");
-    bool enabled = !statusLight_.isLedOutputEnabled();
-
-    statusLight_.setLedOutputEnabled(enabled);
+    esp_event_post(
+        BUTTON_EVENTS,
+        BUTTON_EVENT_TOGGLE_LED,
+        nullptr,
+        0,
+        portMAX_DELAY
+    );
 
 }
 

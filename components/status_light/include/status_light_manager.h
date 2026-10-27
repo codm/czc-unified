@@ -43,8 +43,18 @@ private:
      *
      * @return void
      */
-    static void eventHandler(void* arg, esp_event_base_t event_base,
+    static void ledEventHandler(void* arg, esp_event_base_t event_base,
                              int32_t event_id, void* event_data);
+
+    /**
+     * @brief ESP event handler for button events — toggles LED output or blinks both LEDs.
+     *     * @param[in] arg        Pointer to the owning `StatusLightManager` instance
+     * @param[in] event_base Must be `BUTTON_EVENTS`
+     * @param[in] event_id   `BUTTON_EVENT_TOGGLE_LED` or `BUTTON_EVENT_BLINK_LED`
+     * @param[in] event_data Unused
+     * @return void
+     */
+    static void buttonEventHandler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
     /**
      * @brief esp_timer callback — increments the tick counter and triggers mapLedsToState().

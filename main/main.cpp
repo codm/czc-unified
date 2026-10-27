@@ -44,7 +44,7 @@ extern "C" void app_main(void)
     AppController appController{updateManager, firmwareManager};
 
 
-    Button button{statusLight, appController};
+    Button button{appController};
     ESP_ERROR_CHECK(button.init());
 
 
