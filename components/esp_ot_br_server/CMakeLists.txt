@@ -26,6 +26,7 @@ idf_component_register(
     PRIV_INCLUDE_DIRS private_include
     REQUIRES
         esp_http_server
+        esp_https_server
         ${JSON_COMPONENT}
 
     PRIV_REQUIRES 
@@ -35,6 +36,10 @@ idf_component_register(
         spiffs
         freertos
         openthread
+
+    EMBED_TXTFILES
+        "${CMAKE_SOURCE_DIR}/main/certs/servercert.pem"
+        "${CMAKE_SOURCE_DIR}/main/certs/serverkey.pem"
 
     EMBED_FILES "favicon.ico"
 )

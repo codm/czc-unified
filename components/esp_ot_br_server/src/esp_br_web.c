@@ -20,6 +20,7 @@
 #include "esp_event.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
+#include "esp_https_server.h"
 #include "esp_log.h"
 #include "esp_openthread.h"
 #include "esp_openthread_border_router.h"
@@ -65,6 +66,7 @@ typedef struct http_server {
     uint16_t port;            /* port */
 } http_server_t;
 
+static httpd_handle_t s_redirect_server = NULL; // new redirect to https version
 static http_server_t s_server = {NULL, {"", ""}, "", 80}; /* the instance of server */
 static web_firmware_callbacks_t s_fw_cbs  = {0};
 static web_network_callbacks_t  s_net_cbs = {0};
@@ -1532,6 +1534,58 @@ static httpd_uri_t s_device_handlers[] = {
  *      -   ESP_OK: on success
  *      -   ESP_FAIL: on failure
  */
+
+
+// http handler for redirect
+static esp_err_t http_to_https_redirect_handler(httpd_req_t *req)
+{
+    char host[128] = {0};
+    if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) == ESP_OK) {
+        char target_url[1024];
+        snprintf(target_url, sizeof(target_url), "https://%s%s", host, req->uri);
+
+        httpd_resp_set_status(req, "301 Moved Permanently");
+        httpd_resp_set_hdr(req, "Location", target_url);
+        httpd_resp_send(req, NULL, 0);
+    } else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Host header missing");
+    }
+    return ESP_OK;
+}
+
+// Start redirect http server on port 80
+static void start_redirect_server(void)
+{
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 80;
+    config.stack_size = 4 * 1024;
+    config.uri_match_fn = httpd_uri_match_wildcard;
+
+    if (httpd_start(&s_redirect_server, &config) == ESP_OK) {
+        httpd_uri_t redirect_uri = {
+            .uri      = "/*",
+            .method   = HTTP_GET,
+            .handler  = http_to_https_redirect_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(s_redirect_server, &redirect_uri);
+        ESP_LOGI(WEB_TAG, "HTTP-to-HTTPS redirect server started on port 80");
+    } else {
+        ESP_LOGE(WEB_TAG, "Failed to start HTTP redirect server on port 80");
+    }
+}
+
+
+
+
+
+// Import the certificates and keys (main/certs/)
+extern const unsigned char servercert_pem_start[] asm("_binary_servercert_pem_start"); 
+extern const unsigned char servercert_pem_end[]   asm("_binary_servercert_pem_end");
+extern const unsigned char serverkey_pem_start[] asm("_binary_serverkey_pem_start");
+extern const unsigned char serverkey_pem_end[]   asm("_binary_serverkey_pem_end");
+
+
 static httpd_handle_t *start_esp_br_http_server(const char *base_path)
 {
     ESP_RETURN_ON_FALSE(base_path, NULL, WEB_TAG, "Invalid http server path");
@@ -1544,15 +1598,23 @@ static httpd_handle_t *start_esp_br_http_server(const char *base_path)
 #endif
 
     strlcpy(s_server.data.base_path, base_path, ESP_VFS_PATH_MAX + 1);
+    
+    // Configuration of HTTPS server (new logic)
+    httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
+    config.httpd.max_uri_handlers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 3;
+    config.httpd.max_resp_headers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 3;
+    config.httpd.uri_match_fn = httpd_uri_match_wildcard;
+    config.httpd.stack_size = 8 * 1024;
 
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 3;
-    config.max_resp_headers = (sizeof(s_resource_handlers) + sizeof(s_web_gui_handlers) + sizeof(s_device_handlers)) / sizeof(httpd_uri_t) + 3;
-    config.uri_match_fn = httpd_uri_match_wildcard;
-    config.stack_size = 8 * 1024;
-    s_server.port = config.server_port;
+    config.servercert = servercert_pem_start;
+    config.servercert_len = servercert_pem_end - servercert_pem_start;
+    config.prvtkey_pem = serverkey_pem_start;
+    config.prvtkey_len = serverkey_pem_end - serverkey_pem_start;
 
-    ESP_RETURN_ON_FALSE(!httpd_start(&s_server.handle, &config), NULL, WEB_TAG, "Failed to start web server");
+    config.port_secure = 443;
+    s_server.port = config.port_secure;
+
+    ESP_RETURN_ON_FALSE(!httpd_ssl_start(&s_server.handle, &config), NULL, WEB_TAG, "Failed to start HTTPS web server");
 
     httpd_uri_t default_uris_get = {.uri = "/*",
                                     .method = HTTP_GET,
@@ -1610,4 +1672,6 @@ void esp_br_web_start(const char *base_path,
     if (start_esp_br_http_server(base_path) == NULL) {
         ESP_LOGE(WEB_TAG, "Failed to start web server");
     }
+
+    start_redirect_server();
 }
