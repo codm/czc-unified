@@ -9,6 +9,7 @@ idf_component_register(SRCS "main.cpp"
                                 time_service
                                 cron
 
+                                button_handler
                                 spiffs
                                 nvs_flash
                                 esp_event

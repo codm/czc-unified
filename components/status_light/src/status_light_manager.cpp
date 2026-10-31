@@ -32,9 +32,15 @@ esp_err_t StatusLightManager::init()
 {
     ESP_RETURN_ON_ERROR(ledHal.init(), TAG, "HAL init failed");
 
-    ESP_RETURN_ON_ERROR(esp_event_handler_register(STATUS_LED_EVENT, ESP_EVENT_ANY_ID,
-                        &eventHandler, this),
-                        TAG, "Event handler register failed");
+    ESP_RETURN_ON_ERROR(
+        esp_event_handler_register(STATUS_LED_EVENT, ESP_EVENT_ANY_ID,
+                                   &ledEventHandler, this),
+        TAG, "LED Event handler register failed");
+
+    ESP_RETURN_ON_ERROR(
+        esp_event_handler_register(BUTTON_EVENTS, ESP_EVENT_ANY_ID,
+                                   &buttonEventHandler, this),
+        TAG, "Button Event handler register failed");
 
     esp_timer_create_args_t timerArgs{};
     timerArgs.callback = &timerCallback;
@@ -85,6 +91,8 @@ esp_err_t StatusLightManager::forceLed(LedId led, LedOverride mode)
 }
 
 int StatusLightManager::getOverride(LedId led) const
+void StatusLightManager::ledEventHandler(void* arg, esp_event_base_t /*event_base*/,
+                                      int32_t event_id, void* /*event_data*/)
 {
     auto index = static_cast<size_t>(led);
     return index < LED_COUNT ? static_cast<int>(overrides[index]) : static_cast<int>(LedOverride::AUTO);
@@ -241,6 +249,18 @@ void StatusLightManager::eventHandler(void* arg, esp_event_base_t, int32_t event
     self->currentState.store(states);
 }
 
+void StatusLightManager::buttonEventHandler(void* arg, esp_event_base_t /*event_base*/,
+                                      int32_t event_id, void* /*event_data*/)
+{
+    auto* self             = static_cast<StatusLightManager*>(arg);
+
+    if (event_id == BUTTON_EVENT_TOGGLE_LED) {
+        self->setLedOutputEnabled(!self->isLedOutputEnabled());
+    } else if (event_id == BUTTON_EVENT_BLINK_LED) {
+        self->blinkLeds(1500);
+    }
+}
+
 void StatusLightManager::timerCallback(void* arg)
 {
     auto* self = static_cast<StatusLightManager*>(arg);
@@ -321,4 +341,34 @@ void StatusLightManager::mapLedsToState()
 
     ledHal.setPwr(resolveOverride(LedId::PWR, pwrLed));
     ledHal.setMode(resolveOverride(LedId::MODE, modeLed));
+}
+
+
+
+
+void StatusLightManager::setLedeled(bool enabled)
+{
+    ledOutputEnabled = enabled;
+
+    if (!enabled) {
+        ledHal.setPwr(false);
+        ledHal.setMode(false);
+    }
+}
+
+
+bool StatusLightManager::isLedOutputEnabled() const
+{
+    return ledOutputEnabled;
+}
+
+void StatusLightManager::blinkLeds(int durationMs)
+{
+    ledOutputEnabled = false;
+    ledHal.setPwr(true);
+    ledHal.setMode(true);
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    ledHal.setPwr(false);
+    ledHal.setMode(false);
+    vTaskDelay(pdMS_TO_TICKS(1500));
 }

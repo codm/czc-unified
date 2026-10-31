@@ -7,6 +7,7 @@
 #include "esp_log.h"
 
 ESP_EVENT_DECLARE_BASE(STATUS_LED_EVENT);
+ESP_EVENT_DECLARE_BASE(BUTTON_EVENTS);
 
 /** @brief Posted to change and react to changes of the RCP LED in the firmware manager */
 ESP_EVENT_DECLARE_BASE(RCP_LED_EVENT);
@@ -61,6 +62,12 @@ class StatusLedModeScope {
         ~StatusLedModeScope()                              { StatusLedMode::clear(state); }
     private:
         LedState state;
+};
+
+
+enum {
+    BUTTON_EVENT_BLINK_LED,
+    BUTTON_EVENT_TOGGLE_LED
 };
 
 #endif // CZC_STATUS_LIGHT_EVENT_H_
