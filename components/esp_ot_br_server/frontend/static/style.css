@@ -1036,6 +1036,18 @@ input:disabled {
     margin-left: 10px;
 }
 
+.save-status[data-type="error"] {
+    color: #b42318;
+}
+
+.save-status[data-type="success"] {
+    color: #067647;
+}
+
+.save-status[data-type="notice"] {
+    color: #8a5a00;
+}
+
 /* Button row at the bottom of a form */
 .form-actions {
     margin-top: 16px;

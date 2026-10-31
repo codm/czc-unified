@@ -21,6 +21,7 @@ const NET_STATE = {
 $(document).ready(function() {
   initFrontend();
   initEventSource();
+  initSecuritySettings();
 });
 
 /**
@@ -334,6 +335,126 @@ function toggleStaticIpFields(prefix)
   let dhcp = document.getElementById(prefix + '-dhcp').checked;
   document.getElementById(prefix + '-static-fields').querySelectorAll('input').forEach(function(inp) {
     inp.disabled = dhcp;
+  });
+}
+
+function initSecuritySettings()
+{
+  const webserverToggle = document.getElementById('security-disable-webserver');
+  const authToggle = document.getElementById('security-auth-enabled');
+  const authFields = document.getElementById('security-auth-fields');
+  const whitelistToggle = document.getElementById('security-whitelist-enabled');
+  const whitelistFields = document.getElementById('security-whitelist-fields');
+  const ipInput = document.getElementById('security-socket-ip');
+  const webserverSave = document.getElementById('security-webserver-save');
+  const authSave = document.getElementById('security-auth-save');
+  const whitelistSave = document.getElementById('security-whitelist-save');
+  const webserverStatus = document.getElementById('security-webserver-status');
+  const authStatus = document.getElementById('security-auth-status');
+  const whitelistStatus = document.getElementById('security-whitelist-status');
+
+  if (!webserverToggle || !authToggle || !authFields || !whitelistToggle || !whitelistFields ||
+      !ipInput || !webserverSave || !authSave || !whitelistSave ||
+      !webserverStatus || !authStatus || !whitelistStatus)
+    return;
+
+  function setExpanded(toggle, fields)
+  {
+    fields.classList.toggle('hidden', !toggle.checked);
+    toggle.setAttribute('aria-expanded', toggle.checked ? 'true' : 'false');
+  }
+
+  function showSecurityStatus(status, message, type)
+  {
+    status.textContent = message;
+    status.dataset.type = type;
+    status.style.display = 'inline';
+  }
+
+  function saveSecurityOption(url, payload, status, button)
+  {
+    button.disabled = true;
+    showSecurityStatus(status, 'Saving…', 'notice');
+    $.ajax({
+      url: url,
+      type: 'POST',
+      contentType: 'application/json',
+      dataType: 'json',
+      data: JSON.stringify(payload),
+      success: function(response)
+      {
+        if (response && response.error === 0) {
+          showSecurityStatus(status, response.message || 'Saved.', 'success');
+        } else {
+          showSecurityStatus(status,
+            response && response.message ? response.message : 'Device returned an invalid response.',
+            'error');
+        }
+      },
+      error: function(jqXHR)
+      {
+        showSecurityStatus(status, 'Save failed (HTTP ' + jqXHR.status + ').', 'error');
+      },
+      complete: function()
+      {
+        button.disabled = false;
+      }
+    });
+  }
+
+  webserverSave.addEventListener('click', function() {
+    saveSecurityOption('/security/webserver',
+      { disable_webserver_on_socket: webserverToggle.checked }, webserverStatus, webserverSave);
+  });
+
+  authToggle.addEventListener('change', function() {
+    setExpanded(authToggle, authFields);
+    authStatus.style.display = 'none';
+  });
+  whitelistToggle.addEventListener('change', function() {
+    setExpanded(whitelistToggle, whitelistFields);
+    whitelistStatus.style.display = 'none';
+  });
+  setExpanded(authToggle, authFields);
+  setExpanded(whitelistToggle, whitelistFields);
+
+  authSave.addEventListener('click', function() {
+    const username = document.getElementById('security-username').value.trim();
+    const password = document.getElementById('security-password').value;
+    if (authToggle.checked && (!username || !password)) {
+      showSecurityStatus(authStatus, 'Enter both a username and password.', 'error');
+      return;
+    }
+    const payload = { webserver_auth_enabled: authToggle.checked };
+    if (authToggle.checked) {
+      payload.security_username = username;
+      payload.security_password = password;
+    }
+    saveSecurityOption('/security/auth', payload, authStatus, authSave);
+  });
+
+  whitelistSave.addEventListener('click', function() {
+    if (whitelistToggle.checked && !ipInput.checkValidity()) {
+      showSecurityStatus(whitelistStatus, 'Invalid IPv4 address. Please enter a valid address.', 'error');
+      ipInput.focus();
+      return;
+    }
+    const payload = { socket_whitelist_enabled: whitelistToggle.checked };
+    if (whitelistToggle.checked)
+      payload.socket_whitelist_ip = ipInput.value.trim();
+    saveSecurityOption('/security/socket-whitelist', payload, whitelistStatus, whitelistSave);
+  });
+
+  webserverToggle.addEventListener('change', function() {
+    webserverStatus.style.display = 'none';
+  });
+  authFields.querySelectorAll('input').forEach(function(input) {
+    input.addEventListener('input', function() {
+      authStatus.style.display = 'none';
+    });
+  });
+  ipInput.addEventListener('input', function() {
+    whitelistStatus.style.display = 'none';
   });
 }
 

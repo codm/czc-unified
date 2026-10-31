@@ -322,6 +322,9 @@ Visible only in coordinator mode (modes 1 and 2). Shows two buttons: **USB / UAR
 | `POST` | `/network/wifi` | Save WiFi config |
 | `GET` | `/network/ethernet` | Load Ethernet config form |
 | `POST` | `/network/ethernet` | Save Ethernet config |
+| `POST` | `/security/webserver` | Save `disable_webserver_on_socket` independently |
+| `POST` | `/security/auth` | Save Web-Auth enabled state and, when enabled, username/password |
+| `POST` | `/security/socket-whitelist` | Save socket whitelist enabled state and IPv4 address |
 | `POST` | `/flash/rcp` | Flash CC2652 RCP live with a specific firmware URL + mode — no reboot; used for first-boot setup and manual re-flash |
 | `POST` | `/flash/esp` | OTA update of the ESP32 — reboots on success |
 | `GET` | `/get_properties` | OpenThread network properties (Thread mode) |
