@@ -97,10 +97,12 @@ private:
     esp_err_t setNvramClearStartops(); 
 
 public:
-    /** 
-     * @brief Initialises ZstackMt object with UART_NUM_MAX as default
+    /**
+     * @brief Initialises ZstackMt object with the given UART port.
+     *
+     * @param[in] port  UART port this instance operates on (default: unset)
      */
-    ZstackMt();
+    explicit ZstackMt(uart_port_t port = UART_NUM_MAX);
     ~ZstackMt();
 
     /**
@@ -129,15 +131,30 @@ public:
      */
     esp_err_t eraseNvram();
 
-    /** @brief Reboots RCP and waits for the Reset callback 
-     * 
+    /** @brief Reboots RCP and waits for the Reset callback
+     *
      * @param[in] timeoutMs max poll time in ms
-     * 
-     * @return `ESP_OK` when the RCP is back up in time - `ESP_FAIL` when the RCP doesnt answer in time 
-     * 
+     *
+     * @return `ESP_OK` when the RCP is back up in time - `ESP_FAIL` when the RCP doesnt answer in time
+     *
      * @warning UART has to be configured for ZstackMt for a valid answer
     */
     esp_err_t rebootRcp(uint32_t timeoutMs);
+
+    /**
+     * @brief Sets the RCP-hosted status LED (LED index 1) via a vendor Z-Stack MT command.
+     *
+     *        Uses the UART port this instance was constructed with (or last
+     *        passed to `init()`) — does not touch RST/BSL GPIOs and does not
+     *        install/remove the UART driver, so it is safe to call while the
+     *        port is already installed and in use elsewhere, as long as
+     *        nothing else is reading from it concurrently.
+     *
+     * @param[in] ledState  true = LED on, false = LED off
+     *
+     * @return `ESP_OK` on success - `ESP_FAIL` on send/receive error - `ESP_ERR_INVALID_RESPONSE` on failure status
+     */
+    esp_err_t setLed(bool ledState);
 };
 
 #endif // ZSTACK_H_

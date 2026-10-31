@@ -6,6 +6,9 @@ idf_component_register(SRCS "main.cpp"
                                 firmware_manager
                                 app_controller
                                 esp_ot_br_server
+                                time_service
+                                cron
+
                                 button_handler
                                 spiffs
                                 nvs_flash

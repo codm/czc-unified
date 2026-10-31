@@ -4,8 +4,8 @@
 #include "esp_err.h"
 #include "network_config.h"
 
-constexpr const char* NVS_WIFI_NAMESPACE = "wifi_cfg";
-constexpr const char* NVS_ETH_NAMESPACE  = "eth_cfg";
+constexpr char* NVS_WIFI_NAMESPACE = "wifi_cfg";
+constexpr char* NVS_ETH_NAMESPACE  = "eth_cfg";
 
 namespace NvsBinding {
 

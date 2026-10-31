@@ -255,6 +255,11 @@ esp_err_t ThreadController::factoryReset()
     return start();
 }
 
+esp_err_t ThreadController::setRcpLed(bool /*ledState*/)
+{
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
 void ThreadController::rcpFailureHandler()
 {
     ESP_LOGW(TAG, "RCP failure — hardware reset");

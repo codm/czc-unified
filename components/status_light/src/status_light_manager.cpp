@@ -1,15 +1,32 @@
 #include "status_light_manager.h"
 
+#include "status_light_nvs.h"
+
+#include <bit>
+
 #include "esp_check.h"
 #include "esp_log.h"
+#include "cron.h"
 
 const char* StatusLightManager::TAG = "StatusLightManager";
 
 ESP_EVENT_DEFINE_BASE(STATUS_LED_EVENT);
+ESP_EVENT_DEFINE_BASE(RCP_LED_EVENT);
 
 StatusLightManager::StatusLightManager()
-    : ledHal{}, tickTimer{nullptr}, currentState{LedState::BOOTING}, tickCount{0}
-{}
+    : ledHal{}, tickTimer{nullptr}, tickCount{0}, overrides{}, currentState{},
+      night_mode_start_handle{-1}, night_mode_end_handle{-1}, night_mode_config{},
+      night_mode_active{false}
+{
+    currentState = 1u << static_cast<uint32_t>(LedState::BOOTING);
+
+    size_t overrides_size {sizeof(overrides)};
+    esp_err_t ret {StatusLightNvs::readOverrides(static_cast<void*>(overrides.data()), overrides_size)};
+    if (ret != ESP_OK) {
+        ESP_LOGD(TAG, "Could not read Overrides status from NVS - filling with zeros");
+        overrides.fill(LedOverride::AUTO);
+    }
+}
 
 esp_err_t StatusLightManager::init()
 {
@@ -36,19 +53,200 @@ esp_err_t StatusLightManager::init()
     ESP_RETURN_ON_ERROR(esp_timer_start_periodic(tickTimer, 100 * 1000 /* 100 ms */),
                         TAG, "Timer start failed");
 
+    night_mode_config_t stored_night_mode {};
+    size_t config_size {sizeof(night_mode_config_t)};
+    esp_err_t ret {StatusLightNvs::readNightModeState(static_cast<void*>(&stored_night_mode), config_size)};
+    if (ret == ESP_OK) {
+        ESP_LOGD(TAG, "Retrieved Night-Mode config from NVS - continuing to setup cron jobs");
+        registerNightMode(stored_night_mode);
+    }
+    else 
+        ESP_LOGD(TAG, "No Night-Mode config found in NVS");
+
     ESP_LOGI(TAG, "Initialised");
     return ESP_OK;
 }
 
+esp_err_t StatusLightManager::forceLed(LedId led, LedOverride mode)
+{
+    auto index = static_cast<size_t>(led);
+    ESP_RETURN_ON_FALSE(index < LED_COUNT, ESP_ERR_INVALID_ARG, TAG, "Unknown LED %u", index);
+    ESP_RETURN_ON_FALSE(mode <= LedOverride::OFF, ESP_ERR_INVALID_ARG, TAG, "Unknown override %u",
+                        static_cast<unsigned>(mode));
+
+    if (overrides[index] == mode) {
+        return ESP_OK;
+    }
+    overrides[index] = mode;
+
+    /* during night mode the RCP LED is only stored - restoreLedStates() sends it at the end */
+    if (led == LedId::RCP && mode != LedOverride::AUTO && !night_mode_active) {
+        ledHal.setRcp(mode == LedOverride::ON);
+    }
+
+    size_t overrides_size {sizeof(overrides)};
+    StatusLightNvs::writeOverrides(overrides.data(), overrides_size);
+
+    return ESP_OK;
+}
+
+int StatusLightManager::getOverride(LedId led) const
 void StatusLightManager::ledEventHandler(void* arg, esp_event_base_t /*event_base*/,
                                       int32_t event_id, void* /*event_data*/)
 {
-    auto* self             = static_cast<StatusLightManager*>(arg);
-    auto  incomingLedState = static_cast<LedState>(event_id);
+    auto index = static_cast<size_t>(led);
+    return index < LED_COUNT ? static_cast<int>(overrides[index]) : static_cast<int>(LedOverride::AUTO);
+}
 
-    if (static_cast<int32_t>(incomingLedState) >= static_cast<int32_t>(self->currentState)) {
-        self->currentState = incomingLedState;
+esp_err_t StatusLightManager::registerNightMode(night_mode_config_t config)
+{
+    clearNightMode();
+
+    cron_timing_t night_mode_timing {
+        .minute = config.start_minute,
+        .hour = config.start_hour,
+        .dotm = CRON_ANY,
+        .month = CRON_ANY,
+        .weekday = CRON_ANY
+    };
+    int ret = Cron::scheduleJob(night_mode_timing, allLedsOff, this);
+    if (ret == -1) {
+        ESP_LOGE(TAG, "Error scheduling nightmode start job");
+        return ESP_FAIL;
     }
+    night_mode_start_handle = ret;
+    ESP_LOGD(TAG, "Registered night mode start cron job for: %0d:%0d", night_mode_timing.hour, night_mode_timing.minute);
+
+    night_mode_timing.minute = config.end_minute;
+    night_mode_timing.hour = config.end_hour;
+
+    ret = Cron::scheduleJob(night_mode_timing, restoreLedStates, this);
+    if (ret == -1) {
+        ESP_LOGE(TAG, "Error scheduling nightmode end job");
+        return ESP_FAIL;
+    }
+    night_mode_end_handle = ret;
+    night_mode_config = config;
+    ESP_LOGD(TAG, "Registered night mode end cron job for: %0d:%0d", night_mode_timing.hour, night_mode_timing.minute);
+
+    size_t config_size {sizeof(config)};
+    StatusLightNvs::writeNightModeState(static_cast<void*>(&config), config_size);
+    ESP_LOGD(TAG, "Written Night-Mode config to NVS");
+
+    return ESP_OK;
+}
+
+esp_err_t StatusLightManager::getNightMode(night_mode_config_t& config)
+{
+    if (night_mode_start_handle == -1 || night_mode_end_handle == -1)
+        return ESP_ERR_NOT_FOUND;
+
+    config = night_mode_config;
+    return ESP_OK;
+}
+
+esp_err_t StatusLightManager::clearNightMode()
+{
+    if (night_mode_start_handle == -1 || night_mode_end_handle == -1) {
+        ESP_LOGW(TAG, "tried to clear NightMode - at least one handle is not set!");
+        return ESP_FAIL;
+    }
+
+    ESP_RETURN_ON_ERROR(Cron::removeJob(night_mode_start_handle), TAG, "Could not remove nightmode start job");
+    ESP_RETURN_ON_ERROR(Cron::removeJob(night_mode_end_handle), TAG, "Could not remove nightmode end job");
+    night_mode_start_handle = -1;
+    night_mode_end_handle = -1;
+    night_mode_config = {};
+    ESP_LOGD(TAG, "Successfully cleared Night Mode cron job");
+
+    restoreLedStates(this);
+
+    StatusLightNvs::clearNightModeState();
+    ESP_LOGD(TAG, "Cleared Night-Mode nvs entry");
+    return ESP_OK;
+}
+
+void StatusLightManager::fillLedCallbacks(web_led_callbacks_t *cbs)
+{
+    cbs->set_override = [](void* ctx, int led, int mode)
+    {
+        return static_cast<StatusLightManager*>(ctx)->forceLed(static_cast<LedId>(led),
+                                                              static_cast<LedOverride>(mode));
+    };
+    cbs->get_override = [](void* ctx, int led, int* mode_out)
+    {
+        *mode_out = static_cast<StatusLightManager*>(ctx)->getOverride(static_cast<LedId>(led));
+        return ESP_OK;
+    };
+    cbs->set_night_mode = [](void* ctx, const night_mode_config_t* cfg) {
+        return static_cast<StatusLightManager*>(ctx)->registerNightMode(*cfg);
+    };
+    cbs->get_night_mode = [](void* ctx, night_mode_config_t* cfg) {
+        return static_cast<StatusLightManager*>(ctx)->getNightMode(*cfg);
+    };
+    cbs->set_clear_night_mode = [](void* ctx) {
+        return static_cast<StatusLightManager*>(ctx)->clearNightMode();
+    };
+    cbs->ctx = this;
+}
+
+bool StatusLightManager::resolveOverride(LedId led, bool autoLevel) const
+{
+    if (night_mode_active) {
+        return false;
+    }
+
+    switch (static_cast<LedOverride>(getOverride(led))) {
+        case LedOverride::ON:  return true;
+        case LedOverride::OFF: return false;
+        default:               return autoLevel;
+    }
+}
+
+esp_err_t StatusLightManager::allLedsOff(void* ctx)
+{
+    auto self {static_cast<StatusLightManager*>(ctx)};
+    self->night_mode_active = true;
+    self->ledHal.setRcp(false);
+    ESP_LOGD(TAG, "Night mode started - all LEDs off");
+    return ESP_OK;
+}
+
+esp_err_t StatusLightManager::restoreLedStates(void* ctx)
+{
+    auto self {static_cast<StatusLightManager*>(ctx)};
+    self->night_mode_active = false;
+
+    LedOverride rcp {self->overrides[static_cast<size_t>(LedId::RCP)]};
+    if (rcp != LedOverride::AUTO) {
+        self->ledHal.setRcp(rcp == LedOverride::ON);
+    }
+    ESP_LOGD(TAG, "Night mode ended - LEDs follow their overrides again");
+    return ESP_OK;
+}
+
+void StatusLightManager::eventHandler(void* arg, esp_event_base_t, int32_t event_id, void* event_data)
+{
+    auto* self = static_cast<StatusLightManager*>(arg);
+    const auto changingState = static_cast<LedState>(event_id);
+    if (changingState >= LedState::ELEMENT_COUNT) 
+        return; 
+    
+    const bool changeValue {event_data ? *static_cast<bool*>(event_data) : true};  
+
+    constexpr uint32_t OPERATING_MODES_MASK {(1u << OPERATING_MODES_COUNT) - 1};
+    const uint32_t stateBit {1u << static_cast<uint32_t>(changingState)};
+
+    uint32_t states {self->currentState.load()};
+    if (changeValue == true) {
+        if (stateBit & OPERATING_MODES_MASK) {
+            states &= ~OPERATING_MODES_MASK;
+        }
+        states |= stateBit;
+    } else {
+        states &= ~stateBit;
+    }
+    self->currentState.store(states);
 }
 
 void StatusLightManager::buttonEventHandler(void* arg, esp_event_base_t /*event_base*/,
@@ -70,6 +268,16 @@ void StatusLightManager::timerCallback(void* arg)
     self->mapLedsToState();
 }
 
+LedState StatusLightManager::resolveCurrentState()
+{
+    const uint32_t states {currentState.load()};
+    if (states == 0)
+        return LedState::BOOTING;
+
+    // highest set bit = highest priority
+    return static_cast<LedState>(std::bit_width(states) - 1);
+}
+
 void StatusLightManager::mapLedsToState()
 {
     // Blink helpers based on tickCount (one tick = 100 ms):
@@ -81,8 +289,9 @@ void StatusLightManager::mapLedsToState()
     bool pwrLed{false};
     bool modeLed{false};
 
-    switch (currentState) {
+    switch (resolveCurrentState()) {
         case LedState::ZIGBEE_NET:
+        case LedState::ZIGBEE_ROUTER:
             pwrLed  = true;
             modeLed = false;
             break;
@@ -94,19 +303,22 @@ void StatusLightManager::mapLedsToState()
 
         case LedState::THREAD_ACTIVE:
             pwrLed  = true;
-            modeLed = false;
+            modeLed = blink1Hz;
             break;
 
         case LedState::ZIGBEE_HOST_WAIT:
-        case LedState::NETWORK_DOWN:
-        case LedState::BOOTING:
             pwrLed  = blink1Hz;
             modeLed = false;
             break;
 
-        case LedState::ZIGBEE_CONNECTING:
+        case LedState::NETWORK_DOWN:
+            pwrLed  = blink3Hz;
+            modeLed = false;
+            break;
+
+        case LedState::BOOTING:
             pwrLed  = true;
-            modeLed = blink1Hz;
+            modeLed = false;
             break;
 
         case LedState::ZIGBEE_ERROR:
@@ -115,24 +327,26 @@ void StatusLightManager::mapLedsToState()
             break;
 
         case LedState::FLASHING:
+            pwrLed = blink1Hz;
+            modeLed = blink1Hz;
+            break;
+
         case LedState::ERROR:
+        case LedState::ELEMENT_COUNT:
+        default:
             pwrLed  = blink3Hz;
             modeLed = blink3Hz;
             break;
     }
 
-    if (ledOutputEnabled) {
-        ledHal.setPwr(pwrLed);
-        ledHal.setMode(modeLed);
-    }
-
-    
+    ledHal.setPwr(resolveOverride(LedId::PWR, pwrLed));
+    ledHal.setMode(resolveOverride(LedId::MODE, modeLed));
 }
 
 
 
 
-void StatusLightManager::setLedOutputEnabled(bool enabled)
+void StatusLightManager::setLedeled(bool enabled)
 {
     ledOutputEnabled = enabled;
 
