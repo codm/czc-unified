@@ -4,6 +4,7 @@
 #include "esp_event.h"
 
 ESP_EVENT_DECLARE_BASE(STATUS_LED_EVENT);
+ESP_EVENT_DECLARE_BASE(BUTTON_EVENTS);
 
 /**
  * @brief LED states posted as events into the default event loop.
@@ -27,6 +28,12 @@ enum class LedState : int32_t {
     ZIGBEE_ERROR      = 7,  ///< ZigBee communication error — mode blinks 3x/s
     FLASHING          = 8,  ///< Firmware update in progress — both LEDs blink fast
     ERROR             = 9,  ///< General fault — both LEDs blink fast
+};
+
+
+enum {
+    BUTTON_EVENT_BLINK_LED,
+    BUTTON_EVENT_TOGGLE_LED
 };
 
 #endif // CZC_STATUS_LIGHT_EVENT_H_

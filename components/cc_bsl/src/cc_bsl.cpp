@@ -108,11 +108,11 @@ esp_err_t CcBsl::enterBootloader()
                  gpio_get_level(Board::CC_RST_PIN), gpio_get_level(Board::CC_BSL_PIN));
         vTaskDelay(pdMS_TO_TICKS(50));
 
-        ESP_LOGD(TAG, "RST=1 — CC2652 samples BSL pin now");
+        ESP_LOGI(TAG, "RST=1 — CC2652 samples BSL pin now");
         gpio_set_level(Board::CC_RST_PIN, 1);
         vTaskDelay(pdMS_TO_TICKS(500));
 
-        ESP_LOGD(TAG, "BSL=1");
+        ESP_LOGI(TAG, "BSL=1");
         gpio_set_level(Board::CC_BSL_PIN, 1);
         vTaskDelay(pdMS_TO_TICKS(500));
     }
@@ -230,6 +230,8 @@ esp_err_t CcBsl::sendPacket(const uint8_t* cmdAndData, size_t length)
 
 esp_err_t CcBsl::uartSync()
 {
+    uart_flush_input(uartPort);
+
     uint8_t syncBytes[2]{CMD_UART_SYNC, CMD_UART_SYNC};
     if (uart_write_bytes(uartPort, syncBytes, sizeof(syncBytes)) < 0) {
         return ESP_FAIL;

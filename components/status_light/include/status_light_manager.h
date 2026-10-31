@@ -30,6 +30,7 @@ private:
     esp_timer_handle_t tickTimer;
     LedState           currentState;
     uint32_t           tickCount;
+    bool ledOutputEnabled{true};
 
     /**
      * @brief ESP event handler — updates `currentState` if the incoming state has
@@ -42,8 +43,18 @@ private:
      *
      * @return void
      */
-    static void eventHandler(void* arg, esp_event_base_t event_base,
+    static void ledEventHandler(void* arg, esp_event_base_t event_base,
                              int32_t event_id, void* event_data);
+
+    /**
+     * @brief ESP event handler for button events — toggles LED output or blinks both LEDs.
+     *     * @param[in] arg        Pointer to the owning `StatusLightManager` instance
+     * @param[in] event_base Must be `BUTTON_EVENTS`
+     * @param[in] event_id   `BUTTON_EVENT_TOGGLE_LED` or `BUTTON_EVENT_BLINK_LED`
+     * @param[in] event_data Unused
+     * @return void
+     */
+    static void buttonEventHandler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
     /**
      * @brief esp_timer callback — increments the tick counter and triggers mapLedsToState().
@@ -68,6 +79,38 @@ public:
      * @brief Constructor — initialises all members to safe defaults.
      */
     StatusLightManager();
+
+    /**
+     * @brief Enable or disable LED output.
+     *
+     *        When disabled, both LEDs are forced off regardless of currentState.
+     *
+     * @param[in] enabled  true = enable LED output, false = force both LEDs off
+     *
+     * @return void
+     */
+    void setLedOutputEnabled(bool enabled);
+
+
+    /**
+     * @brief Check if LED output is enabled.
+     *
+     * @return true if LED output is enabled, false if both LEDs are forced off
+     */
+    bool isLedOutputEnabled() const;
+
+    /**
+     * @brief Blink both LEDs for a specified duration.
+     *
+     *        This is a blocking call that overrides the currentState and tickCount
+     *        for the duration of the blink. After the duration, the previous state
+     *        is restored.
+     *
+     * @param[in] durationMs  Duration in milliseconds to blink both LEDs
+     *
+     * @return void
+     */
+    void blinkLeds(int durationMs);
 
     /**
      * @brief Initialise the HAL, register the event handler and start the tick timer.
