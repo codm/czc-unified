@@ -17,7 +17,7 @@ static const char* TAG = "Button";
 ESP_EVENT_DEFINE_BASE(BUTTON_EVENTS);
 
 Button::Button(AppController& appController)
-    : btn_handle_(nullptr), press_start_time_(0), appController_(appController) 
+    : appController_(appController), btn_handle_(nullptr), press_start_time_(0)
 {}
 
 Button::~Button() {
