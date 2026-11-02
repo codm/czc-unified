@@ -68,6 +68,13 @@ public:
      */
     esp_err_t factoryReset() override;
 
+    /**
+     * @brief The CC2652 has no RCP-hosted LED in Thread/OpenThread mode.
+     *
+     * @return `ESP_ERR_NOT_SUPPORTED`
+     */
+    esp_err_t setRcpLed(bool ledState) override;
+
 private:
     bool threadActive;
 

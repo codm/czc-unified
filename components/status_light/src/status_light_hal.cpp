@@ -1,5 +1,7 @@
 #include "status_light_hal.h"
 
+#include "status_light_event.h"
+
 #include "board_config.h"
 #include "driver/gpio.h"
 #include "esp_check.h"
@@ -31,4 +33,9 @@ void StatusLightHal::setPwr(bool enabled)
 void StatusLightHal::setMode(bool enabled)
 {
     gpio_set_level(Board::LED_MODE_PIN, enabled ? 1 : 0);
+}
+
+void StatusLightHal::setRcp(bool enabled)
+{
+    esp_event_post(RCP_LED_EVENT, enabled ? 1 : 0, nullptr, 0, 0);
 }

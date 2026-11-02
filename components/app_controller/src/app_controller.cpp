@@ -1,6 +1,7 @@
 #include "app_controller.h"
 
 #include "app_nvs.h"
+#include "status_light_event.h"
 #include "esp_check.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -47,9 +48,12 @@ esp_err_t AppController::requestRcpFlash(const char* url, DeviceMode mode)
     }
     if (err != ESP_OK)
     {
+        // protocol is stopped and the RCP firmware may be incomplete - nothing runs anymore
+        StatusLedMode::set(LedState::ERROR);
         ESP_LOGE(TAG, "RCP flash failed: %s", esp_err_to_name(err));
         return err;
     }
+    StatusLedMode::clear(LedState::ERROR);
 
     AppNvs::writeDeviceMode(mode);
     AppNvs::writeDeviceSetup(true);

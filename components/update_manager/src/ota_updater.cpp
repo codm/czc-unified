@@ -1,5 +1,6 @@
 #include "ota_updater.h"
 
+#include "status_light_event.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_https_ota.h"
@@ -37,6 +38,7 @@ void OtaUpdater::otaTask(void* pvParameters)
     delete params;
 
     ESP_LOGI(TAG, "Starting OTA from: %s", url);
+    StatusLedMode::set(LedState::FLASHING); // no scope - vTaskDelete() skips destructors
 
     esp_http_client_config_t httpCfg{};
     httpCfg.url                   = url;
@@ -53,6 +55,7 @@ void OtaUpdater::otaTask(void* pvParameters)
     esp_err_t err{esp_https_ota_begin(&otaCfg, &otaHandle)};
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_https_ota_begin failed: %s", esp_err_to_name(err));
+        StatusLedMode::clear(LedState::FLASHING);
         vTaskDelete(nullptr);
         return;
     }
@@ -66,6 +69,7 @@ void OtaUpdater::otaTask(void* pvParameters)
     if (err != ESP_OK || !esp_https_ota_is_complete_data_received(otaHandle)) {
         ESP_LOGE(TAG, "OTA download failed: %s", esp_err_to_name(err));
         esp_https_ota_abort(otaHandle);
+        StatusLedMode::clear(LedState::FLASHING);
         vTaskDelete(nullptr);
         return;
     }
@@ -73,6 +77,7 @@ void OtaUpdater::otaTask(void* pvParameters)
     err = esp_https_ota_finish(otaHandle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_https_ota_finish failed: %s", esp_err_to_name(err));
+        StatusLedMode::clear(LedState::FLASHING);
         vTaskDelete(nullptr);
         return;
     }

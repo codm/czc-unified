@@ -1,5 +1,11 @@
 # Changelog
 
+## V2.1.0-alpha - DD.MM.YYYY
+- Led functionality implemented
+    - CZC State feedback via the on board LEDs 
+    - Frontend LED control 
+    - Configurable Night-Mode 
+
 ## V2.0.0-alpha - 29.09.2026
 
 > [!IMPORTANT]  

@@ -1,11 +1,13 @@
 #include "NetworkStateMachine.h"
 #include "status_light_manager.h"
-#include "status_light_event.h"
 #include "update_manager.h"
 #include "firmware_manager.h"
 #include "app_controller.h"
 #include "button.h"
 #include "esp_br_web.h"
+#include "time_service.h"
+#include "cron.h"
+
 #include "esp_spiffs.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
@@ -15,17 +17,23 @@
 
 static const char* TAG = "main";
 
+// --- CRON TEST JOB FUNCTION 
+esp_err_t printTime(void* ctx) {
+    struct tm currTime {};
+    TimeService::getCurrTime(currTime);
+    ESP_LOGW(TAG, ">>> CRON JOB: Current time is %d:%d", currTime.tm_hour, currTime.tm_min);
+    return ESP_OK;
+}
+
 extern "C" void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-
-    // Status LEDs; initialise first so every step is visible
+    Cron::init(); // init before status light necessary 
+    // Status LEDs; initialise first so every step is visible - starts in BOOTING
     StatusLightManager statusLight;
     ESP_ERROR_CHECK(statusLight.init());
-    esp_event_post(STATUS_LED_EVENT,
-                   static_cast<int32_t>(LedState::BOOTING), nullptr, 0, 0);
 
     NetworkStateMachine network;
     
@@ -41,6 +49,7 @@ extern "C" void app_main(void)
 
     UpdateManager updateManager;
     FirmwareManager firmwareManager;
+    ESP_ERROR_CHECK(firmwareManager.init());
     AppController appController{updateManager, firmwareManager};
 
 
@@ -55,14 +64,24 @@ extern "C" void app_main(void)
     web_network_callbacks_t netCbs{};
     network.fillNetworkCallbacks(&netCbs);
 
-    esp_br_web_start("/spiffs", &fwCbs, &netCbs);
+    web_led_callbacks_t ledCbs{};
+    statusLight.fillLedCallbacks(&ledCbs);
 
-    // Now wait for a routed connection (Ethernet or WiFi)
-    // If no WiFi is configured the NSM opens an AP -> user configures
-    // WiFi through the web UI and NSM reconnects automatically
+    esp_br_web_start("/spiffs", &fwCbs, &netCbs, &ledCbs);
+
     ESP_LOGI(TAG, "Waiting for internet connection...");
     network.waitUntilInternetIsConnected();
     ESP_LOGI(TAG, "Routed Connection available! Starting Application...");
+    TimeService::init();
+
+    // --- BEGIN CRON TEST JOB --- prints time every minute
+    struct tm currTime {};
+    TimeService::getCurrTime(currTime);
+    ESP_LOGW(TAG, "Current time is %d:%d", currTime.tm_hour, currTime.tm_min);
+
+    cron_timing_t timing{};
+    Cron::scheduleJob(timing, printTime, nullptr);
+    // --- END CRON TEST JOB
 
     // Boot-decision-tree → normal operation (may reboot and never return)
     appController.run();

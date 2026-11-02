@@ -8,4 +8,7 @@ idf_component_register(
         nvs_flash
         esp_system
         log
+
+    PRIV_REQUIRES
+        status_light
 )

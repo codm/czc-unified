@@ -8,6 +8,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include <memory>
 
 /**
@@ -74,9 +75,23 @@ public:
      */
     esp_err_t factoryReset() override;
 
+    /** 
+     * @brief Reacts on status_light_manager events and sets ZIGBEE LED accordingly
+     * 
+     * @param[in] ledState future state for the LED
+     * 
+     * @return `ESP_OK` on success - `ESP_FAIL` else
+     * 
+     * @note Pauses Proxy tasks
+     */ 
+    esp_err_t setRcpLed(bool ledState) override;
+
 private:
     static void rcpToHostFunc(void* ctx);
     static void hostToRcpFunc(void* ctx);
+
+    const char* RCP_TO_HOST_HANDLE = "rcp_to_host";
+    const char* HOST_TO_RCP_HANDLE = "host_to_rcp";
 
     DeviceMode                       mode;
     bool                             proxyActive;
@@ -84,6 +99,7 @@ private:
     TaskHandle_t                     rcpToHostTask{nullptr};
     TaskHandle_t                     hostToRcpTask{nullptr};
     ZstackMt                         zstackMt;
+    SemaphoreHandle_t                rcpAccessMutex;
 };
 
 #endif // CZC_ZIGBEE_PROXY_CONTROLLER_H_

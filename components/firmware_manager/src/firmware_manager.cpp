@@ -11,6 +11,45 @@ FirmwareManager::FirmwareManager()
     : protocol{nullptr}, activeMode{DeviceMode::THREAD}
 {}
 
+esp_err_t FirmwareManager::init()
+{
+    rcpLedQueue = xQueueCreate(1, sizeof(bool));
+    ESP_RETURN_ON_FALSE(rcpLedQueue, ESP_ERR_NO_MEM, TAG, "rcpLedQueue create failed");
+
+    ESP_RETURN_ON_ERROR(
+        esp_event_handler_register(RCP_LED_EVENT, ESP_EVENT_ANY_ID, &ledEventHandler, this),
+        TAG, "RCP_LED_EVENT handler register failed");
+
+    BaseType_t ok = xTaskCreate(&rcpLedTaskFunc, "rcp_led", 3072, this, 3, &rcpLedTask);
+    ESP_RETURN_ON_FALSE(ok == pdPASS, ESP_ERR_NO_MEM, TAG, "rcpLedTask create failed");
+
+    return ESP_OK;
+}
+
+void FirmwareManager::ledEventHandler(void* arg, esp_event_base_t /*event_base*/,
+                                      int32_t event_id, void* /*event_data*/)
+{
+    auto* self = static_cast<FirmwareManager*>(arg);
+    bool  ledState = (event_id != 0);
+    xQueueOverwrite(self->rcpLedQueue, &ledState);
+}
+
+void FirmwareManager::rcpLedTaskFunc(void* arg)
+{
+    auto* self = static_cast<FirmwareManager*>(arg);
+    bool  ledState;
+
+    while (true) {
+        if (xQueueReceive(self->rcpLedQueue, &ledState, portMAX_DELAY) == pdTRUE && self->protocol) {
+            esp_err_t err = self->protocol->setRcpLed(ledState);
+            if (err != ESP_OK && err != ESP_ERR_NOT_SUPPORTED && err != ESP_ERR_INVALID_STATE) {
+                ESP_LOGW(TAG, "setRcpLed failed: %s", esp_err_to_name(err));
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
 esp_err_t FirmwareManager::start(DeviceMode mode)
 {
     ESP_LOGI(TAG, "Starting mode %d", static_cast<int>(mode));
@@ -25,7 +64,16 @@ esp_err_t FirmwareManager::start(DeviceMode mode)
     }
     ESP_LOGD(TAG, "Protocol Interface setup! Starting...");
 
-    ESP_RETURN_ON_ERROR(protocol->start(), TAG, "Error starting protocol");
+    const LedState errorState {(mode == DeviceMode::THREAD) ? LedState::ERROR : LedState::ZIGBEE_ERROR};
+    esp_err_t ret {protocol->start()};
+    if (ret != ESP_OK) {
+        StatusLedMode::set(errorState);
+        ESP_LOGE(TAG, "Error starting protocol: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    StatusLedMode::clear(errorState);
+    if (mode != DeviceMode::ZIGBEE_NET) // set by TcpTransport - a host may already be connected here
+        StatusLedMode::set(ledStateForMode(mode));
 
     activeMode = mode;
     return ESP_OK;
@@ -34,6 +82,16 @@ esp_err_t FirmwareManager::start(DeviceMode mode)
 esp_err_t FirmwareManager::stop()
 {
     return protocol->stop();
+}
+
+LedState FirmwareManager::ledStateForMode(DeviceMode mode)
+{
+    switch (mode) {
+        case DeviceMode::THREAD:        return LedState::THREAD_ACTIVE;
+        case DeviceMode::ZIGBEE_USB:    return LedState::ZIGBEE_USB;
+        case DeviceMode::ZIGBEE_ROUTER: return LedState::ZIGBEE_ROUTER;
+        default:                        return LedState::BOOTING;
+    }
 }
 
 DeviceMode FirmwareManager::getActiveMode()

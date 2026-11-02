@@ -32,6 +32,7 @@ idf_component_register(
         sse_events
         network 
         firmware_manager
+        status_light
         spiffs
         freertos
         openthread

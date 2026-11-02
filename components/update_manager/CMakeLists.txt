@@ -16,4 +16,5 @@ idf_component_register(
         freertos
         log
         sse_events
+        status_light
 )

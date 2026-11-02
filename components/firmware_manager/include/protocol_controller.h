@@ -52,6 +52,17 @@ public:
      */
     virtual esp_err_t factoryReset() = 0;
 
+    /**
+     * @brief Set the RCP-hosted status LED, if the active protocol has one.
+     *
+     * @param[in] ledState  true = LED on, false = LED off
+     *
+     * @return `ESP_OK` on success — `ESP_ERR_NOT_SUPPORTED` if the protocol
+     *         has no RCP-hosted LED — `ESP_ERR_INVALID_STATE` if the RCP
+     *         link isn't currently available
+     */
+    virtual esp_err_t setRcpLed(bool ledState) = 0;
+
     virtual ~IProtocolController() = default;
 };
 
