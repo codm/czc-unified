@@ -340,9 +340,6 @@ void StatusLightManager::mapLedsToState()
     ledHal.setMode(resolveOverride(LedId::MODE, modeLed));
 }
 
-
-
-
 void StatusLightManager::setLedOutputEnabled(bool enabled)
 {
     ledOutputEnabled = enabled;

@@ -17,7 +17,8 @@ static const char* TAG = "Button";
 ESP_EVENT_DEFINE_BASE(BUTTON_EVENTS);
 
 Button::Button(AppController& appController)
-    : appController_(appController) {}
+    : btn_handle_(nullptr), press_start_time_(0), appController_(appController) 
+{}
 
 Button::~Button() {
     if (btn_handle_) {
@@ -53,8 +54,6 @@ esp_err_t Button::init() {
                 esp_err_to_name(ret));
         return ret;
     }
-
-
 
     ret = iot_button_register_cb(
         btn_handle_,
@@ -156,7 +155,6 @@ void Button::status_led_toggle()
         0,
         portMAX_DELAY
     );
-
 }
 
 
@@ -164,12 +162,12 @@ void Button::usb_network_toggle()
 {
     ESP_LOGI(TAG, "Toggle USB/Network Mode");
 
-
     DeviceMode current = appController_.getCurrentMode();
     if (current == DeviceMode::ZIGBEE_USB) {
         appController_.requestModeChange(DeviceMode::ZIGBEE_NET);
     } else if (current == DeviceMode::ZIGBEE_NET) {
-        appController_.requestModeChange(DeviceMode::ZIGBEE_USB);    }
+        appController_.requestModeChange(DeviceMode::ZIGBEE_USB);    
+    }
 }
 
 

@@ -82,8 +82,8 @@ private:
 
     gpio_num_t pin_;
     AppController& appController_;
-    button_handle_t btn_handle_{nullptr};
-    uint32_t press_start_time_{0};
+    button_handle_t btn_handle_;
+    uint32_t press_start_time_;
 };
 
 
