@@ -32,10 +32,9 @@ esp_err_t StatusLightManager::init()
 {
     ESP_RETURN_ON_ERROR(ledHal.init(), TAG, "HAL init failed");
 
-    ESP_RETURN_ON_ERROR(
-        esp_event_handler_register(STATUS_LED_EVENT, ESP_EVENT_ANY_ID,
-                                   &ledEventHandler, this),
-        TAG, "LED Event handler register failed");
+    ESP_RETURN_ON_ERROR(esp_event_handler_register(STATUS_LED_EVENT, ESP_EVENT_ANY_ID,
+                        &eventHandler, this),
+                        TAG, "Event handler register failed");
 
     ESP_RETURN_ON_ERROR(
         esp_event_handler_register(BUTTON_EVENTS, ESP_EVENT_ANY_ID,
@@ -91,8 +90,6 @@ esp_err_t StatusLightManager::forceLed(LedId led, LedOverride mode)
 }
 
 int StatusLightManager::getOverride(LedId led) const
-void StatusLightManager::ledEventHandler(void* arg, esp_event_base_t /*event_base*/,
-                                      int32_t event_id, void* /*event_data*/)
 {
     auto index = static_cast<size_t>(led);
     return index < LED_COUNT ? static_cast<int>(overrides[index]) : static_cast<int>(LedOverride::AUTO);
@@ -346,7 +343,7 @@ void StatusLightManager::mapLedsToState()
 
 
 
-void StatusLightManager::setLedeled(bool enabled)
+void StatusLightManager::setLedOutputEnabled(bool enabled)
 {
     ledOutputEnabled = enabled;
 
