@@ -14,7 +14,7 @@
 
 static const char* TAG = "Button";
 
-ESP_EVENT_DEFINE_BASE(BUTTON_EVENTS);
+ESP_EVENT_DECLARE_BASE(STATUS_LED_EVENT);
 
 Button::Button(AppController& appController)
     : appController_(appController), btn_handle_(nullptr), press_start_time_(0)
@@ -92,17 +92,16 @@ esp_err_t Button::init() {
                 return ESP_OK;
             }
         }
-        while (is_pressed == 1) {
-            ESP_LOGI(TAG, "Button held for factory reset, blinking LEDs");
-            esp_event_post(
-                BUTTON_EVENTS,
-                BUTTON_EVENT_BLINK_LED,
-                nullptr,
-                0,
-                portMAX_DELAY
-            );
-            is_pressed = iot_button_get_key_level(btn_handle_);
-        }
+        ESP_LOGI(TAG, "Button held for factory reset, blinking LEDs");
+        esp_event_post(
+            STATUS_LED_EVENT,
+            static_cast<int32_t>(LedState::BUTTON_PRESSED),
+            nullptr,
+            0,
+            portMAX_DELAY
+        );
+        is_pressed = iot_button_get_key_level(btn_handle_);
+        
     }
 
     return ESP_OK;
@@ -149,8 +148,8 @@ void Button::status_led_toggle()
 {
     ESP_LOGI(TAG, "Toggle Status-LED");
     esp_event_post(
-        BUTTON_EVENTS,
-        BUTTON_EVENT_TOGGLE_LED,
+        STATUS_LED_EVENT,
+        static_cast<int32_t>(LedState::LEDS_TOGGLE),
         nullptr,
         0,
         portMAX_DELAY

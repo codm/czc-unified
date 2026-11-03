@@ -7,7 +7,6 @@
 #include "esp_log.h"
 
 ESP_EVENT_DECLARE_BASE(STATUS_LED_EVENT);
-ESP_EVENT_DECLARE_BASE(BUTTON_EVENTS);
 
 /** @brief Posted to change and react to changes of the RCP LED in the firmware manager */
 ESP_EVENT_DECLARE_BASE(RCP_LED_EVENT);
@@ -32,6 +31,8 @@ enum class LedState : int32_t {
     ZIGBEE_ERROR,       ///< ZigBee communication error             — pwr on, mode blinks 3x/s
     FLASHING,           ///< Firmware update in progress            — pwr & mode blink 1x/s
     ERROR,              ///< General fault                          — pwr & mode blink 3x/s
+    BUTTON_PRESSED,     ///< Button pressed state                   — pwr & mode blink 3s
+    LEDS_TOGGLE,        ///< Toggle all LEDs on/off                 — interrupt state updates
     ELEMENT_COUNT       // Size of the ENUM < DONT USE >
 };
 constexpr size_t OPERATING_MODES_COUNT {static_cast<size_t>(LedState::BOOTING) + 1}; // only one can be active at a time
@@ -64,10 +65,5 @@ class StatusLedModeScope {
         LedState state;
 };
 
-
-enum {
-    BUTTON_EVENT_BLINK_LED,
-    BUTTON_EVENT_TOGGLE_LED
-};
 
 #endif // CZC_STATUS_LIGHT_EVENT_H_

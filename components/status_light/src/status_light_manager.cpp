@@ -36,11 +36,6 @@ esp_err_t StatusLightManager::init()
                         &eventHandler, this),
                         TAG, "Event handler register failed");
 
-    ESP_RETURN_ON_ERROR(
-        esp_event_handler_register(BUTTON_EVENTS, ESP_EVENT_ANY_ID,
-                                   &buttonEventHandler, this),
-        TAG, "Button Event handler register failed");
-
     esp_timer_create_args_t timerArgs{};
     timerArgs.callback = &timerCallback;
     timerArgs.arg      = this;
@@ -189,7 +184,9 @@ void StatusLightManager::fillLedCallbacks(web_led_callbacks_t *cbs)
 
 bool StatusLightManager::resolveOverride(LedId led, bool autoLevel) const
 {
-    if (night_mode_active) {
+    constexpr uint32_t LOCK_FLAG_BIT {1u << 31};
+    
+    if (night_mode_active || (currentState.load() & LOCK_FLAG_BIT) != 0) {
         return false;
     }
 
@@ -226,15 +223,31 @@ void StatusLightManager::eventHandler(void* arg, esp_event_base_t, int32_t event
 {
     auto* self = static_cast<StatusLightManager*>(arg);
     const auto changingState = static_cast<LedState>(event_id);
+
+    constexpr uint32_t LOCK_FLAG_BIT {1u << 31};
+    uint32_t states {self->currentState.load()};
+    bool isLocked {(states & LOCK_FLAG_BIT) != 0};
+    ESP_LOGI(TAG, "Event handler: state %d, value %s, locked %s", static_cast<int>(changingState),
+             event_data ? (*static_cast<bool*>(event_data) ? "set" : "clear") : "set",
+             isLocked ? "yes" : "no");
+    if (changingState == LedState::LEDS_TOGGLE) {
+        states ^= LOCK_FLAG_BIT; // Schaltet Bit 31 von 0 auf 1 oder von 1 auf 0 um
+        self->currentState.store(states);
+        return;
+    }
+    ESP_LOGI(TAG, "1");
+    const bool changeValue {event_data ? *static_cast<bool*>(event_data) : true};  
+    if (isLocked && changeValue == true) {
+        return; 
+    }
+    ESP_LOGI(TAG, "2");
     if (changingState >= LedState::ELEMENT_COUNT) 
         return; 
     
-    const bool changeValue {event_data ? *static_cast<bool*>(event_data) : true};  
-
+    ESP_LOGI(TAG, "3");
     constexpr uint32_t OPERATING_MODES_MASK {(1u << OPERATING_MODES_COUNT) - 1};
     const uint32_t stateBit {1u << static_cast<uint32_t>(changingState)};
 
-    uint32_t states {self->currentState.load()};
     if (changeValue == true) {
         if (stateBit & OPERATING_MODES_MASK) {
             states &= ~OPERATING_MODES_MASK;
@@ -243,19 +256,13 @@ void StatusLightManager::eventHandler(void* arg, esp_event_base_t, int32_t event
     } else {
         states &= ~stateBit;
     }
-    self->currentState.store(states);
-}
 
-void StatusLightManager::buttonEventHandler(void* arg, esp_event_base_t /*event_base*/,
-                                      int32_t event_id, void* /*event_data*/)
-{
-    auto* self             = static_cast<StatusLightManager*>(arg);
-
-    if (event_id == BUTTON_EVENT_TOGGLE_LED) {
-        self->setLedOutputEnabled(!self->isLedOutputEnabled());
-    } else if (event_id == BUTTON_EVENT_BLINK_LED) {
-        self->blinkLeds(1500);
+    if (isLocked) {
+        states |= LOCK_FLAG_BIT;
     }
+
+    self->currentState.store(states);
+    ESP_LOGI(TAG, "4");
 }
 
 void StatusLightManager::timerCallback(void* arg)
@@ -267,7 +274,9 @@ void StatusLightManager::timerCallback(void* arg)
 
 LedState StatusLightManager::resolveCurrentState()
 {
-    const uint32_t states {currentState.load()};
+    constexpr uint32_t LOCK_FLAG_BIT {1u << 31};
+    const uint32_t states {currentState.load() & ~LOCK_FLAG_BIT};
+
     if (states == 0)
         return LedState::BOOTING;
 
@@ -282,6 +291,7 @@ void StatusLightManager::mapLedsToState()
     //   blink3Hz : 100 ms on / 200 ms off  (period =  3 ticks, ≈ 3.3 Hz)
     bool blink1Hz{(tickCount % 10) < 5};
     bool blink3Hz{(tickCount % 3) == 0};
+    bool blink3s{(tickCount % 30) < 15};
 
     bool pwrLed{false};
     bool modeLed{false};
@@ -334,35 +344,13 @@ void StatusLightManager::mapLedsToState()
             pwrLed  = blink3Hz;
             modeLed = blink3Hz;
             break;
+
+        case LedState::BUTTON_PRESSED:
+            pwrLed  = blink3s;
+            modeLed = blink3s;
+            break;
     }
 
     ledHal.setPwr(resolveOverride(LedId::PWR, pwrLed));
     ledHal.setMode(resolveOverride(LedId::MODE, modeLed));
-}
-
-void StatusLightManager::setLedOutputEnabled(bool enabled)
-{
-    ledOutputEnabled = enabled;
-
-    if (!enabled) {
-        ledHal.setPwr(false);
-        ledHal.setMode(false);
-    }
-}
-
-
-bool StatusLightManager::isLedOutputEnabled() const
-{
-    return ledOutputEnabled;
-}
-
-void StatusLightManager::blinkLeds(int durationMs)
-{
-    ledOutputEnabled = false;
-    ledHal.setPwr(true);
-    ledHal.setMode(true);
-    vTaskDelay(pdMS_TO_TICKS(1500));
-    ledHal.setPwr(false);
-    ledHal.setMode(false);
-    vTaskDelay(pdMS_TO_TICKS(1500));
 }

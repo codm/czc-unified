@@ -27,6 +27,7 @@ esp_err_t printTime(void* ctx) {
 
 extern "C" void app_main(void)
 {
+    esp_log_level_set("*", ESP_LOG_INFO);
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
