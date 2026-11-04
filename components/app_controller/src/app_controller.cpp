@@ -150,6 +150,15 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
         *setup_out = AppNvs::readDeviceSetup() ? 1 : 0;
         return ESP_OK;
     };
+    cbs->set_disable_webserver_on_tcp = [](void* ctx, int disable)
+    {
+        return AppNvs::writeDisableWebserverOnTcp(disable != 0);
+    };
+    cbs->get_disable_webserver_on_tcp = [](void* ctx, int* disable_out)
+    {
+        *disable_out = AppNvs::readDisableWebserverOnTcp() ? 1 : 0;
+        return ESP_OK;
+    };
     cbs->esp_reboot = [](void* ctx)
     {
         return static_cast<AppController*>(ctx)->espReboot();
@@ -169,6 +178,14 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     cbs->esp_set_log_level = [](void* ctx, int log_level)
     {
         return static_cast<AppController*>(ctx)->setLogLevel(static_cast<esp_log_level_t>(log_level));
+    };
+    cbs->set_disable_webserver_on_tcp = [](void* ctx, const char* key, const char* value)
+    {
+        return static_cast<AppController*>(ctx)->setDisableWebserverOnTcp(key, value);
+    };
+    cbs->get_disable_webserver_on_tcp = [](void* ctx, const char* key, char* value_out, size_t max_len)
+    {
+        return static_cast<AppController*>(ctx)->getDisableWebserverOnTcp(key, value_out, max_len);
     };
     cbs->ctx = this;
 }

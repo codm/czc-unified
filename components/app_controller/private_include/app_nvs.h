@@ -44,6 +44,22 @@ DeviceMode readDeviceMode();
  */
 esp_err_t writeDeviceMode(DeviceMode mode);
 
+/**
+ * @brief Read whether the webserver should be disabled on TCP mode.
+ *
+ * @return true if disable_webserver_on_tcp flag is set in NVS, false otherwise
+ */
+bool readDisableWebserverOnTcp();
+
+/**
+ * @brief Write the disable_webserver_on_tcp flag to NVS.
+ *
+ * @param[in] value  true = disable webserver on TCP mode, false = enable webserver on TCP mode
+ *
+ * @return `ESP_OK` on success
+ */
+esp_err_t writeDisableWebserverOnTcp(bool value);
+
 } // namespace AppNvs
 
 #endif // CZC_APP_NVS_H_
