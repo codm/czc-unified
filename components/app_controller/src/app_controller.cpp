@@ -179,13 +179,5 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     {
         return static_cast<AppController*>(ctx)->setLogLevel(static_cast<esp_log_level_t>(log_level));
     };
-    cbs->set_disable_webserver_on_tcp = [](void* ctx, const char* key, const char* value)
-    {
-        return static_cast<AppController*>(ctx)->setDisableWebserverOnTcp(key, value);
-    };
-    cbs->get_disable_webserver_on_tcp = [](void* ctx, const char* key, char* value_out, size_t max_len)
-    {
-        return static_cast<AppController*>(ctx)->getDisableWebserverOnTcp(key, value_out, max_len);
-    };
     cbs->ctx = this;
 }

@@ -103,6 +103,7 @@ static esp_err_t esp_otbr_network_node_baid_get_handler(httpd_req_t *req);
 static esp_err_t esp_otbr_network_node_dataset_active_handler(httpd_req_t *req);
 static esp_err_t esp_otbr_network_node_dataset_pending_handler(httpd_req_t *req);
 static esp_err_t esp_otbr_network_node_dataset_handler(httpd_req_t *req, const char *dataset_type);
+static esp_err_t send_result_response(httpd_req_t *req, esp_err_t ret, const char *ok_message);
 
 static httpd_uri_t s_resource_handlers[] = {
     {
@@ -1335,6 +1336,42 @@ static esp_err_t device_rcp_erasenvram_post_handler(httpd_req_t *req)
     return send_ret;
 }
 
+static esp_err_t disable_webserver_on_tcp_get_handler(httpd_req_t *req)
+{
+    int state = 0;
+    if (s_fw_cbs.get_disable_webserver_on_tcp)
+        s_fw_cbs.get_disable_webserver_on_tcp(s_fw_cbs.ctx, &state);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "state", state != 0);
+
+    esp_err_t ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return ret;
+}
+
+static esp_err_t disable_webserver_on_tcp_post_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/security body");
+    ESP_LOGI(WEB_TAG, "Received /device/security POST request: %s", cJSON_PrintUnformatted(body));
+    cJSON *state_item = cJSON_GetObjectItem(body, "state");
+    if (!cJSON_IsBool(state_item)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'state' field");
+        return ESP_FAIL;
+    }
+
+    bool state = cJSON_IsTrue(state_item);
+    cJSON_Delete(body);
+
+    esp_err_t ret = ESP_ERR_NOT_SUPPORTED;
+    if (s_fw_cbs.set_disable_webserver_on_tcp) {
+        ret = s_fw_cbs.set_disable_webserver_on_tcp(s_fw_cbs.ctx, state);
+    }
+    return send_result_response(req, ret, "");
+}
+
 /* Frontend LED names, index = LedId */
 static const char *const s_led_names[] = { "pwr", "mode", "rcp" };
 #define LED_NAME_COUNT (sizeof(s_led_names) / sizeof(s_led_names[0]))
@@ -1663,6 +1700,8 @@ static httpd_uri_t s_device_handlers[] = {
     { .uri = "/device/esp/erasenvs",    .method = HTTP_POST, .handler = device_esp_erasenvs_post_handler,   .user_ctx = &s_server.data },
     { .uri = "/device/rcp/reboot",      .method = HTTP_POST, .handler = device_rcp_reboot_post_handler,     .user_ctx = &s_server.data },
     { .uri = "/device/rcp/erasenvram",  .method = HTTP_POST, .handler = device_rcp_erasenvram_post_handler, .user_ctx = &s_server.data },
+    { .uri = "/device/security",        .method = HTTP_GET,  .handler = disable_webserver_on_tcp_get_handler,  .user_ctx = &s_server.data },
+    { .uri = "/device/security",        .method = HTTP_POST, .handler = disable_webserver_on_tcp_post_handler, .user_ctx = &s_server.data },
     { .uri = "/device/led",             .method = HTTP_GET,  .handler = device_led_get_handler,             .user_ctx = &s_server.data },
     { .uri = "/device/led",             .method = HTTP_POST, .handler = device_led_post_handler,            .user_ctx = &s_server.data },
     { .uri = "/device/nightmode",       .method = HTTP_GET,  .handler = device_nightmode_get_handler,       .user_ctx = &s_server.data },

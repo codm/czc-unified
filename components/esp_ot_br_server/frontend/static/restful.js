@@ -41,6 +41,7 @@ function initFrontend()
         applyDeviceMode(data.mode);
         networkSetupCheck();
         led_load_settings();
+        security_load_settings();
 
         if (!data.device_setup)
           document.getElementById('mode-selection-modal').style.display = 'flex';
@@ -1008,6 +1009,53 @@ function setZigbeeTransport(mode) {
   });
 }
 
+/* --------------------------------------------------------------------
+                          Security
+-------------------------------------------------------------------- */
+
+function security_load_settings() {
+  get_disable_webserver_on_tcp();
+}
+
+function get_disable_webserver_on_tcp() {
+  $.ajax({
+    url: '/device/security',
+    type: 'GET',
+    dataType: 'json',
+    success: function(data)
+    {
+      if (!data) return;
+      if (typeof data.state === 'boolean')
+        document.getElementById('disable-webserver-on-tcp').checked = data.state;
+    }
+  });
+}
+
+function set_disable_webserver_on_tcp(event) {
+  if (event) event.preventDefault();
+
+  let checkbox = document.getElementById('disable-webserver-on-tcp');
+  if (!checkbox) {
+    console.error("Checkbox 'disable-webserver-on-tcp' wurde im DOM nicht gefunden!");
+    return;
+  }
+
+  let checked = checkbox.checked;
+
+  $.ajax({
+    url: '/device/security',
+    type: 'POST',
+    contentType: 'application/json',
+    dataType: 'json',
+    data: JSON.stringify({ state: checked }),
+    success: function(response) {
+      frontend_log_show('Security', { error: 0, content: 'Security settings saved successfully.' });
+    },
+    error: function(jqXHR) {
+      frontend_log_show('Security', { error: 1, content: 'Failed to save security settings (HTTP ' + jqXHR.status + ').' });
+    }
+  });
+}
 /* --------------------------------------------------------------------
                         Debug Buttons
 -------------------------------------------------------------------- */

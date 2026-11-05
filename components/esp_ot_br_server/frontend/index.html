@@ -510,9 +510,19 @@
             <p>Manage security keys, certificates and access control for your Zigbee network.</p>
           </div>
           <div class="content-panel">
-            <div class="placeholder-panel">
-              <svg class="placeholder-panel-icon icon-stroke"><use href="#icon-lock"/></svg>
-              <p class="placeholder-panel-text">Security settings &mdash; coming soon.</p>
+            <div class="form-card">
+              <h5 style="margin-bottom: 20px;">Security Settings</h5>
+              <form id="security-form" onsubmit="set_disable_webserver_on_tcp(event)">
+                <div class="form-group" style="margin-bottom: 20px;">
+                  <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="disable-webserver-on-tcp" name="disable">
+                    Disable the webserver when the socket is connected
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <button type="button" class="btn btn-primary" onclick="set_disable_webserver_on_tcp()">Save</button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

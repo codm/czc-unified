@@ -10,7 +10,7 @@ static const char* TAG = "AppNvs";
 constexpr const char* NVS_NAMESPACE    = "sys_cfg";
 constexpr const char* KEY_DEVICE_SETUP  = "device_setup";
 constexpr const char* KEY_DEVICE_MODE   = "device_mode";
-constexpr const char* KEY_DISABLE_WEBSERVER_ON_TCP = "disable_webserver_on_tcp";
+constexpr const char* KEY_DISABLE_WEBSERVER_ON_TCP = "disable_tcp_ws";
 
 namespace AppNvs {
 
