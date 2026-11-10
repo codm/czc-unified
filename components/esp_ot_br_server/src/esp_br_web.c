@@ -1354,7 +1354,6 @@ static esp_err_t disable_webserver_on_tcp_post_handler(httpd_req_t *req)
 {
     cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
     ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/security body");
-    ESP_LOGI(WEB_TAG, "Received /device/security POST request: %s", cJSON_PrintUnformatted(body));
     cJSON *state_item = cJSON_GetObjectItem(body, "state");
     if (!cJSON_IsBool(state_item)) {
         cJSON_Delete(body);
@@ -1778,19 +1777,20 @@ void connect_handler(void *arg, esp_event_base_t event_base, int32_t event_id, v
 /*-----------------------------------------------------
  Note：Server Stop
 -----------------------------------------------------*/
-void stop_httpserver(httpd_handle_t server)
+static esp_err_t stop_httpserver(httpd_handle_t server)
 {
     if (server == NULL) {
         ESP_LOGW(WEB_TAG, "stop_httpserver: Server handle is NULL, nothing to stop.");
-        return;
+        return ESP_ERR_INVALID_ARG;
     }
 
     esp_err_t err = httpd_stop(server);
     if (err == ESP_OK) {
         ESP_LOGI(WEB_TAG, "HTTP server stopped successfully.");
     } else {
-        ESP_LOGE(WEB_TAG, "Failed to stop HTTP server: %s", esp_err_to_name(err));
+        ESP_LOGE(WEB_TAG, "Failed to stop HTTP server: %s; keeping handle for retry", esp_err_to_name(err));
     }
+    return err;
 }
 
 void disconnect_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
@@ -1803,8 +1803,9 @@ void disconnect_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     httpd_handle_t *server = (httpd_handle_t *)arg;
     ESP_RETURN_ON_FALSE(server, , WEB_TAG, "Web server is valid, failed to stop it");
     ESP_LOGI(WEB_TAG, "Stop the web server for Openthread Border Router");
-    stop_httpserver(*server);
-    *server = NULL;
+    if (stop_httpserver(*server) == ESP_OK) {
+        *server = NULL;
+    }
 }
 
 void esp_br_web_start(const char *base_path,
@@ -1815,6 +1816,11 @@ void esp_br_web_start(const char *base_path,
     if (fw_cbs)  s_fw_cbs  = *fw_cbs;
     if (net_cbs) s_net_cbs = *net_cbs;
     if (led_cbs) s_led_cbs = *led_cbs;
+    if (s_server.handle != NULL) {
+        ESP_LOGI(WEB_TAG, "Web server is already running.");
+        return;
+    }
+    ESP_LOGI(WEB_TAG, "Starting web server...");
     if (start_esp_br_http_server(base_path) == NULL) {
         ESP_LOGE(WEB_TAG, "Failed to start web server");
     }
@@ -1822,9 +1828,11 @@ void esp_br_web_start(const char *base_path,
 
 void esp_br_web_stop(void)
 {
+    ESP_LOGI(WEB_TAG, "Stopping web server...");
     if (s_server.handle != NULL) {
-        stop_httpserver(s_server.handle);
-        s_server.handle = NULL;
+        if (stop_httpserver(s_server.handle) == ESP_OK) {
+            s_server.handle = NULL;
+        }
     } else {
         ESP_LOGI(WEB_TAG, "Web server is already stopped.");
     }

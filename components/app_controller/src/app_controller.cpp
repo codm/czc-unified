@@ -44,18 +44,18 @@ void AppController::client_connected_event_handler(void* handler_args, esp_event
     AppController* self = static_cast<AppController*>(handler_args);
     if (!self) return;
 
-    // Nun kannst du die Instanz-Methode oder Logik aufrufen
     self->client_connected_event_process(id);
 }
 
 void AppController::client_connected_event_process(int32_t id)
 {
     if (id == CLIENT_CONNECTED) {
-        ESP_LOGI(TAG, "Client connected event received");
+        isClientConnected = true;
+        if (!AppNvs::readDisableWebserverOnTcp()) return;
         esp_br_web_stop();
     } else if (id == CLIENT_DISCONNECTED) {
-        ESP_LOGI(TAG, "Client disconnected event received");
-        esp_br_web_start("/spiffs", nullptr, nullptr, nullptr); 
+        isClientConnected = false;
+        esp_br_web_start("/spiffs", nullptr, nullptr, nullptr);
     }
 }
 
@@ -177,6 +177,15 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     };
     cbs->set_disable_webserver_on_tcp = [](void* ctx, int disable)
     {
+        AppController* self = static_cast<AppController*>(ctx);
+        if (self->isClientConnected) {
+            if (disable != 0) {
+                esp_br_web_stop();
+            } else {
+                esp_br_web_start("/spiffs", nullptr, nullptr, nullptr);
+            }
+        }
+        ESP_LOGI(TAG, "Setting disable_webserver_on_tcp to %d client is connected: %s", disable, self->isClientConnected ? "yes" : "no");
         return AppNvs::writeDisableWebserverOnTcp(disable != 0);
     };
     cbs->get_disable_webserver_on_tcp = [](void* ctx, int* disable_out)

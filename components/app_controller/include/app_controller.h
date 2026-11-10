@@ -173,6 +173,7 @@ public:
     void fillFirmwareCallbacks(web_firmware_callbacks_t* cbs);
     
 private:
+    bool isClientConnected{false};
     UpdateManager&  updateManager;
     FirmwareManager& firmwareManager;
 };
