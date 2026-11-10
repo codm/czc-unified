@@ -2,6 +2,7 @@
 
 #include "board_config.h"
 #include "status_light_event.h"
+#include "proxy_transport_event.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_check.h"
@@ -11,6 +12,8 @@
 #include <unistd.h>
 
 static const char* TAG = "ProxyTransport";
+
+ESP_EVENT_DEFINE_BASE(CLIENT_CONNECTED_EVENT);
 
 // ---------------------------------------------------------------------------
 // UartTransport
@@ -160,6 +163,7 @@ int TcpTransport::read(uint8_t* buf, size_t len)
         }
         ESP_LOGI(TAG, "TCP client connected");
         StatusLedMode::set(LedState::ZIGBEE_NET);
+        esp_event_post(CLIENT_CONNECTED_EVENT, CLIENT_CONNECTED, nullptr, 0, portMAX_DELAY);
     }
 
     int n = recv(clientFd, buf, len, 0);
@@ -168,6 +172,7 @@ int TcpTransport::read(uint8_t* buf, size_t len)
         ::close(clientFd);
         clientFd = -1;
         StatusLedMode::set(LedState::ZIGBEE_HOST_WAIT);
+        esp_event_post(CLIENT_CONNECTED_EVENT, CLIENT_DISCONNECTED, nullptr, 0, portMAX_DELAY);
     }
     return n;
 }

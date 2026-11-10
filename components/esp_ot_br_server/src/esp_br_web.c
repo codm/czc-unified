@@ -1780,7 +1780,17 @@ void connect_handler(void *arg, esp_event_base_t event_base, int32_t event_id, v
 -----------------------------------------------------*/
 void stop_httpserver(httpd_handle_t server)
 {
-    httpd_stop(server); // Stop the httpd server
+    if (server == NULL) {
+        ESP_LOGW(WEB_TAG, "stop_httpserver: Server handle is NULL, nothing to stop.");
+        return;
+    }
+
+    esp_err_t err = httpd_stop(server);
+    if (err == ESP_OK) {
+        ESP_LOGI(WEB_TAG, "HTTP server stopped successfully.");
+    } else {
+        ESP_LOGE(WEB_TAG, "Failed to stop HTTP server: %s", esp_err_to_name(err));
+    }
 }
 
 void disconnect_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
@@ -1807,5 +1817,15 @@ void esp_br_web_start(const char *base_path,
     if (led_cbs) s_led_cbs = *led_cbs;
     if (start_esp_br_http_server(base_path) == NULL) {
         ESP_LOGE(WEB_TAG, "Failed to start web server");
+    }
+}
+
+void esp_br_web_stop(void)
+{
+    if (s_server.handle != NULL) {
+        stop_httpserver(s_server.handle);
+        s_server.handle = NULL;
+    } else {
+        ESP_LOGI(WEB_TAG, "Web server is already stopped.");
     }
 }

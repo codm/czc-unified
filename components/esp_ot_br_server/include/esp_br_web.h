@@ -30,6 +30,11 @@ void esp_br_web_start(const char *base_path,
                       const web_network_callbacks_t  *net_cbs,
                       const web_led_callbacks_t      *led_cbs);
 
+/**
+ * @brief Stop the web server if it is running.
+ */
+void esp_br_web_stop(void);
+
 #ifdef __cplusplus
 }
 #endif

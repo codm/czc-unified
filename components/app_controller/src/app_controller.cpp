@@ -7,12 +7,17 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "proxy_transport_event.h"
+#include "esp_br_web.h"
 
 static const char* TAG = "AppController";
 
 AppController::AppController(UpdateManager& updateMgr, FirmwareManager& firmwareMgr)
     : updateManager{updateMgr}, firmwareManager{firmwareMgr}
-{}
+{
+    esp_event_handler_register(CLIENT_CONNECTED_EVENT, ESP_EVENT_ANY_ID, &AppController::client_connected_event_handler, this);
+}
+
 
 void AppController::run()
 {
@@ -32,6 +37,26 @@ void AppController::run()
     DeviceMode mode{AppNvs::readDeviceMode()};
     ESP_LOGI(TAG, "Starting firmware manager in mode %d", static_cast<int>(mode));
     ESP_ERROR_CHECK(firmwareManager.start(mode));
+}
+
+void AppController::client_connected_event_handler(void* handler_args, esp_event_base_t base, int32_t id, void* event_data)
+{
+    AppController* self = static_cast<AppController*>(handler_args);
+    if (!self) return;
+
+    // Nun kannst du die Instanz-Methode oder Logik aufrufen
+    self->client_connected_event_process(id);
+}
+
+void AppController::client_connected_event_process(int32_t id)
+{
+    if (id == CLIENT_CONNECTED) {
+        ESP_LOGI(TAG, "Client connected event received");
+        esp_br_web_stop();
+    } else if (id == CLIENT_DISCONNECTED) {
+        ESP_LOGI(TAG, "Client disconnected event received");
+        esp_br_web_start("/spiffs", nullptr, nullptr, nullptr); 
+    }
 }
 
 esp_err_t AppController::requestRcpFlash(const char* url, DeviceMode mode)

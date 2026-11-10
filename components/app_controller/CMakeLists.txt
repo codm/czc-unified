@@ -11,4 +11,5 @@ idf_component_register(
 
     PRIV_REQUIRES
         status_light
+        esp_ot_br_server
 )

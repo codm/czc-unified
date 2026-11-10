@@ -27,10 +27,10 @@ idf_component_register(
     REQUIRES
         esp_http_server
         ${JSON_COMPONENT}
+        network
 
     PRIV_REQUIRES 
         sse_events
-        network 
         firmware_manager
         status_light
         spiffs

@@ -44,6 +44,31 @@ public:
     void run();
 
     /**
+     * @brief Event handler for client connection events from the proxy transport.
+     *
+     *        This is a static function that serves as a bridge to the instance method.
+     *
+     * @param[in] handler_args  Pointer to the AppController instance
+     * @param[in] base          Event base (should be CLIENT_CONNECTED_EVENT)
+     * @param[in] id            Event ID (CLIENT_CONNECTED or CLIENT_DISCONNECTED)
+     * @param[in] event_data    Pointer to event data (not used)
+     *
+     * @return void
+     */
+    static void client_connected_event_handler(void* handler_args, esp_event_base_t base, int32_t id, void* event_data);
+
+    /**
+     * @brief Process client connection events.
+     *
+     *        This is the instance method that handles the logic for client connection events.
+     *
+     * @param[in] id  Event ID (CLIENT_CONNECTED or CLIENT_DISCONNECTED)
+     *
+     * @return void
+     */
+    void client_connected_event_process(int32_t id);
+
+    /**
      * @brief Flash RCP firmware live and activate `mode` — no reboot.
      *
      *        Stops the currently active protocol controller (if any) to free the
