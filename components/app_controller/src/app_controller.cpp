@@ -59,6 +59,40 @@ void AppController::client_connected_event_process(int32_t id)
     }
 }
 
+void AppController::webServerControlTask(void* arg)
+{
+    auto* self = static_cast<AppController*>(arg);
+    if (self->isClientConnected) {
+        if (AppNvs::readDisableWebserverOnTcp()) {
+            esp_br_web_stop();
+        } else {
+            esp_br_web_start("/spiffs", nullptr, nullptr, nullptr);
+        }
+    }
+    vTaskDelete(nullptr);
+}
+
+esp_err_t AppController::setDisableWebserverOnTcp(bool disable)
+{
+    const bool previous = AppNvs::readDisableWebserverOnTcp();
+    esp_err_t err = AppNvs::writeDisableWebserverOnTcp(disable);
+    if (err != ESP_OK || !isClientConnected) {
+        return err;
+    }
+
+    if (xTaskCreate(&AppController::webServerControlTask, "web_server_ctrl", 3072,
+                    this, 4, nullptr) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create web server control task");
+        esp_err_t rollback_err = AppNvs::writeDisableWebserverOnTcp(previous);
+        if (rollback_err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to roll back web server setting: %s", esp_err_to_name(rollback_err));
+        }
+        return ESP_ERR_NO_MEM;
+    }
+
+    return ESP_OK;
+}
+
 esp_err_t AppController::requestRcpFlash(const char* url, DeviceMode mode)
 {
     if (AppNvs::readDeviceSetup())
@@ -178,15 +212,7 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     cbs->set_disable_webserver_on_tcp = [](void* ctx, int disable)
     {
         AppController* self = static_cast<AppController*>(ctx);
-        if (self->isClientConnected) {
-            if (disable != 0) {
-                esp_br_web_stop();
-            } else {
-                esp_br_web_start("/spiffs", nullptr, nullptr, nullptr);
-            }
-        }
-        ESP_LOGI(TAG, "Setting disable_webserver_on_tcp to %d client is connected: %s", disable, self->isClientConnected ? "yes" : "no");
-        return AppNvs::writeDisableWebserverOnTcp(disable != 0);
+        return self->setDisableWebserverOnTcp(disable != 0);
     };
     cbs->get_disable_webserver_on_tcp = [](void* ctx, int* disable_out)
     {

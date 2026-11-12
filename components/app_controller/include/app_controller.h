@@ -173,6 +173,9 @@ public:
     void fillFirmwareCallbacks(web_firmware_callbacks_t* cbs);
     
 private:
+    static void webServerControlTask(void* arg);
+    esp_err_t setDisableWebserverOnTcp(bool disable);
+
     bool isClientConnected{false};
     UpdateManager&  updateManager;
     FirmwareManager& firmwareManager;
