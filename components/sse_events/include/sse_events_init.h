@@ -20,6 +20,15 @@ extern "C" {
  */
 esp_err_t sse_events_init(httpd_handle_t server);
 
+/**
+ * @brief Deinitialises the SSE event queue, sender task and unregisters the /events URI handler.
+ *
+ * Must be called once before the HTTP server is stopped.
+ *
+ * @return void
+ */
+void sse_events_deinit(void);
+
 #ifdef __cplusplus
 }
 #endif

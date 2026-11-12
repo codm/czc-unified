@@ -3,6 +3,7 @@
 #include <cstring>
 #include <cstdio>
 #include <vector>
+#include <atomic>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -30,6 +31,40 @@ static std::vector<httpd_req_t *> s_clients;
 static SemaphoreHandle_t s_mutex {nullptr};
 static QueueHandle_t s_queue {nullptr};
 static char s_cached_device_state_frame[SSE_SIZE] {0};
+static std::atomic<TaskHandle_t> s_sse_task_handle {nullptr};
+static std::atomic<bool> s_stopping {false};
+static std::atomic<uint32_t> s_active_operations {0};
+static httpd_handle_t s_http_server {nullptr};
+
+class SseOperation
+{
+public:
+    SseOperation()
+    {
+        if (s_stopping.load()) {
+            return;
+        }
+
+        s_active_operations.fetch_add(1);
+        if (!s_stopping.load()) {
+            m_active = true;
+        } else {
+            s_active_operations.fetch_sub(1);
+        }
+    }
+
+    ~SseOperation()
+    {
+        if (m_active) {
+            s_active_operations.fetch_sub(1);
+        }
+    }
+
+    explicit operator bool() const { return m_active; }
+
+private:
+    bool m_active {false};
+};
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -96,19 +131,29 @@ static void sse_task(void *)
     char buffer[SSE_SIZE];
     uint8_t ping_counter {0};
 
-    while (true) {
+    while (!s_stopping) {
         vTaskDelay(pdMS_TO_TICKS(1000));
+        if (s_stopping) break;
 
         while (xQueueReceive(s_queue, &ev, 0) == pdTRUE) {
+            if (s_stopping) break;
             int len = snprintf(buffer, sizeof(buffer), "event: %s\ndata: %s\n\n", ev.event, ev.data);
-            send_to_all(buffer, (size_t)len);
+            if (len > 0) {
+                send_to_all(buffer, static_cast<size_t>(len) < sizeof(buffer)
+                                        ? static_cast<size_t>(len)
+                                        : sizeof(buffer) - 1);
+            }
         }
 
         if (++ping_counter >= PING_INTERVAL_S) {
             ping_counter = 0;
-            send_to_all(": ping\n\n", 8);
+            if (!s_stopping) {
+                send_to_all(": ping\n\n", 8);
+            }
         }
     }
+    s_sse_task_handle.store(nullptr);
+    vTaskDelete(nullptr);
 }
 
 /**
@@ -162,6 +207,11 @@ static void add_client(httpd_req_t *async_req)
  */
 static esp_err_t sse_handler(httpd_req_t *req)
 {
+    SseOperation operation;
+    if (!operation) {
+        return ESP_FAIL;
+    }
+
     httpd_req_t *async_req {nullptr};
     if (httpd_req_async_handler_begin(req, &async_req) != ESP_OK) {
         return ESP_FAIL;
@@ -191,9 +241,11 @@ static esp_err_t sse_handler(httpd_req_t *req)
  */
 static esp_err_t post(const char *event, const char *data)
 {
-    if (!s_queue) 
+    SseOperation operation;
+    if (!operation || !s_queue) {
         return ESP_ERR_INVALID_STATE;
-    
+    }
+
     SseEvent ev;
     strlcpy(ev.event, event, sizeof(ev.event));
     strlcpy(ev.data,  data,  sizeof(ev.data));
@@ -208,10 +260,22 @@ namespace Sse_events {
 
 esp_err_t init(httpd_handle_t server)
 {
+    deinit();
+
+    s_stopping = false;
     s_mutex = xSemaphoreCreateMutex();
     s_queue = xQueueCreate(QUEUE_SIZE, sizeof(SseEvent));
-    if (!s_mutex || !s_queue) 
+    if (!s_mutex || !s_queue) {
+        if (s_mutex) {
+            vSemaphoreDelete(s_mutex);
+            s_mutex = nullptr;
+        }
+        if (s_queue) {
+            vQueueDelete(s_queue);
+            s_queue = nullptr;
+        }
         return ESP_ERR_NO_MEM;
+    }
 
     static const httpd_uri_t uri = {
         .uri     = "/events",
@@ -219,14 +283,73 @@ esp_err_t init(httpd_handle_t server)
         .handler = sse_handler,
         .user_ctx = nullptr,
     };
-    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(server, &uri), TAG, "Error registering URI handler");
-
-    if (xTaskCreate(sse_task, "sse_task", 4 * 1024, nullptr, 5, nullptr) != pdPASS) {
-        ESP_LOGE(TAG, "Could not create SSE send task");
+    if (httpd_register_uri_handler(server, &uri) != ESP_OK) {
+        ESP_LOGE(TAG, "Error registering URI handler");
+        vSemaphoreDelete(s_mutex);
+        vQueueDelete(s_queue);
+        s_mutex = nullptr;
+        s_queue = nullptr;
         return ESP_FAIL;
     }
+    s_http_server = server;
+
+    TaskHandle_t task_handle {nullptr};
+    if (xTaskCreate(sse_task, "sse_task", 4 * 1024, nullptr, 5, &task_handle) != pdPASS) {
+        ESP_LOGE(TAG, "Could not create SSE send task");
+        httpd_unregister_uri_handler(server, "/events", HTTP_GET);
+        s_http_server = nullptr;
+        s_sse_task_handle = nullptr;
+        vSemaphoreDelete(s_mutex);
+        vQueueDelete(s_queue);
+        s_mutex = nullptr;
+        s_queue = nullptr;
+        return ESP_FAIL;
+    }
+    s_sse_task_handle.store(task_handle);
 
     return ESP_OK;
+}
+
+void deinit()
+{
+    if (s_stopping && s_mutex == nullptr && s_queue == nullptr && s_sse_task_handle.load() == nullptr) {
+        return;
+    }
+
+    s_stopping = true;
+
+    if (s_http_server != nullptr) {
+        httpd_unregister_uri_handler(s_http_server, "/events", HTTP_GET);
+        s_http_server = nullptr;
+    }
+
+    while (s_sse_task_handle.load() != nullptr) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    while (s_active_operations.load() != 0) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    if (s_mutex != nullptr) {
+        xSemaphoreTake(s_mutex, portMAX_DELAY);
+        for (auto *client : s_clients) {
+            httpd_req_async_handler_complete(client);
+        }
+        s_clients.clear();
+        xSemaphoreGive(s_mutex);
+
+        vSemaphoreDelete(s_mutex);
+        s_mutex = nullptr;
+    }
+
+    if (s_queue != nullptr) {
+        vQueueDelete(s_queue);
+        s_queue = nullptr;
+    }
+
+    s_cached_device_state_frame[0] = '\0';
+
 }
 
 esp_err_t flash::post_flash_progress(SseFlashTarget target, SseFlashPhase phase, float percent)
@@ -263,8 +386,13 @@ esp_err_t flash::post_flash_complete(SseFlashTarget target, bool success, const 
 
 esp_err_t flash::post_device_state(SseDeviceMode mode, const char *phase)
 {
+    SseOperation operation;
+    if (!operation) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     const char *mode_str;
-    switch (mode) 
+    switch (mode)
     {
     case SseDeviceMode::NORMAL:   mode_str = "normal";   break;
     case SseDeviceMode::SETUP:    mode_str = "setup";    break;
@@ -277,17 +405,20 @@ esp_err_t flash::post_device_state(SseDeviceMode mode, const char *phase)
     else
         snprintf(data, sizeof(data), "{\"mode\":\"%s\"}", mode_str);
 
-    snprintf(s_cached_device_state_frame, sizeof(s_cached_device_state_frame),
-             "event: device_state\ndata: %s\n\n", data);
+    if (s_mutex != nullptr) {
+        xSemaphoreTake(s_mutex, portMAX_DELAY);
+        snprintf(s_cached_device_state_frame, sizeof(s_cached_device_state_frame),
+                 "event: device_state\ndata: %s\n\n", data);
+        xSemaphoreGive(s_mutex);
+    }
     return post("device_state", data);
 }
 esp_err_t network::post_network_state_change(int mode, const char *ip)
 {
     char data[SSE_DATA_SIZE];
-    snprintf(data, sizeof(data), "{\"mode\":%d,\"ip\":\"%s\"}", mode, ip);
+    snprintf(data, sizeof(data), "{\"mode\":%d,\"ip\":\"%s\"}", mode, ip ? ip : "");
 
     return post("network_state_change", data);
 }
 
 } // namespace Sse_events
-

@@ -5,3 +5,8 @@ esp_err_t sse_events_init(httpd_handle_t server)
 {
     return Sse_events::init(server);
 }
+
+void sse_events_deinit(void)
+{
+    Sse_events::deinit();
+}

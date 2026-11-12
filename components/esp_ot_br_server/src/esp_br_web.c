@@ -1784,6 +1784,8 @@ static esp_err_t stop_httpserver(httpd_handle_t server)
         return ESP_ERR_INVALID_ARG;
     }
 
+    sse_events_deinit();
+
     esp_err_t err = httpd_stop(server);
     if (err == ESP_OK) {
         ESP_LOGI(WEB_TAG, "HTTP server stopped successfully.");

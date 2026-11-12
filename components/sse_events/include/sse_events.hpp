@@ -32,6 +32,16 @@ namespace Sse_events
      */
     esp_err_t init(httpd_handle_t server);
 
+    /**
+     * @brief Deinitializes the SSE subsystem and unregisters the /events URI handler.
+     *
+     *        Unregisters the HTTP GET handler at "/events", then deletes the
+     *        FreeRTOS dispatch task, event queue and mutex.
+     *
+     * @return void
+     */
+    void deinit();
+
     namespace flash
     {
         /**
