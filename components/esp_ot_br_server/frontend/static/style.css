@@ -587,6 +587,90 @@ section {
     background: rgba(var(--color-primary-rgb), 0.85);
 }
 
+.security-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+    align-items: stretch;
+}
+
+.security-settings-grid .form-card {
+    display: flex;
+    flex-direction: column;
+    height: 440px;
+    min-height: 0;
+    margin-top: 0;
+}
+
+.security-card-title {
+    margin: 0 0 20px;
+}
+
+.security-form,
+.security-settings-grid #ip-whitelist-form {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.security-form-group {
+    margin-bottom: 20px;
+}
+
+.security-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.security-field-label {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.security-form-actions {
+    margin-top: auto;
+}
+
+.ip-whitelist-entry {
+    display: flex;
+    gap: 10px;
+}
+
+.ip-whitelist-entry .form-control {
+    flex: 1;
+    min-width: 0;
+}
+
+.ip-whitelist-list {
+    flex: 1;
+    min-height: 0;
+    margin-top: 5px;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.ip-whitelist-feedback:empty {
+    display: none;
+}
+
+.ip-whitelist-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(var(--color-secondary-rgb), 0.15);
+}
+
+@media (max-width: 720px) {
+    .security-settings-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* WiFi scan results */
 .scan-row {
     display: flex;

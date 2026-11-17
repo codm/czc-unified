@@ -1015,6 +1015,8 @@ function setZigbeeTransport(mode) {
 
 function security_load_settings() {
   get_disable_webserver_on_tcp();
+  get_ip_whitelist_active();
+  get_ip_whitelist();
 }
 
 function get_disable_webserver_on_tcp() {
@@ -1055,6 +1057,108 @@ function set_disable_webserver_on_tcp(event) {
       frontend_log_show('Security', { error: 1, content: 'Failed to save security settings (HTTP ' + jqXHR.status + ').' });
     }
   });
+}
+
+function get_ip_whitelist_active() {
+
+}
+
+function set_ip_whitelist_active() {
+
+}
+
+function get_ip_whitelist() {
+
+}
+
+function add_ip_whitelist(ipAddress) {
+
+}
+
+function remove_ip_whitelist(ipAddress) {
+
+}
+
+function ip_whitelist_read() {
+  let list = document.getElementById('ip-whitelist-list');
+  if (!list) {
+    console.error("Element 'ip-whitelist-list' wurde im DOM nicht gefunden!");
+    return null;
+  }
+
+  return Array.from(list.querySelectorAll('.ip-whitelist-item'), function(item) {
+    return item.dataset.ip;
+  });
+}
+
+function ip_whitelist_add_event(event) {
+  if (event) event.preventDefault();
+
+  let input = document.getElementById('ip-whitelist-input');
+  let list = document.getElementById('ip-whitelist-list');
+  let feedback = document.getElementById('ip-whitelist-feedback');
+  if (!input || !list || !feedback) {
+    console.error('IP whitelist controls were not found in the DOM.');
+    return;
+  }
+
+  input.value = input.value.trim();
+  if (!input.checkValidity()) {
+    input.reportValidity();
+    return;
+  }
+
+  let ipAddress = input.value;
+  let addresses = ip_whitelist_read();
+  if (!addresses) return;
+
+  if (addresses.includes(ipAddress)) {
+    feedback.textContent = 'This IP address is already in the list.';
+    return;
+  }
+
+  add_ip_whitelist(input);
+
+  let item = document.createElement('li');
+  item.className = 'ip-whitelist-item';
+  item.dataset.ip = ipAddress;
+
+  let address = document.createElement('span');
+  address.textContent = ipAddress;
+
+  let removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'btn btn-default ip-whitelist-remove';
+  removeButton.textContent = 'Remove';
+  removeButton.setAttribute('aria-label', 'Remove ' + ipAddress);
+  removeButton.addEventListener('click', function() {
+    ip_whitelist_remove_event(ipAddress);
+  });
+
+  item.appendChild(address);
+  item.appendChild(removeButton);
+  list.appendChild(item);
+
+  input.value = '';
+  feedback.textContent = '';
+  input.focus();
+}
+
+function ip_whitelist_remove_event(ipAddress) {
+  let list = document.getElementById('ip-whitelist-list');
+  if (!list) {
+    console.error("Element 'ip-whitelist-list' wurde im DOM nicht gefunden!");
+    return;
+  }
+
+  let items = list.querySelectorAll('.ip-whitelist-item');
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].dataset.ip === ipAddress) {
+      remove_ip_whitelist(ipAddress);
+      items[i].remove();
+      return;
+    }
+  }
 }
 /* --------------------------------------------------------------------
                         Debug Buttons
