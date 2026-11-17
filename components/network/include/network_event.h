@@ -1,16 +1,23 @@
 #ifndef NETWORK_EVENT_H_
 #define NETWORK_EVENT_H_
 
-#include "esp_event.h"
+#include "network_types.h"
 
-// base NetworkStateMachine on events
-ESP_EVENT_DECLARE_BASE(NETWORK_EVENT);
-enum {
-    NETWORK_EVENT_CONFIG_UPDATED,       ///< WiFi credentials or IP config changed — NSM reinitialises WiFi
-    NETWORK_EVENT_ETH_CONFIG_UPDATED,   ///< Ethernet IP config changed — NSM reinitialises Ethernet
-    NETWORK_EVENT_INIT_TIMEOUT,
-    NETWORK_EVENT_RETRY_TIMEOUT,
-    NETWORK_EVENT_WIFI_DISCONNECTED
+enum class EvType : uint8_t {
+    LinkUp, LinkDown,
+    GotIp, LostIp,
+    ConnectFailed,
+    CfgSaved,
+    Timeout
+};
+enum class FailReason : uint8_t { None, AuthFail, NoAp, Other };
+
+struct Event {
+    EvType     type;
+    LinkId     link{};
+    FailReason reason{};
+    uint8_t    timer{};
+    uint16_t   gen{};
 };
 
-#endif /* NETWORK_EVENT_H_ */
+#endif // NETWORK_EVENT_H_

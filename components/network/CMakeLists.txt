@@ -1,15 +1,11 @@
 idf_component_register(
     SRC_DIRS src
     INCLUDE_DIRS include
-
-    REQUIRES
+    PRIV_INCLUDE_DIRS private_include
+    PRIV_REQUIRES
+        board_config
         esp_netif
         esp_eth
-        esp_wifi
-        esp_timer
 
-    PRIV_REQUIRES
-        nvs_flash
-        espressif__mdns
-        sse_events
+    REQUIRES
 )

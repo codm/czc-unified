@@ -4,7 +4,19 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 
-namespace Board {
+namespace Board { // maybe introduce structs?
+
+// Network
+inline constexpr const char* HOSTNAME = "codm-otbr";
+
+// --- WIFI ---
+
+// --- ETH --- 
+inline constexpr gpio_num_t PHY_ADDR = GPIO_NUM_0;
+inline constexpr gpio_num_t POWER_PIN = GPIO_NUM_5;
+inline constexpr gpio_num_t MDC_PIN = GPIO_NUM_23;
+inline constexpr gpio_num_t MDI_PIN = GPIO_NUM_18;
+inline constexpr gpio_num_t CLK_GPIO = GPIO_NUM_17;
 
 // --- RCP (CC2652P7) ---
 inline constexpr gpio_num_t  CC_RST_PIN   = GPIO_NUM_16;
