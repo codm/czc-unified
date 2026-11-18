@@ -3,7 +3,7 @@
 
 #include <atomic>
 
-#include "INetLink.h"
+#include "ILink_hal.h"
 #include "IEventSink.h"
 #include "esp_eth_driver.h"
 #include "esp_eth.h"
@@ -11,7 +11,8 @@
 #include "esp_netif_types.h"
 #include "esp_event.h"  
 
-class EthernetLink final : INetLink
+/** @brief ESP32 EMAC + LAN87xx PHY. Passive link, netif route_prio 200 (preferred over WiFi). */
+class EthernetLink final : public ILink_hal
 {
 private:
     constexpr static const char* TAG = "EthernetLink";
@@ -39,11 +40,14 @@ public:
     EthernetLink(const EthernetLink&) = delete;
     EthernetLink& operator=(const EthernetLink&) = delete;
 
-    esp_err_t start() override;
-    void stop() override;
-    esp_err_t connect() override; 
-    void disconnect() override;
-    bool ipInfo(esp_netif_ip_info_t& out) const override;
+    ~EthernetLink() override { stop(); }
+
+    esp_err_t    start() override;
+    void         stop() override;
+    LinkId       id() const override    { return LinkId::Eth; }
+    LinkState    state() const override { return state_.load(); }
+    esp_netif_t* netif() const override { return netif_; }
+    bool         ipInfo(esp_netif_ip_info_t& out) const override;
 };
 
 #endif // ETHERNETLINK_H_

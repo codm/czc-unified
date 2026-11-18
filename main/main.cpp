@@ -1,4 +1,11 @@
-#include "NetworkStateMachine.h"
+#include "NetStateMachine.h"
+#include "NvsConfigStore.h"
+#include "WifiDriver.h"
+#include "EthernetLink.h"
+#include "WifiStaLink.h"
+#include "SoftApLink.h"
+#include "net_web_bridge.h"
+#include "board_config.h"
 #include "status_light_manager.h"
 #include "update_manager.h"
 #include "firmware_manager.h"
@@ -11,6 +18,8 @@
 #include "esp_spiffs.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
+#include "esp_netif.h"
+#include "mdns.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -35,9 +44,23 @@ extern "C" void app_main(void)
     StatusLightManager statusLight;
     ESP_ERROR_CHECK(statusLight.init());
 
-    NetworkStateMachine network;
-    
-    
+    // Network: static lifetime, links post into the NSM until reboot
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(mdns_init());
+    ESP_ERROR_CHECK(mdns_hostname_set(Board::HOSTNAME));
+
+    static NvsConfigStore  netCfg;
+    ESP_ERROR_CHECK(netCfg.init());
+    static WifiDriver      wifiDriver;
+    static NetStateMachine nsm{netCfg};
+    static EthernetLink    ethLink{nsm};
+    static WifiStaLink     staLink{wifiDriver, nsm};
+    static SoftApLink      apLink{wifiDriver};
+    nsm.attach(ethLink, staLink, apLink);
+
+    static NetWebBridge::Context netBridge{nsm, staLink, netCfg, apLink};
+    ESP_ERROR_CHECK(NetWebBridge::forwardStateToSse(&netBridge));
+    ESP_ERROR_CHECK(nsm.start());
 
     // Mount SPIFFS for the web frontend
     esp_vfs_spiffs_conf_t spiffsConf{};
@@ -62,7 +85,7 @@ extern "C" void app_main(void)
     appController.fillFirmwareCallbacks(&fwCbs);
 
     web_network_callbacks_t netCbs{};
-    network.fillNetworkCallbacks(&netCbs);
+    NetWebBridge::fillCallbacks(&netCbs, &netBridge);
 
     web_led_callbacks_t ledCbs{};
     statusLight.fillLedCallbacks(&ledCbs);
@@ -70,7 +93,9 @@ extern "C" void app_main(void)
     esp_br_web_start("/spiffs", &fwCbs, &netCbs, &ledCbs);
 
     ESP_LOGI(TAG, "Waiting for internet connection...");
-    network.waitUntilInternetIsConnected();
+    while (!nsm.isOnline()) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
     ESP_LOGI(TAG, "Routed Connection available! Starting Application...");
     TimeService::init();
 

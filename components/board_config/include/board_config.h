@@ -10,6 +10,8 @@ namespace Board { // maybe introduce structs?
 inline constexpr const char* HOSTNAME = "codm-otbr";
 
 // --- WIFI ---
+inline constexpr const char* AP_SSID_PREFIX = "CZC";
+inline constexpr const char* AP_PASSWORD = "";
 
 // --- ETH --- 
 inline constexpr gpio_num_t PHY_ADDR = GPIO_NUM_0;
