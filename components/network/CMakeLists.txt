@@ -8,7 +8,6 @@ idf_component_register(
         log
 
     REQUIRES
-        net_core 
         esp_eth 
         esp_netif 
         esp_event
