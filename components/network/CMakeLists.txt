@@ -4,8 +4,12 @@ idf_component_register(
     PRIV_INCLUDE_DIRS private_include
     PRIV_REQUIRES
         board_config
-        esp_netif
-        esp_eth
+        espressif__lan87xx
+        log
 
     REQUIRES
+        net_core 
+        esp_eth 
+        esp_netif 
+        esp_event
 )
