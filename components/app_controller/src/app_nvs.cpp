@@ -11,6 +11,7 @@ constexpr const char* NVS_NAMESPACE    = "sys_cfg";
 constexpr const char* KEY_DEVICE_SETUP  = "device_setup";
 constexpr const char* KEY_DEVICE_MODE   = "device_mode";
 constexpr const char* KEY_DISABLE_WEBSERVER_ON_TCP = "disable_tcp_ws";
+constexpr const char* KEY_IP_WHITELIST_ACTIVE = "ip_wl_active";
 
 namespace AppNvs {
 
@@ -78,6 +79,29 @@ esp_err_t writeDisableWebserverOnTcp(bool value)
     ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle),
                         TAG, "NVS open failed");
     esp_err_t ret{nvs_set_u8(handle, KEY_DISABLE_WEBSERVER_ON_TCP, static_cast<uint8_t>(value))};
+    if (ret == ESP_OK) ret = nvs_commit(handle);
+    nvs_close(handle);
+    return ret;
+}
+
+bool readIpWhitelistActive()
+{
+    nvs_handle_t handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+    uint8_t val{0};
+    nvs_get_u8(handle, KEY_IP_WHITELIST_ACTIVE, &val);
+    nvs_close(handle);
+    return static_cast<bool>(val);
+}
+
+esp_err_t writeIpWhitelistActive(bool value)
+{
+    nvs_handle_t handle;
+    ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle),
+                        TAG, "NVS open failed");
+    esp_err_t ret{nvs_set_u8(handle, KEY_IP_WHITELIST_ACTIVE, static_cast<uint8_t>(value))};
     if (ret == ESP_OK) ret = nvs_commit(handle);
     nvs_close(handle);
     return ret;

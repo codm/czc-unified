@@ -36,6 +36,12 @@ typedef struct {
     
     esp_err_t (*get_disable_webserver_on_tcp)(void *ctx, int *disable_out);
 
+    esp_err_t (*set_ip_whitelist_active)(void *ctx, int active);
+
+    esp_err_t (*get_ip_whitelist_active)(void *ctx, int *active_out);
+
+    esp_err_t (*get_ip_whitelist)(void* ctx, char (*ipAddresses)[16], size_t* count);
+
     void (*esp_reboot) (void *ctx);
 
     esp_err_t (*esp_erase_nvs) (void *ctx);

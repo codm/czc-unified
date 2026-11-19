@@ -1336,6 +1336,9 @@ static esp_err_t device_rcp_erasenvram_post_handler(httpd_req_t *req)
     return send_ret;
 }
 
+/*-----------------------------------------------------
+ Note: Security handlers
+-----------------------------------------------------*/
 static esp_err_t disable_webserver_on_tcp_get_handler(httpd_req_t *req)
 {
     int state = 0;
@@ -1353,7 +1356,7 @@ static esp_err_t disable_webserver_on_tcp_get_handler(httpd_req_t *req)
 static esp_err_t disable_webserver_on_tcp_post_handler(httpd_req_t *req)
 {
     cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
-    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/security body");
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/security/socket body");
     cJSON *state_item = cJSON_GetObjectItem(body, "state");
     if (!cJSON_IsBool(state_item)) {
         cJSON_Delete(body);
@@ -1369,6 +1372,65 @@ static esp_err_t disable_webserver_on_tcp_post_handler(httpd_req_t *req)
         ret = s_fw_cbs.set_disable_webserver_on_tcp(s_fw_cbs.ctx, state);
     }
     return send_result_response(req, ret, "");
+}
+
+static esp_err_t ip_whitelist_active_get_handler(httpd_req_t *req)
+{
+    int state = 0;
+    if (s_fw_cbs.get_ip_whitelist_active)
+        s_fw_cbs.get_ip_whitelist_active(s_fw_cbs.ctx, &state);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "state", state != 0);
+
+    esp_err_t ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return ret;
+}
+
+static esp_err_t ip_whitelist_active_post_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/security/whitelist body");
+    cJSON *state_item = cJSON_GetObjectItem(body, "state");
+    if (!cJSON_IsBool(state_item)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'state' field");
+        return ESP_FAIL;
+    }
+
+    bool state = cJSON_IsTrue(state_item);
+    cJSON_Delete(body);
+
+    esp_err_t ret = ESP_ERR_NOT_SUPPORTED;
+    if (s_fw_cbs.set_ip_whitelist_active) {
+        ret = s_fw_cbs.set_ip_whitelist_active(s_fw_cbs.ctx, state);
+    }
+    return send_result_response(req, ret, "");
+}
+
+static esp_err_t ip_whitelist_get_handler(httpd_req_t *req)
+{
+    size_t MAX_ENTRIES = 16; // CHANGE HERE!!
+    size_t IPV4_ADDR_SIZE = 16;
+    char ip_list[MAX_ENTRIES][IPV4_ADDR_SIZE];
+    size_t count = 0;
+    if (s_fw_cbs.get_ip_whitelist)
+        s_fw_cbs.get_ip_whitelist(s_fw_cbs.ctx, ip_list, &count);
+
+    cJSON *root = cJSON_CreateObject();
+
+    cJSON *ips_array = cJSON_CreateArray();
+
+    for (size_t i = 0; i < count; i++) {
+        cJSON_AddItemToArray(ips_array, cJSON_CreateString(ip_list[i]));
+    }
+
+    cJSON_AddItemToObject(root, "ips", ips_array);
+
+    esp_err_t ret = httpd_send_packet(req, root);
+    cJSON_Delete(root);
+    return ret;
 }
 
 /* Frontend LED names, index = LedId */
@@ -1692,27 +1754,30 @@ static esp_err_t network_wifi_scan_get_handler(httpd_req_t *req)
 static httpd_uri_t s_device_handlers[] = {
     { .uri = ESP_OT_REST_API_FLASH_ESP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_esp_post_handler, .user_ctx = &s_server.data },
     { .uri = ESP_OT_REST_API_FLASH_RCP_PATH, .method = HTTP_POST, .handler = esp_otbr_flash_rcp_post_handler, .user_ctx = &s_server.data },
-    { .uri = "/device/mode",            .method = HTTP_GET,  .handler = device_mode_get_handler,            .user_ctx = &s_server.data },
-    { .uri = "/device/mode",            .method = HTTP_POST, .handler = device_mode_post_handler,           .user_ctx = &s_server.data },
-    { .uri = "/device/loglevel",        .method = HTTP_POST, .handler = device_log_level_post_handler,      .user_ctx = &s_server.data },
-    { .uri = "/device/esp/reboot",      .method = HTTP_POST, .handler = device_esp_reboot_post_handler,     .user_ctx = &s_server.data },
-    { .uri = "/device/esp/erasenvs",    .method = HTTP_POST, .handler = device_esp_erasenvs_post_handler,   .user_ctx = &s_server.data },
-    { .uri = "/device/rcp/reboot",      .method = HTTP_POST, .handler = device_rcp_reboot_post_handler,     .user_ctx = &s_server.data },
-    { .uri = "/device/rcp/erasenvram",  .method = HTTP_POST, .handler = device_rcp_erasenvram_post_handler, .user_ctx = &s_server.data },
-    { .uri = "/device/security",        .method = HTTP_GET,  .handler = disable_webserver_on_tcp_get_handler,  .user_ctx = &s_server.data },
-    { .uri = "/device/security",        .method = HTTP_POST, .handler = disable_webserver_on_tcp_post_handler, .user_ctx = &s_server.data },
-    { .uri = "/device/led",             .method = HTTP_GET,  .handler = device_led_get_handler,             .user_ctx = &s_server.data },
-    { .uri = "/device/led",             .method = HTTP_POST, .handler = device_led_post_handler,            .user_ctx = &s_server.data },
-    { .uri = "/device/nightmode",       .method = HTTP_GET,  .handler = device_nightmode_get_handler,       .user_ctx = &s_server.data },
-    { .uri = "/device/nightmode",       .method = HTTP_POST, .handler = device_nightmode_post_handler,      .user_ctx = &s_server.data },
-    { .uri = "/device/nightmode/clear", .method = HTTP_POST, .handler = device_nightmode_clear_post_handler,.user_ctx = &s_server.data },
-    { .uri = "/network/wifi",           .method = HTTP_GET,  .handler = network_wifi_get_handler,           .user_ctx = &s_server.data },
-    { .uri = "/network/wifi",           .method = HTTP_POST, .handler = network_wifi_post_handler,          .user_ctx = &s_server.data },
-    { .uri = "/network/ethernet",       .method = HTTP_GET,  .handler = network_eth_get_handler,            .user_ctx = &s_server.data },
-    { .uri = "/network/ethernet",       .method = HTTP_POST, .handler = network_eth_post_handler,           .user_ctx = &s_server.data },
-    { .uri = "/network/status",         .method = HTTP_GET,  .handler = network_status_get_handler,         .user_ctx = &s_server.data },
-    { .uri = "/network/mdns",           .method = HTTP_POST, .handler = network_mdns_post_handler,          .user_ctx = &s_server.data },
-    { .uri = "/network/wifi/scan",      .method = HTTP_GET,  .handler = network_wifi_scan_get_handler,      .user_ctx = &s_server.data },
+    { .uri = "/device/mode",               .method = HTTP_GET,  .handler = device_mode_get_handler,            .user_ctx = &s_server.data },
+    { .uri = "/device/mode",               .method = HTTP_POST, .handler = device_mode_post_handler,           .user_ctx = &s_server.data },
+    { .uri = "/device/loglevel",           .method = HTTP_POST, .handler = device_log_level_post_handler,      .user_ctx = &s_server.data },
+    { .uri = "/device/esp/reboot",         .method = HTTP_POST, .handler = device_esp_reboot_post_handler,     .user_ctx = &s_server.data },
+    { .uri = "/device/esp/erasenvs",       .method = HTTP_POST, .handler = device_esp_erasenvs_post_handler,   .user_ctx = &s_server.data },
+    { .uri = "/device/rcp/reboot",         .method = HTTP_POST, .handler = device_rcp_reboot_post_handler,     .user_ctx = &s_server.data },
+    { .uri = "/device/rcp/erasenvram",     .method = HTTP_POST, .handler = device_rcp_erasenvram_post_handler, .user_ctx = &s_server.data },
+    { .uri = "/device/security/socket",    .method = HTTP_GET,  .handler = disable_webserver_on_tcp_get_handler,  .user_ctx = &s_server.data },
+    { .uri = "/device/security/socket",    .method = HTTP_POST, .handler = disable_webserver_on_tcp_post_handler, .user_ctx = &s_server.data },
+    { .uri = "/device/security/whitelist", .method = HTTP_GET,  .handler = ip_whitelist_active_get_handler,    .user_ctx = &s_server.data },
+    { .uri = "/device/security/whitelist", .method = HTTP_POST, .handler = ip_whitelist_active_post_handler,   .user_ctx = &s_server.data },
+    { .uri = "/device/security/whitelist/read", .method = HTTP_GET,  .handler = ip_whitelist_get_handler,           .user_ctx = &s_server.data },
+    { .uri = "/device/led",                .method = HTTP_GET,  .handler = device_led_get_handler,             .user_ctx = &s_server.data },
+    { .uri = "/device/led",                .method = HTTP_POST, .handler = device_led_post_handler,            .user_ctx = &s_server.data },
+    { .uri = "/device/nightmode",          .method = HTTP_GET,  .handler = device_nightmode_get_handler,       .user_ctx = &s_server.data },
+    { .uri = "/device/nightmode",          .method = HTTP_POST, .handler = device_nightmode_post_handler,      .user_ctx = &s_server.data },
+    { .uri = "/device/nightmode/clear",    .method = HTTP_POST, .handler = device_nightmode_clear_post_handler,.user_ctx = &s_server.data },
+    { .uri = "/network/wifi",              .method = HTTP_GET,  .handler = network_wifi_get_handler,           .user_ctx = &s_server.data },
+    { .uri = "/network/wifi",              .method = HTTP_POST, .handler = network_wifi_post_handler,          .user_ctx = &s_server.data },
+    { .uri = "/network/ethernet",          .method = HTTP_GET,  .handler = network_eth_get_handler,            .user_ctx = &s_server.data },
+    { .uri = "/network/ethernet",          .method = HTTP_POST, .handler = network_eth_post_handler,           .user_ctx = &s_server.data },
+    { .uri = "/network/status",            .method = HTTP_GET,  .handler = network_status_get_handler,         .user_ctx = &s_server.data },
+    { .uri = "/network/mdns",              .method = HTTP_POST, .handler = network_mdns_post_handler,          .user_ctx = &s_server.data },
+    { .uri = "/network/wifi/scan",         .method = HTTP_GET,  .handler = network_wifi_scan_get_handler,      .user_ctx = &s_server.data },
 };
 
 /*-----------------------------------------------------

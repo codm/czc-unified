@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 namespace SocketWhitelist {
-    inline constexpr size_t MAX_ENTRIES = 16;
+    inline constexpr size_t MAX_ENTRIES = 16; // CHANGE IN esp_br_web.c handler !!!!
     inline constexpr size_t IPV4_ADDR_SIZE = 16;
 
     esp_err_t add(const char* ipAddress);

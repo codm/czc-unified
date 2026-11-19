@@ -1021,7 +1021,7 @@ function security_load_settings() {
 
 function get_disable_webserver_on_tcp() {
   $.ajax({
-    url: '/device/security',
+    url: '/device/security/socket',
     type: 'GET',
     dataType: 'json',
     success: function(data)
@@ -1045,7 +1045,7 @@ function set_disable_webserver_on_tcp(event) {
   let checked = checkbox.checked;
 
   $.ajax({
-    url: '/device/security',
+    url: '/device/security/socket',
     type: 'POST',
     contentType: 'application/json',
     dataType: 'json',
@@ -1060,15 +1060,80 @@ function set_disable_webserver_on_tcp(event) {
 }
 
 function get_ip_whitelist_active() {
-
+  $.ajax({
+    url: '/device/security/whitelist',
+    type: 'GET',
+    dataType: 'json',
+    success: function(data)
+    {
+      if (!data) return;
+      if (typeof data.state === 'boolean')
+        document.getElementById('ip-whitelist-enabled').checked = data.state;
+    }
+  });
 }
 
-function set_ip_whitelist_active() {
+function set_ip_whitelist_active(event) {
+  if (event) event.preventDefault();
 
+  let checkbox = document.getElementById('ip-whitelist-enabled');
+  if (!checkbox) {
+    console.error("Checkbox 'ip-whitelist-enabled' wurde im DOM nicht gefunden!");
+    return;
+  }
+
+  let checked = checkbox.checked;
+
+  $.ajax({
+    url: '/device/security/whitelist',
+    type: 'POST',
+    contentType: 'application/json',
+    dataType: 'json',
+    data: JSON.stringify({ state: checked }),
+    success: function(response) {
+      frontend_log_show('Security', { error: 0, content: 'Security settings saved successfully.' });
+    },
+    error: function(jqXHR) {
+      frontend_log_show('Security', { error: 1, content: 'Failed to save security settings (HTTP ' + jqXHR.status + ').' });
+    }
+  });
 }
 
 function get_ip_whitelist() {
+  $.ajax({
+    url: '/device/security/whitelist/read',
+    type: 'GET',
+    dataType: 'json',
+    success: function(response) {
+      if (!response) return;
 
+      let listElement = document.getElementById('ip-whitelist-list');
+      if (!listElement) {
+        console.error("Element 'ip-whitelist-list' wasn't found in DOM!");
+        return;
+      }
+
+      listElement.innerHTML = '';
+
+      let ips = response.ips || [];
+      if (ips.length === 0) {
+        let li = document.createElement('li');
+        li.textContent = 'Empty whitelist.';
+        listElement.appendChild(li);
+        return;
+      }
+
+      ips.forEach(function(ip) {
+        let li = document.createElement('li');
+        li.className = 'ip-whitelist-item';
+        li.textContent = ip;
+        listElement.appendChild(li);
+      });
+    },
+    error: function(jqXHR) {
+      console.error('Error loading ip-whitelist(HTTP ' + jqXHR.status + ').');
+    }
+  });
 }
 
 function add_ip_whitelist(ipAddress) {

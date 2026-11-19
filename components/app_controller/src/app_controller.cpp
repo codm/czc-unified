@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "proxy_transport_event.h"
+#include "socket_whitelist.h"
 #include "esp_br_web.h"
 
 static const char* TAG = "AppController";
@@ -218,6 +219,19 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     {
         *disable_out = AppNvs::readDisableWebserverOnTcp() ? 1 : 0;
         return ESP_OK;
+    };
+    cbs->set_ip_whitelist_active = [](void* ctx, int disable)
+    {
+        return AppNvs::writeIpWhitelistActive(disable != 0);
+    };
+    cbs->get_ip_whitelist_active = [](void* ctx, int* disable_out)
+    {
+        *disable_out = AppNvs::readIpWhitelistActive() ? 1 : 0;
+        return ESP_OK;
+    };
+    cbs->get_ip_whitelist = [](void* ctx, char (*ipAddresses)[SocketWhitelist::IPV4_ADDR_SIZE], size_t* count)
+    {
+        return SocketWhitelist::getAll(ipAddresses, SocketWhitelist::MAX_ENTRIES, count);
     };
     cbs->esp_reboot = [](void* ctx)
     {
