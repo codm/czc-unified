@@ -317,6 +317,13 @@ Visible only in coordinator mode (modes 1 and 2). Shows two buttons: **USB / UAR
 | `GET` | `/device/mode` | First boot check, current mode display |
 | `POST` | `/device/mode` | Zigbee transport switch (coordinator USB &lt;-&gt; Net) |
 | `POST` | `/device/loglevel` | Debug page — set ESP32 log level (`{"mode": <int>}`, 1=Error .. 5=Verbose) |
+| `GET` | `/security/socket` | Load security setting for webserver deactivation on socket connection |
+| `POST` | `/security/socket` | Save security setting for webserver deactivation on socket connection |
+| `GET` | `/security/whitelist` | Load security setting for socket whitelist |
+| `POST` | `/security/whitelist` | Save security setting for socket whitelist |
+| `GET` | `/security/whitelist/read` | Load ip-elements from whitelist |
+| `POST` | `/security/whitelist/add` | Add ip-element to whitelist |
+| `POST` | `/security/whitelist/remove` | Remove ip-element from whitelist |
 | `GET` | `/network/status` | Polling for internet connectivity (first boot) |
 | `GET` | `/network/wifi` | Load WiFi config form |
 | `POST` | `/network/wifi` | Save WiFi config |

@@ -42,6 +42,10 @@ typedef struct {
 
     esp_err_t (*get_ip_whitelist)(void* ctx, char (*ipAddresses)[16], size_t* count);
 
+    esp_err_t (*add_ip_whitelist)(void* ctx, char* ipAddress);
+
+    esp_err_t (*remove_ip_whitelist)(void* ctx, char* ipAddress);
+
     void (*esp_reboot) (void *ctx);
 
     esp_err_t (*esp_erase_nvs) (void *ctx);

@@ -1433,6 +1433,50 @@ static esp_err_t ip_whitelist_get_handler(httpd_req_t *req)
     return ret;
 }
 
+static esp_err_t ip_whitelist_add_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/security/whitelist/add body");
+    cJSON *add_item = cJSON_GetObjectItem(body, "ip");
+
+    if (!cJSON_IsString(add_item)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'ip' field");
+        return ESP_FAIL;
+    }
+
+    const char *ip_address = add_item->valuestring;
+
+    esp_err_t ret = ESP_ERR_NOT_SUPPORTED;
+    if (s_fw_cbs.add_ip_whitelist) {
+        ret = s_fw_cbs.add_ip_whitelist(s_fw_cbs.ctx, ip_address);
+    }
+    cJSON_Delete(body);
+    return send_result_response(req, ret, "");
+}
+
+static esp_err_t ip_whitelist_remove_handler(httpd_req_t *req)
+{
+    cJSON *body = httpd_request_convert2_json(req, cJSON_Object);
+    ESP_RETURN_ON_FALSE(body, ESP_FAIL, WEB_TAG, "Failed to parse /device/security/whitelist/remove body");
+    cJSON *remove_item = cJSON_GetObjectItem(body, "ip");
+
+    if (!cJSON_IsString(remove_item)) {
+        cJSON_Delete(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'ip' field");
+        return ESP_FAIL;
+    }
+
+    const char *ip_address = remove_item->valuestring;
+
+    esp_err_t ret = ESP_ERR_NOT_SUPPORTED;
+    if (s_fw_cbs.remove_ip_whitelist) {
+        ret = s_fw_cbs.remove_ip_whitelist(s_fw_cbs.ctx, ip_address);
+    }
+    cJSON_Delete(body);
+    return send_result_response(req, ret, "");
+}
+
 /* Frontend LED names, index = LedId */
 static const char *const s_led_names[] = { "pwr", "mode", "rcp" };
 #define LED_NAME_COUNT (sizeof(s_led_names) / sizeof(s_led_names[0]))
@@ -1765,7 +1809,9 @@ static httpd_uri_t s_device_handlers[] = {
     { .uri = "/device/security/socket",    .method = HTTP_POST, .handler = disable_webserver_on_tcp_post_handler, .user_ctx = &s_server.data },
     { .uri = "/device/security/whitelist", .method = HTTP_GET,  .handler = ip_whitelist_active_get_handler,    .user_ctx = &s_server.data },
     { .uri = "/device/security/whitelist", .method = HTTP_POST, .handler = ip_whitelist_active_post_handler,   .user_ctx = &s_server.data },
-    { .uri = "/device/security/whitelist/read", .method = HTTP_GET,  .handler = ip_whitelist_get_handler,           .user_ctx = &s_server.data },
+    { .uri = "/device/security/whitelist/read", .method = HTTP_GET,  .handler = ip_whitelist_get_handler,      .user_ctx = &s_server.data },
+    { .uri = "/device/security/whitelist/add", .method = HTTP_POST,  .handler = ip_whitelist_add_handler,      .user_ctx = &s_server.data },
+    { .uri = "/device/security/whitelist/remove", .method = HTTP_POST,  .handler = ip_whitelist_remove_handler,.user_ctx = &s_server.data },
     { .uri = "/device/led",                .method = HTTP_GET,  .handler = device_led_get_handler,             .user_ctx = &s_server.data },
     { .uri = "/device/led",                .method = HTTP_POST, .handler = device_led_post_handler,            .user_ctx = &s_server.data },
     { .uri = "/device/nightmode",          .method = HTTP_GET,  .handler = device_nightmode_get_handler,       .user_ctx = &s_server.data },

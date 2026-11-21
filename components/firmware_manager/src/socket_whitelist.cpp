@@ -22,11 +22,15 @@ struct StoredWhitelist {
 esp_err_t SocketWhitelist::add(const char* ipAddress)
 {
     if (ipAddress == nullptr) {
+        ESP_LOGE("WHITELIST", "add() failed: ipAddress is nullptr!");
         return ESP_ERR_INVALID_ARG;
     }
 
+    ESP_LOGI("WHITELIST", "Versuche IP-Adresse hinzuzufuegen: '%s'", ipAddress);
+
     in_addr parsedAddress{};
     if (inet_pton(AF_INET, ipAddress, &parsedAddress) != 1) {
+        ESP_LOGE("WHITELIST", "add() failed: inet_pton konnte '%s' nicht als gueltige IPv4 parsen!", ipAddress);
         return ESP_ERR_INVALID_ARG;
     }
 

@@ -233,6 +233,14 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
     {
         return SocketWhitelist::getAll(ipAddresses, SocketWhitelist::MAX_ENTRIES, count);
     };
+    cbs->add_ip_whitelist = [](void* ctx, char* ipAddress)
+    {
+        return SocketWhitelist::add(ipAddress);
+    };
+    cbs->remove_ip_whitelist = [](void* ctx, char* ipAddress)
+    {
+        return SocketWhitelist::remove(ipAddress);
+    };
     cbs->esp_reboot = [](void* ctx)
     {
         return static_cast<AppController*>(ctx)->espReboot();
