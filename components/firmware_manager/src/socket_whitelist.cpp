@@ -8,16 +8,28 @@
 namespace {
 constexpr const char* NVS_NAMESPACE = "socket_wl";
 constexpr const char* NVS_KEY_IPS = "ips";
+constexpr const char* SETTINGS_NVS_NAMESPACE = "sys_cfg";
+constexpr const char* IP_WHITELIST_ACTIVE_KEY = "ip_wl_active";
 
 struct StoredWhitelist {
     uint32_t count;
     char addresses[SocketWhitelist::MAX_ENTRIES]
                   [SocketWhitelist::IPV4_ADDR_SIZE];
 };
+
+bool isWhitelistActive() // NEEDS REWORK
+{
+    nvs_handle_t handle;
+    if (nvs_open(SETTINGS_NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+
+    uint8_t value{0};
+    esp_err_t err = nvs_get_u8(handle, IP_WHITELIST_ACTIVE_KEY, &value);
+    nvs_close(handle);
+    return err == ESP_OK && value != 0;
 }
-
-
-
+}
 
 esp_err_t SocketWhitelist::add(const char* ipAddress)
 {
@@ -178,13 +190,23 @@ esp_err_t SocketWhitelist::getAll(char (*ipAddresses)[IPV4_ADDR_SIZE], size_t ca
     return ESP_OK;
 }
 
-esp_err_t SocketWhitelist::check(uint32_t ipAddress, bool* allowed)
+esp_err_t SocketWhitelist::check(const char* ipAddress, bool* allowed)
 {
-    if (allowed == nullptr) {
+    if (ipAddress == nullptr || allowed == nullptr) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    if (!isWhitelistActive()) {
+        *allowed = true;
+        return ESP_OK;
+    }
+
     *allowed = false;
+
+    in_addr clientAddress{};
+    if (inet_pton(AF_INET, ipAddress, &clientAddress) != 1) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     nvs_handle_t handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
@@ -225,7 +247,7 @@ esp_err_t SocketWhitelist::check(uint32_t ipAddress, bool* allowed)
             nvs_close(handle);
             return ESP_FAIL; // Somehow saved address in nvs is invalid
         }
-        if (storedAddress.s_addr == ipAddress) {
+        if (storedAddress.s_addr == clientAddress.s_addr) {
             *allowed = true;
             nvs_close(handle);
             return ESP_OK;

@@ -3,6 +3,7 @@
 #include "board_config.h"
 #include "status_light_event.h"
 #include "proxy_transport_event.h"
+#include "socket_whitelist.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_check.h"
@@ -86,7 +87,10 @@ int UartTransport::read(uint8_t* buf, size_t len)
 // TcpTransport
 // ---------------------------------------------------------------------------
 
-TcpTransport::TcpTransport(uint16_t port) : port{port} {}
+TcpTransport::TcpTransport(uint16_t port) : port{port}
+{
+    esp_event_handler_register(IP_WHITELIST_EVENT, ESP_EVENT_ANY_ID, &TcpTransport::ip_whitelist_event_handler, this);
+}
 
 TcpTransport::~TcpTransport()
 {
@@ -95,6 +99,12 @@ TcpTransport::~TcpTransport()
 
 esp_err_t TcpTransport::open()
 {
+    // socket connection didn't work most of the time because of errno 23 (serverFd was still used)
+    if (serverFd >= 0) {
+        ::close(serverFd);
+        serverFd = -1;
+    }
+
     serverFd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (serverFd < 0) {
         ESP_LOGE(TAG, "socket() failed: errno %d", errno);
@@ -156,12 +166,33 @@ int TcpTransport::read(uint8_t* buf, size_t len)
 {
     if (clientFd < 0) {
         ESP_LOGI(TAG, "Waiting for TCP client...");
-        clientFd = accept(serverFd, nullptr, nullptr);
+
+        sockaddr_in clientAddr{};
+        socklen_t clientAddrLen = sizeof(clientAddr);
+
+        clientFd = accept(serverFd, reinterpret_cast<sockaddr*>(&clientAddr), &clientAddrLen);
         if (clientFd < 0) {
             ESP_LOGE(TAG, "accept() failed: errno %d", errno);
             return -1;
         }
-        ESP_LOGI(TAG, "TCP client connected");
+
+        inet_ntop(AF_INET, &(clientAddr.sin_addr), currentClientIp, INET_ADDRSTRLEN);
+
+        bool ip_allowed = false;
+        esp_err_t whitelistErr = SocketWhitelist::check(currentClientIp, &ip_allowed);
+
+        if (whitelistErr != ESP_OK || !ip_allowed) {
+            if (whitelistErr != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to check TCP client IP %s against whitelist: %s",
+                         currentClientIp, esp_err_to_name(whitelistErr));
+            }
+            ESP_LOGI(TAG, "TCP client tried to connect from IP: %s not on whitelist", currentClientIp);
+            ::close(clientFd);
+            clientFd = -1;
+            return -1;
+        }
+
+        ESP_LOGI(TAG, "TCP client connected from IP: %s", currentClientIp);
         StatusLedMode::set(LedState::ZIGBEE_NET);
         esp_event_post(CLIENT_CONNECTED_EVENT, CLIENT_CONNECTED, nullptr, 0, portMAX_DELAY);
     }
@@ -175,4 +206,22 @@ int TcpTransport::read(uint8_t* buf, size_t len)
         esp_event_post(CLIENT_CONNECTED_EVENT, CLIENT_DISCONNECTED, nullptr, 0, portMAX_DELAY);
     }
     return n;
+}
+
+void TcpTransport::ip_whitelist_event_handler(void* handler_args, esp_event_base_t base, int32_t id, void* event_data)
+{
+    ESP_LOGI(TAG, "IP_EVENT triggered");
+    auto* transport = static_cast<TcpTransport*>(handler_args);
+    if (transport->clientFd >= 0) {
+        bool ip_allowed = false;
+        esp_err_t whitelistErr = SocketWhitelist::check(transport->currentClientIp, &ip_allowed);
+        if (whitelistErr != ESP_OK || ip_allowed) {
+            if (whitelistErr != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to check TCP client IP %s against whitelist: %s",
+                         transport->currentClientIp, esp_err_to_name(whitelistErr));
+            }
+            return;
+        }
+        ::shutdown(transport->clientFd, SHUT_RDWR);
+    }
 }

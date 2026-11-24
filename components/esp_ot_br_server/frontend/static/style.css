@@ -652,6 +652,10 @@ section {
     list-style: none;
 }
 
+#ip-whitelist-form:has(#ip-whitelist-enabled:not(:checked)) .ip-whitelist-list > li {
+    opacity: 0.6;
+}
+
 .ip-whitelist-feedback:empty {
     display: none;
 }

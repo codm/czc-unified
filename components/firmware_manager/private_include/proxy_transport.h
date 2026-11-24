@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <arpa/inet.h>
 #include "esp_err.h"
+#include "esp_event.h"
 #include "esp_log_write.h"
 
 /**
@@ -77,11 +79,13 @@ public:
     esp_err_t close() override;
     int write(const uint8_t* buf, size_t len) override;
     int read(uint8_t* buf, size_t len) override;
+    static void ip_whitelist_event_handler(void* handler_args, esp_event_base_t base, int32_t id, void* event_data);
 
 private:
     uint16_t port;
     int      serverFd{-1};
     int      clientFd{-1};
+    char currentClientIp[INET_ADDRSTRLEN] = {0};
 };
 
 #endif // CZC_PROXY_TRANSPORT_H_
