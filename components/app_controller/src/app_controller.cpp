@@ -227,11 +227,11 @@ void AppController::fillFirmwareCallbacks(web_firmware_callbacks_t* cbs)
         if (active != 0) {
             esp_event_post(IP_WHITELIST_EVENT, IP_CHECK, nullptr, 0, portMAX_DELAY);
         }
-        return AppNvs::writeIpWhitelistActive(active != 0);
+        return SocketWhitelist::writeIpWhitelistActive(active != 0);
     };
     cbs->get_ip_whitelist_active = [](void* ctx, int* active_out)
     {
-        *active_out = AppNvs::readIpWhitelistActive() ? 1 : 0;
+        *active_out = SocketWhitelist::readIpWhitelistActive() ? 1 : 0;
         return ESP_OK;
     };
     cbs->get_ip_whitelist = [](void* ctx, char (*ipAddresses)[SocketWhitelist::IPV4_ADDR_SIZE], size_t* count)

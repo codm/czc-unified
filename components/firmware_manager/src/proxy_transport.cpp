@@ -210,7 +210,6 @@ int TcpTransport::read(uint8_t* buf, size_t len)
 
 void TcpTransport::ip_whitelist_event_handler(void* handler_args, esp_event_base_t base, int32_t id, void* event_data)
 {
-    ESP_LOGI(TAG, "IP_EVENT triggered");
     auto* transport = static_cast<TcpTransport*>(handler_args);
     if (transport->clientFd >= 0) {
         bool ip_allowed = false;

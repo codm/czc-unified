@@ -2,47 +2,55 @@
 #include "lwip/sockets.h"
 #include <cstring>
 
+#include "esp_check.h"
 #include "esp_log.h"
 #include "socket_whitelist.h"
 
+static const char* TAG = "SocketWhitelist";
+
 namespace {
 constexpr const char* NVS_NAMESPACE = "socket_wl";
-constexpr const char* NVS_KEY_IPS = "ips";
-constexpr const char* SETTINGS_NVS_NAMESPACE = "sys_cfg";
-constexpr const char* IP_WHITELIST_ACTIVE_KEY = "ip_wl_active";
+constexpr const char* KEY_IPS = "ips";
+constexpr const char* KEY_ACTIVE = "ip_wl_active";
 
 struct StoredWhitelist {
     uint32_t count;
     char addresses[SocketWhitelist::MAX_ENTRIES]
                   [SocketWhitelist::IPV4_ADDR_SIZE];
 };
+}
 
-bool isWhitelistActive() // NEEDS REWORK
+bool SocketWhitelist::readIpWhitelistActive()
 {
     nvs_handle_t handle;
-    if (nvs_open(SETTINGS_NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
         return false;
     }
-
-    uint8_t value{0};
-    esp_err_t err = nvs_get_u8(handle, IP_WHITELIST_ACTIVE_KEY, &value);
+    uint8_t val{0};
+    nvs_get_u8(handle, KEY_ACTIVE, &val);
     nvs_close(handle);
-    return err == ESP_OK && value != 0;
+    return static_cast<bool>(val);
 }
+
+esp_err_t SocketWhitelist::writeIpWhitelistActive(bool value)
+{
+    nvs_handle_t handle;
+    ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle),
+                        TAG, "NVS open failed");
+    esp_err_t ret{nvs_set_u8(handle, KEY_ACTIVE, static_cast<uint8_t>(value))};
+    if (ret == ESP_OK) ret = nvs_commit(handle);
+    nvs_close(handle);
+    return ret;
 }
 
 esp_err_t SocketWhitelist::add(const char* ipAddress)
 {
     if (ipAddress == nullptr) {
-        ESP_LOGE("WHITELIST", "add() failed: ipAddress is nullptr!");
         return ESP_ERR_INVALID_ARG;
     }
 
-    ESP_LOGI("WHITELIST", "Versuche IP-Adresse hinzuzufuegen: '%s'", ipAddress);
-
     in_addr parsedAddress{};
     if (inet_pton(AF_INET, ipAddress, &parsedAddress) != 1) {
-        ESP_LOGE("WHITELIST", "add() failed: inet_pton konnte '%s' nicht als gueltige IPv4 parsen!", ipAddress);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -54,7 +62,7 @@ esp_err_t SocketWhitelist::add(const char* ipAddress)
 
     StoredWhitelist data{};
     size_t size = sizeof(data);
-    err = nvs_get_blob(handle, NVS_KEY_IPS, &data, &size);
+    err = nvs_get_blob(handle, KEY_IPS, &data, &size);
 
     if (err == ESP_ERR_NVS_NOT_FOUND) {
         data = {};  // First execution -> nvs not yet initialized
@@ -78,7 +86,7 @@ esp_err_t SocketWhitelist::add(const char* ipAddress)
     strlcpy(data.addresses[data.count], ipAddress, IPV4_ADDR_SIZE);
     ++data.count;
 
-    err = nvs_set_blob(handle, NVS_KEY_IPS, &data, sizeof(data));
+    err = nvs_set_blob(handle, KEY_IPS, &data, sizeof(data));
     if (err == ESP_OK) {
         err = nvs_commit(handle);
     }
@@ -106,7 +114,7 @@ esp_err_t SocketWhitelist::remove(const char* ipAddress)
 
     StoredWhitelist data{};
     size_t size = sizeof(data);
-    err = nvs_get_blob(handle, NVS_KEY_IPS, &data, &size);
+    err = nvs_get_blob(handle, KEY_IPS, &data, &size);
 
     if (err == ESP_ERR_NVS_NOT_FOUND) {
         nvs_close(handle);
@@ -129,7 +137,7 @@ esp_err_t SocketWhitelist::remove(const char* ipAddress)
             --data.count;
             data.addresses[data.count][0] = '\0';
 
-            err = nvs_set_blob(handle, NVS_KEY_IPS, &data, sizeof(data));
+            err = nvs_set_blob(handle, KEY_IPS, &data, sizeof(data));
             if (err == ESP_OK) {
                 err = nvs_commit(handle);
             }
@@ -163,7 +171,7 @@ esp_err_t SocketWhitelist::getAll(char (*ipAddresses)[IPV4_ADDR_SIZE], size_t ca
 
     StoredWhitelist data{};
     size_t size = sizeof(data);
-    err = nvs_get_blob(handle, NVS_KEY_IPS, &data, &size);
+    err = nvs_get_blob(handle, KEY_IPS, &data, &size);
     nvs_close(handle);
 
     if (err == ESP_ERR_NVS_NOT_FOUND) {
@@ -196,7 +204,7 @@ esp_err_t SocketWhitelist::check(const char* ipAddress, bool* allowed)
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (!isWhitelistActive()) {
+    if (!readIpWhitelistActive()) {
         *allowed = true;
         return ESP_OK;
     }
@@ -221,7 +229,7 @@ esp_err_t SocketWhitelist::check(const char* ipAddress, bool* allowed)
 
     StoredWhitelist data{};
     size_t size = sizeof(data);
-    err = nvs_get_blob(handle, NVS_KEY_IPS, &data, &size);
+    err = nvs_get_blob(handle, KEY_IPS, &data, &size);
     nvs_close(handle);
 
     if (err == ESP_ERR_NVS_NOT_FOUND) {

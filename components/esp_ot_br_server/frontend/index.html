@@ -520,7 +520,10 @@
                   </label>
                 </div>
                 <div class="form-actions security-form-actions">
-                  <button type="button" class="btn btn-primary" onclick="set_disable_webserver_on_tcp()">Save</button>
+                  <button type="button" class="btn btn-primary" id="socket-btn" onclick="set_disable_webserver_on_tcp()">
+                    <span class="btn-spinner"></span>
+                    <span class="btn-text">Save</span>
+                  </button>
                 </div>
               </form>
             </div>
@@ -551,9 +554,10 @@
                       autocomplete="off"
                       required
                     >
-                    <button type="button" class="btn btn-primary" id="add-whitelist-ip" onclick="ip_whitelist_add_event()">
-                      Add
-                    </button>
+                      <button type="button" class="btn btn-primary" id="add-whitelist-ip" onclick="ip_whitelist_add_event()">
+                        <span class="btn-spinner"></span>
+                        <span class="btn-text">Add</span>
+                      </button>
                   </div>
 
                   <small id="ip-whitelist-feedback" class="ip-whitelist-feedback" aria-live="polite"></small>
@@ -561,7 +565,10 @@
 
                 <ul id="ip-whitelist-list" class="ip-whitelist-list" aria-label="Allowed IP addresses"></ul>
                 <div class="form-actions">
-                  <button type="button" class="btn btn-primary" onclick="set_ip_whitelist_active()">Save</button>
+                  <button type="button" class="btn btn-primary" id="whitelist-btn" onclick="set_ip_whitelist_active()">
+                    <span class="btn-spinner"></span>
+                    <span class="btn-text">Save</span>
+                  </button>
                 </div>
               </form>
             </div>

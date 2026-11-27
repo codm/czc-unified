@@ -84,27 +84,4 @@ esp_err_t writeDisableWebserverOnTcp(bool value)
     return ret;
 }
 
-bool readIpWhitelistActive()
-{
-    nvs_handle_t handle;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
-        return false;
-    }
-    uint8_t val{0};
-    nvs_get_u8(handle, KEY_IP_WHITELIST_ACTIVE, &val);
-    nvs_close(handle);
-    return static_cast<bool>(val);
-}
-
-esp_err_t writeIpWhitelistActive(bool value)
-{
-    nvs_handle_t handle;
-    ESP_RETURN_ON_ERROR(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle),
-                        TAG, "NVS open failed");
-    esp_err_t ret{nvs_set_u8(handle, KEY_IP_WHITELIST_ACTIVE, static_cast<uint8_t>(value))};
-    if (ret == ESP_OK) ret = nvs_commit(handle);
-    nvs_close(handle);
-    return ret;
-}
-
 } // namespace AppNvs

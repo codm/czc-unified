@@ -1044,17 +1044,28 @@ function set_disable_webserver_on_tcp(event) {
 
   let checked = checkbox.checked;
 
+  const $btn = $(document.getElementById('socket-btn'));
+  const $textSpan = $btn.find('.btn-text');
+
   $.ajax({
     url: '/device/security/socket',
     type: 'POST',
     contentType: 'application/json',
     dataType: 'json',
     data: JSON.stringify({ state: checked }),
+    beforeSend: function() {
+      $btn.prop('disabled', true).addClass('is-loading');
+      $textSpan.text('');
+    },
     success: function(response) {
       frontend_log_show('Security', { error: 0, content: 'Security settings saved successfully.' });
     },
     error: function(jqXHR) {
       frontend_log_show('Security', { error: 1, content: 'Failed to save security settings (HTTP ' + jqXHR.status + ').' });
+    },
+    complete: function() {
+      $btn.prop('disabled', false).removeClass('is-loading');
+      $textSpan.text("Save");
     }
   });
 }
@@ -1084,17 +1095,28 @@ function set_ip_whitelist_active(event) {
 
   let checked = checkbox.checked;
 
+  const $btn = $(document.getElementById('whitelist-btn'));
+  const $textSpan = $btn.find('.btn-text');
+
   $.ajax({
     url: '/device/security/whitelist',
     type: 'POST',
     contentType: 'application/json',
     dataType: 'json',
     data: JSON.stringify({ state: checked }),
+    beforeSend: function() {
+      $btn.prop('disabled', true).addClass('is-loading');
+      $textSpan.text('');
+    },
     success: function(response) {
       frontend_log_show('Security', { error: 0, content: 'Security settings saved successfully.' });
     },
     error: function(jqXHR) {
       frontend_log_show('Security', { error: 1, content: 'Failed to save security settings (HTTP ' + jqXHR.status + ').' });
+    },
+    complete: function() {
+      $btn.prop('disabled', false).removeClass('is-loading');
+      $textSpan.text("Save");
     }
   });
 }
@@ -1134,12 +1156,19 @@ function get_ip_whitelist() {
 }
 
 function add_ip_whitelist(ipAddress) {
+  const $btn = $(document.getElementById('add-whitelist-ip'));
+  const $textSpan = $btn.find('.btn-text');
+
   $.ajax({
     url: '/device/security/whitelist/add',
     type: 'POST',
     contentType: 'application/json',
     dataType: 'json',
     data: JSON.stringify({ ip: ipAddress }),
+    beforeSend: function() {
+      $btn.prop('disabled', true).addClass('is-loading');
+      $textSpan.text('');
+    },
     success: function(response) {
       console.log("Successfully added IP-Address");
       pushback_ip_element(ipAddress);
@@ -1147,23 +1176,37 @@ function add_ip_whitelist(ipAddress) {
     error: function(jqXHR) {
       frontend_log_show('Security', { error: 1, content: 'Failed to add IP-Address (HTTP ' + jqXHR.status + ').' });
       return false;
+    },
+    complete: function() {
+      $btn.prop('disabled', false).removeClass('is-loading');
+      $textSpan.text("Add");
     }
   });
 }
 
 function remove_ip_whitelist(item) {
+  const $item = $(item);
+  const $btn = $item.find('.ip-whitelist-remove');
+  const $textSpan = $btn.find('.btn-text');
+
   $.ajax({
     url: '/device/security/whitelist/remove',
     type: 'POST',
     contentType: 'application/json',
     dataType: 'json',
     data: JSON.stringify({ ip: item.dataset.ip }),
+    beforeSend: function() {
+      $btn.prop('disabled', true).addClass('is-loading');
+      $textSpan.text('');
+    },
     success: function(response) {
       console.log("Successfully removed IP-Address");
       item.remove();
       return true;
     },
     error: function(jqXHR) {
+      $btn.prop('disabled', false).removeClass('is-loading');
+      $textSpan.text("Remove");
       frontend_log_show('Security', { error: 1, content: 'Failed to remove IP-Address (HTTP ' + jqXHR.status + ').' });
       return false;
     }
@@ -1242,7 +1285,7 @@ function pushback_ip_element(ipAddress) {
   let removeButton = document.createElement('button');
   removeButton.type = 'button';
   removeButton.className = 'btn btn-default ip-whitelist-remove';
-  removeButton.textContent = 'Remove';
+  removeButton.innerHTML = '<span class="btn-spinner"></span><span class="btn-text">Remove</span>';
   removeButton.setAttribute('aria-label', 'Remove ' + ipAddress);
   removeButton.addEventListener('click', function() {
     ip_whitelist_remove_event(ipAddress);

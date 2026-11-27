@@ -60,22 +60,6 @@ bool readDisableWebserverOnTcp();
  */
 esp_err_t writeDisableWebserverOnTcp(bool value);
 
-/**
- * @brief Read whether the ip whitelist is active.
- *
- * @return true if ip_whitelist_active flag is set in NVS, false otherwise
- */
-bool readIpWhitelistActive();
-
-/**
- * @brief Write the ip_whitelist_active flag to NVS.
- *
- * @param[in] value  true = ip whitelist is active (if it is not empty), false = ip whitelist is inactive (even if it is not empty)
- *
- * @return `ESP_OK` on success
- */
-esp_err_t writeIpWhitelistActive(bool value);
-
 } // namespace AppNvs
 
 #endif // CZC_APP_NVS_H_

@@ -21,6 +21,22 @@ namespace SocketWhitelist {
     inline constexpr size_t IPV4_ADDR_SIZE = 16;
 
     /**
+     * @brief Read whether the ip whitelist is active.
+     *
+     * @return true if ip_whitelist_active flag is set in NVS, false otherwise
+     */
+    bool readIpWhitelistActive();
+
+    /**
+     * @brief Write the ip_whitelist_active flag to NVS.
+     *
+     * @param[in] value  true = ip whitelist is active (if it is not empty), false = ip whitelist is inactive (even if it is not empty)
+     *
+     * @return `ESP_OK` on success
+     */
+    esp_err_t writeIpWhitelistActive(bool value);
+
+    /**
      * @brief Adds an IPv4 address to the whitelist.
      *
      * Addresses that are already present are not added again.

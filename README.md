@@ -284,10 +284,12 @@ czc-unified/
 │   │   └── src/zstack_mt.cpp
 │   │
 │   ├── firmware_manager/         Protocol stack selection (Thread / Zigbee)
-│   │   ├── include/firmware_manager.h, protocol_controller.h   ← DeviceMode enum
+│   │   ├── include/firmware_callbacks.h, firmware_manager.h, protocol_controller.h,
+|   |   |           proxy_transport_event.h, socket_whitelist.h    ← DeviceMode enum
 │   │   ├── private_include/thread_controller.h,
 │   │   │                               zigbee_proxy_controller.h, proxy_transport.h
-│   │   └── src/
+│   │   └── src/firmware_manager.cpp, proxy_transport.cpp, socket_whitelist.cpp,
+|   |                               thread_controller.cpp, zigbee_proxy_controller.cpp
 │   │
 │   ├── status_light/             Event-driven LED manager + LED overrides + night mode
 │   │   ├── include/status_light_event.h, status_light_manager.h, status_light_hal.h
@@ -316,10 +318,14 @@ czc-unified/
 │   │       ├── wifi_config.html  ← served instead of index.html while in Access Point mode
 │   │       └── static/restful.js ← RCP flash dialog: Thread / Zigbee Coordinator / Zigbee Router tabs
 │   │
-│   └── sse_events/               SSE event broadcast (queue + sender task)
-│       ├── include/sse_events.hpp      ← namespace sse_events: init() + post_* API + enums
-│       ├── include/sse_events_init.h   ← C-compatible init, included by esp_br_web.c
-│       └── src/sse_events.cpp, sse_events_init.cpp
+│   ├── sse_events/               SSE event broadcast (queue + sender task)
+│   |   ├── include/sse_events.hpp      ← namespace sse_events: init() + post_* API + enums
+│   |   ├── include/sse_events_init.h   ← C-compatible init, included by esp_br_web.c
+│   |   └── src/sse_events.cpp, sse_events_init.cpp
+|   |
+|   └── button_handler/           Manager for button events
+│       ├── include/button.h      ← button class
+│       └── src/button.cpp
 │
 └── partitions.csv                Flash partition table
 ```
@@ -599,16 +605,25 @@ classDiagram
     direction TB
 
     class AppController {
+        -bool isClientConnected
         -UpdateManager& updateManager
         -FirmwareManager& firmwareManager
+        +AppController(UpdateManager& updateMgr, FirmwareManager& firmwareMgr)
         +run() void
-        +fillFirmwareCallbacks(cbs) void
-        +requestRcpFlash(url, mode) esp_err_t
-        +requestEspFlash(url) esp_err_t
-        +requestModeChange(mode) esp_err_t
+        +client_connected_event_handler(void* handler_args, esp_event_base_t base, int32_t id, void* event_data) void
+        +client_connected_event_process(int32_t id) void
+        +requestRcpFlash(const char* url, DeviceMode mode) esp_err_t
+        +requestEspFlash(const char* url) esp_err_t
+        +requestModeChange(DeviceMode mode) esp_err_t
         +getCurrentMode() DeviceMode
+        +espReboot() void
+        +espEraseNvs() esp_err_t
         +rcpReboot() esp_err_t
         +rcpEraseNvram() esp_err_t
+        +setLogLevel(esp_log_level_t logLevel) void
+        +fillFirmwareCallbacks(web_firmware_callbacks_t* cbs) void
+        -webServerControlTask(void* arg) void
+        -setDisableWebserverOnTcp(bool disable) esp_err_t
     }
 
     class UpdateManager {
@@ -800,6 +815,25 @@ classDiagram
         <<C component>>
         +esp_br_web_start() void
     }
+    class Button {
+        -gpio_num_t pin_
+        -AppController& appController_
+        -button_handle_t btn_handle_
+        -uint32_t press_start_time_
+        +Button(AppController& appController)
+        +~Button()
+        +Button(const Button&) = delete
+        +Button& operator=(const Button&) = delete
+        +init() esp_err_t
+        -on_press_down() void
+        -on_press_up() void
+        -handle_long_press(uint32_t press_time_ms) void
+        -status_led_toggle() void
+        -usb_network_toggle() void
+        -trigger_factory_reset() void
+        -press_down_cb_adapter(void *arg, void *usr_data) void
+        -press_up_cb_adapter(void *arg, void *usr_data) void
+    }
 
     AppController o-- UpdateManager
     AppController o-- FirmwareManager
@@ -883,6 +917,13 @@ Night-mode jobs are registered during `StatusLightManager::init()` — long befo
 | `GET` | `/device/nightmode` | Current night-mode range — `{"enabled": true, "start": "HH:MM", "end": "HH:MM"}`, or `{"enabled": false}` if none is registered |
 | `POST` | `/device/nightmode` | Set night-mode range — `{"start": "HH:MM", "end": "HH:MM"}` (crossing midnight allowed); replaces the previous range, persisted to NVS |
 | `POST` | `/device/nightmode/clear` | Remove the night-mode cron jobs and the NVS entry; ends a currently running night immediately |
+| `GET` | `/security/socket` | Load security setting for webserver deactivation on socket connection |
+| `POST` | `/security/socket` | Save security setting for webserver deactivation on socket connection |
+| `GET` | `/security/whitelist` | Load security setting for socket whitelist |
+| `POST` | `/security/whitelist` | Save security setting for socket whitelist |
+| `GET` | `/security/whitelist/read` | Load ip-elements from whitelist |
+| `POST` | `/security/whitelist/add` | Add ip-element to whitelist |
+| `POST` | `/security/whitelist/remove` | Remove ip-element from whitelist |
 | `GET` | `/network/wifi` | Read WiFi config from NVS |
 | `POST` | `/network/wifi` | Write WiFi config + trigger reconnect |
 | `GET` | `/network/ethernet` | Read Ethernet config from NVS |
